@@ -1,0 +1,138 @@
+#define BOOTDEV mtk-msdc.0/11230000.msdc0
+#define FSTYPE_RAW emmc
+#define DEVPATH(_part) /dev/block/platform/BOOTDEV/by-name/_part
+#define FSTAB_RAW(_part)        DEVPATH(_part) /_part FSTYPE_RAW defaults defaults
+#define FSTAB_RAW2(_part,_mnt)  DEVPATH(_part) /_mnt FSTYPE_RAW defaults defaults
+
+#ifndef __MTK_SYSIMG_FSTYPE
+#define __MTK_SYSIMG_FSTYPE ext4
+#endif
+
+#ifndef __MTK_VNDIMG_FSTYPE
+#define __MTK_VNDIMG_FSTYPE ext4
+#endif
+
+#ifndef __MTK_ODMIMG_FSTYPE
+#define __MTK_ODMIMG_FSTYPE ext4
+#endif
+
+/* Can overwrite FDE setting by defining __MTK_FDE_NO_FORCE and __MTK_FDE_TYPE_FILE in this file */
+/* For example, you can un-comment the following line to disable FDE for all projects in this platform. */
+#define __MTK_FDE_NO_FORCE /* disable force encryption */
+#ifdef __MTK_FDE_NO_FORCE
+  #define FLAG_FDE_AUTO encryptable
+#else
+  #define FLAG_FDE_AUTO forceencrypt
+#endif
+#ifdef __MTK_FDE_TYPE_FILE
+  #define FLAG_FDE_TYPE fileencryption
+#else
+  #define FLAG_FDE_TYPE
+#endif
+#ifdef __MTK_FDE_TO_FBE
+  #define FLAG_FDE_TYPE forcefdeorfbe
+#else
+  #define FLAG_FDE_TYPE
+#endif
+
+#ifdef __TARGET_ENABLE_QUOTA
+  #define FLAG_QUOTA quota
+#else
+  #define FLAG_QUOTA
+#endif
+
+#ifdef __MTK_AB_OTA_UPDATER
+  #define FLAG_SLOT_SELECT slotselect
+  #define SYS_MOUNT_POINT   /
+#else
+  #define FLAG_SLOT_SELECT
+  #define SYS_MOUNT_POINT   /system
+#endif
+
+#ifdef __MTK_SEC_VERITY
+#ifdef __MTK_AB_OTA_UPDATER
+  #define FSMGR_FLAG_SYSTEM wait,slotselect,verify,recoveryonly
+#else
+  #define FSMGR_FLAG_SYSTEM wait,verify,recoveryonly
+#endif
+#else
+#ifdef __MTK_AB_OTA_UPDATER
+  #define FSMGR_FLAG_SYSTEM wait,slotselect,recoveryonly
+#else
+  #define FSMGR_FLAG_SYSTEM wait,recoveryonly
+#endif
+#endif
+
+#ifdef __MTK_FDE_TYPE_FILE
+#ifdef __MTK_FDE_TO_FBE
+  #define FSMGR_FLAG_DATA wait,check,FLAG_QUOTA,formattable,resize,FLAG_FDE_TYPE=DEVPATH(metadata)
+#else
+  #define FSMGR_FLAG_DATA wait,check,FLAG_QUOTA,formattable,resize,FLAG_FDE_TYPE=aes-256-xts
+#endif
+#else
+  #define FSMGR_FLAG_DATA wait,check,FLAG_QUOTA,formattable,resize,FLAG_FDE_AUTO=DEVPATH(metadata),FLAG_FDE_TYPE
+#endif
+
+#define FS_FLAG_DISCARD noatime,nosuid,nodev,noauto_da_alloc,discard
+#define FS_FLAG_NO_DISCARD noatime,nosuid,nodev,noauto_da_alloc
+#define FS_FLAG_COMMIT  noatime,nosuid,nodev,noauto_da_alloc,commit=1,nodelalloc
+#define FSMGR_FLAG_FMT  wait,check,formattable
+#define FSMGR_FLAG_CHK  wait,check
+
+#define FS_FLAG_DATA FS_FLAG_NO_DISCARD,errors=panic
+
+DEVPATH(system)     SYS_MOUNT_POINT      __MTK_SYSIMG_FSTYPE ro  FSMGR_FLAG_SYSTEM
+#ifdef __VENDOR_PARTITION_SUPPORT
+DEVPATH(vendor)     /vendor              __MTK_VNDIMG_FSTYPE ro  FSMGR_FLAG_SYSTEM
+#endif
+#ifdef __ODM_PARTITION_SUPPORT
+DEVPATH(odm)        /odm                 __MTK_ODMIMG_FSTYPE ro  FSMGR_FLAG_SYSTEM
+#endif
+DEVPATH(userdata)   /data        ext4   FS_FLAG_DATA  FSMGR_FLAG_DATA
+#ifndef __MTK_AB_OTA_UPDATER
+DEVPATH(cache)      /cache       ext4   FS_FLAG_DISCARD  FSMGR_FLAG_CHK
+#endif
+DEVPATH(protect1)   /vendor/protect_f   ext4   FS_FLAG_COMMIT   FSMGR_FLAG_FMT
+DEVPATH(protect2)   /vendor/protect_s   ext4   FS_FLAG_COMMIT   FSMGR_FLAG_FMT
+DEVPATH(nvdata)     /vendor/nvdata      ext4   FS_FLAG_DISCARD  FSMGR_FLAG_FMT
+DEVPATH(nvcfg)      /vendor/nvcfg       ext4   FS_FLAG_COMMIT   FSMGR_FLAG_FMT
+
+#ifdef __PERSIST_PARTITION_SUPPORT
+DEVPATH(persist)    /vendor/persist     ext4   FS_FLAG_COMMIT   FSMGR_FLAG_FMT
+#endif
+
+/devices/platform/mtk-msdc.0/11240000.msdc1*   auto      auto      defaults        voldmanaged=sdcard1:auto,encryptable=userdata
+/devices/platform/11270000.usb3_xhci* auto auto defaults voldmanaged=usbotg:auto
+
+
+#ifdef __MTK_FACTORY_RESET_PROTECTION_SUPPORT
+FSTAB_RAW2(frp,persistent)
+#endif
+FSTAB_RAW(nvram)
+FSTAB_RAW(proinfo)
+FSTAB_RAW2(lk,bootloader)
+FSTAB_RAW2(lk2,bootloader2)
+FSTAB_RAW2(para,misc)
+FSTAB_RAW(boot)
+FSTAB_RAW(recovery)
+FSTAB_RAW(logo)
+FSTAB_RAW(expdb)
+FSTAB_RAW(seccfg)
+#if (defined(__MTK_TEE_SUPPORT) || defined(__MTK_ATF_SUPPORT))
+FSTAB_RAW(tee1)
+FSTAB_RAW(tee2)
+#endif
+#ifdef __MTK_TINYSYS_SCP_SUPPORT
+FSTAB_RAW(scp1)
+FSTAB_RAW(scp2)
+#endif
+#ifdef __MTK_EFUSE_WRITER_SUPPORT
+FSTAB_RAW(efuse)
+#endif
+FSTAB_RAW(md1img)
+FSTAB_RAW(md1dsp)
+FSTAB_RAW(md1arm7)
+FSTAB_RAW(md3img)
+#ifdef __MTK_DTBO_FEATURE
+FSTAB_RAW(odmdtbo)
+#endif
