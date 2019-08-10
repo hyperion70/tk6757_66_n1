@@ -1,3 +1,5 @@
+TARGET_BOARD_PLATFORM := mt6757
+
 # Use the non-open-source part, if present
 -include vendor/mediatek/tk6757_66_n1/BoardConfigVendor.mk
 
@@ -5,8 +7,8 @@
 include device/mediatek/mt6757/BoardConfig.mk
 
 # OTA: Disable vendor partition
-TARGET_COPY_OUT_VENDOR := system/vendor
-BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE :=
+# TARGET_COPY_OUT_VENDOR := system/vendor
+# BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE :=
 TARGET_RECOVERY_FSTAB := $(MTK_PTGEN_PRODUCT_OUT)/$(TARGET_COPY_OUT_VENDOR)/etc/fstab.$(MTK_PLATFORM_DIR)
 
 #Config partition size
