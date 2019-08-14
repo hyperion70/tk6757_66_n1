@@ -129,16 +129,17 @@
         <module name="gpio">
             <count>194</count>
             <gpio0>
-                <eint_mode>true</eint_mode>
-                <def_mode>0</def_mode>
-                <mode_arr>10000000</mode_arr>
-                <inpull_en>true</inpull_en>
+                <eint_mode>false</eint_mode>
+                <def_mode>6</def_mode>
+                <mode_arr>11101111</mode_arr>
+                <inpull_en>false</inpull_en>
                 <inpull_selhigh>false</inpull_selhigh>
                 <def_dir>IN</def_dir>
                 <in>true</in>
-                <out>false</out>
+                <out>true</out>
                 <out_high>false</out_high>
-                <smt>true</smt>
+                <varName0>GPIO_ACCDET_EINT_PIN</varName0>
+                <smt>false</smt>
                 <ies>true</ies>
             </gpio0>
             <gpio1>
