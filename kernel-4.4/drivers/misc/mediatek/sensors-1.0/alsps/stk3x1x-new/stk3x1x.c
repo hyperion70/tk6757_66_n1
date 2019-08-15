@@ -5524,7 +5524,7 @@ static int stk3x1x_i2c_probe(struct i2c_client *client, const struct i2c_device_
 		err = -ENOMEM;
 		goto exit;
 	}
-	node = of_find_compatible_node(NULL, NULL, "mediatek,stk3x1x");
+	node = of_find_compatible_node(NULL, NULL, "mediatek,alsps");
     if(node != NULL)
     {
         err = get_alsps_dts_func(node, hw);
