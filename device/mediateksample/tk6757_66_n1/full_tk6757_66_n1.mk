@@ -6,6 +6,8 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)
 # Inherit from those products. Most specific first.
 $(call inherit-product, $(SRC_TARGET_DIR)/product/full_base.mk)
 
+MTK_BUILD_GAPPS = yes
+
 # Set target and base project for flavor build
 MTK_TARGET_PROJECT := $(subst full_,,$(TARGET_PRODUCT))
 MTK_BASE_PROJECT := $(MTK_TARGET_PROJECT)
@@ -25,7 +27,7 @@ PRODUCT_LOCALES:=ru_RU en_US
 PRODUCT_MANUFACTURER := Santin
 PRODUCT_NAME := full_tk6757_66_n1
 PRODUCT_DEVICE := tk6757_66_n1
-PRODUCT_MODEL := N1
+PRODUCT_MODEL := Santin_N1
 PRODUCT_POLICY := android.policy_phone
 PRODUCT_BRAND := Santin
 TARGET_OTA_ASSERT_DEVICE := N1
@@ -38,3 +40,12 @@ endif
 PRELOADER_TARGET_PRODUCT ?= tk6757_66_n1
 LK_PROJECT ?= tk6757_66_n1
 TRUSTY_PROJECT ?= tk6757_66_n1
+
+
+ifeq ($(MTK_BUILD_GAPPS),yes)
+$(call inherit-product, device/mediateksample/tk6757_66_n1/opengapps.mk)
+
+BUILD_FINGERPRINT := "Xiaomi/sirius/sirius:8.1.0/OPM1.171019.019/V9.5.9.0.OEBCNFA:user/release-keys"
+PRIVATE_BUILD_DESC := "sirius-user 8.1.0 OPM1.171019.019 V9.5.9.0.OEBCNFA release-keys"
+
+endif
