@@ -6,7 +6,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)
 # Inherit from those products. Most specific first.
 $(call inherit-product, $(SRC_TARGET_DIR)/product/full_base.mk)
 
-MTK_BUILD_GAPPS = yes
+MTK_BUILD_GAPPS = no
 
 # Set target and base project for flavor build
 MTK_TARGET_PROJECT := $(subst full_,,$(TARGET_PRODUCT))
@@ -41,6 +41,7 @@ PRELOADER_TARGET_PRODUCT ?= tk6757_66_n1
 LK_PROJECT ?= tk6757_66_n1
 TRUSTY_PROJECT ?= tk6757_66_n1
 
+include $(LOCAL_PATH)/twrp.mk
 
 ifeq ($(MTK_BUILD_GAPPS),yes)
 $(call inherit-product, device/mediateksample/tk6757_66_n1/opengapps.mk)

@@ -31,4 +31,4 @@ else
 BOARD_KERNEL_CMDLINE = bootopt=64S3,32N2,64N2 androidboot.selinux=permissive
 endif
 
-MTK_RECOVERY_MEDIUM_RES := yes
+PRODUCT_COPY_FILES += device/mediateksample/tk6757_66_n1/twrp.fstab:recovery/root/etc/twrp.fstab
