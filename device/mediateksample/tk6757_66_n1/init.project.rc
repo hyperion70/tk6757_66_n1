@@ -7,6 +7,9 @@ on init
 
 on post-fs-data
 
+# nfc-config
+    mkdir /data/nfc 0770 nfc nfc
+
 #Camera
     chmod 0660 /dev/MAINAF
     chown system camera /dev/MAINAF
@@ -33,6 +36,12 @@ on post-fs-data
     chown system system /proc/smb/ScreenComm
     chmod 0660 /proc/smb/ScreenComm
 
+# NFC
+    setprop ro.nfc.port "I2C"
+    chmod 0660 /dev/pn544
+    chown nfc nfc /dev/pn544
+
+
 #Define device for ATCID
     chmod 660 /dev/ttyGS0
     chown system /dev/ttyGS0
@@ -42,6 +51,9 @@ on post-fs-data
     chmod 0660 /dev/spm
     chown system system /dev/spm
 
+#goodix fingerprint
+    chmod 777 /system/bin/gx_fpd
+    chmod 660 /dev/goodix_fp
 
 on init
     # Refer to http://source.android.com/devices/tech/storage/index.html
@@ -63,3 +75,12 @@ service spm_script /system/vendor/bin/spm_loader
     class core
     oneshot
 
+
+service fingerprintd /system/bin/fingerprintd
+    class late_start
+    user system
+
+service gx_fpd /system/bin/gx_fpd
+    class late_start
+    user root
+    group root system

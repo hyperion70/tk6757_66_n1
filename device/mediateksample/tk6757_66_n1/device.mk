@@ -160,8 +160,10 @@ PRODUCT_FULL_TREBLE_OVERRIDE := true
 $(call inherit-product-if-exists, vendor/mediatek/libs/$(MTK_TARGET_PROJECT)/device-vendor.mk)
 
 # setup dm-verity configs.
-PRODUCT_SYSTEM_VERITY_PARTITION := /dev/block/platform/mtk-msdc.0/11230000.msdc0/by-name/system
-$(call inherit-product, build/target/product/verity.mk)
+ifneq ($(strip $(MTK_DM_VERITY_OFF)), yes)
+    PRODUCT_SYSTEM_VERITY_PARTITION := /dev/block/platform/mtk-msdc.0/11230000.msdc0/by-name/system
+    $(call inherit-product, build/target/product/verity.mk)
+endif
 
 # Add proprietary binary files
 PRODUCT_COPY_FILES += \
