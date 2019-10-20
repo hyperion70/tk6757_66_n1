@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/videodev2.h>
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
@@ -6,14 +19,13 @@
 #include <linux/uaccess.h>
 #include <linux/fs.h>
 #include <asm/atomic.h>
-//#include <linux/xlog.h>
-//#include <asm/system.h>
-#include <linux/types.h>
-#include <linux/proc_fs.h>
+#include <linux/slab.h>
+
+
 #define PFX "S5K3P3_pdafotp"
-#define LOG_INF(format, args...)	pr_warn(PFX "[%s] " format, __FUNCTION__, ##args)
-#include <linux/dma-mapping.h>
-#include "kd_camera_typedef.h"
+#define LOG_INF(format, args...)	pr_debug(PFX "[%s] " format, __FUNCTION__, ##args)
+
+#include "kd_camera_hw.h"
 #include "kd_imgsensor.h"
 #include "kd_imgsensor_define.h"
 #include "kd_imgsensor_errcode.h"
@@ -29,7 +41,7 @@ extern int iMultiReadReg(u16 a_u2Addr , u8 * a_puBuff , u16 i2cId, u8 number);
 #define Sleep(ms) mdelay(ms)
 
 #define S5K3P3_EEPROM_READ_ID  0xA1
-#define S5K3P3_EEPROM_WRITE_ID   0xA2
+#define S5K3P3_EEPROM_WRITE_ID   0xA0
 #define S5K3P3_I2C_SPEED        100
 #define S5K3P3_MAX_OFFSET		0xFFFF
 
@@ -45,6 +57,7 @@ static bool selective_read_eeprom(kal_uint16 addr, BYTE* data)
 	char pu_send_cmd[2] = {(char)(addr >> 8) , (char)(addr & 0xFF) };
     if(addr > S5K3P3_MAX_OFFSET)
         return false;
+    //kdSetI2CSpeed(S5K3P3_I2C_SPEED);
 
 	    if(iReadRegI2C(pu_send_cmd, 2, (u8*)data, 1, S5K3P3_EEPROM_WRITE_ID)<0)
 		    return false;
@@ -68,7 +81,7 @@ static bool _read_3P3_eeprom(kal_uint16 addr, BYTE* data, kal_uint32 size ){
 }
 
 bool read_3P3_eeprom( kal_uint16 addr, BYTE* data, kal_uint32 size){
-	addr = 0x801;
+	addr = 0x763;
 	size = 1404;
 	//BYTE header[9]= {0};
 	//_read_3P3_eeprom(0x0000, header, 9);
@@ -89,19 +102,3 @@ bool read_3P3_eeprom( kal_uint16 addr, BYTE* data, kal_uint32 size){
 }
 
 
-bool read_3P3_eeprom_vendorinfo( kal_uint16 addr, BYTE* data, kal_uint32 size){
-
-	LOG_INF("read 3P3 eeprom, size = %d\n", size);
-
-	if(!get_done || last_size != size || last_offset != addr) {
-		if(!_read_3P3_eeprom(addr, s5k3P3_eeprom_data, size)){
-			get_done = 0;
-            last_size = 0;
-            last_offset = 0;
-			return false;
-		}
-	}
-
-	memcpy(data, s5k3P3_eeprom_data, size);
-    return true;
-}
