@@ -16,4 +16,4 @@ obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM))/
 subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/base/power/$(MTK_PLATFORM)/
 endif
 
-obj-$(CONFIG_NFC_CHIP_SUPPORT) += st21nfc/
+obj-$(CONFIG_MTK_NFC_PN544) += pn544/

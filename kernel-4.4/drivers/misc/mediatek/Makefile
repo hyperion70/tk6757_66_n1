@@ -34,6 +34,7 @@ obj-$(CONFIG_MTK_FIQ_CACHE) += fiq_cache/
 obj-$(CONFIG_MTK_ICE_DEBUG) += ice_debug/
 obj-$(CONFIG_MTK_NFC_SUPPORT) += nfc/
 obj-$(CONFIG_NFC_CHIP_SUPPORT) += nfc/
+obj-$(CONFIG_MTK_NFC_PN544) += nfc/
 
 obj-$(CONFIG_MMPROFILE) += mmp/
 obj-$(CONFIG_MTK_AUXADC)	+= auxadc/

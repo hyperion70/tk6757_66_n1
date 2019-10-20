@@ -16,3 +16,9 @@ config NFC_CHIP_SUPPORT
 	  ST21NFCD can support 2UICC mode, and ST54F can support 1UICC + eSE.
 	  If configures to be y, means devices supports NFC functionality.
 	  If configures to be n, means devices doesn't support NFC functionality.
+
+config MTK_NFC_PN544
+  bool CONFIG_MTK_NFC_PN544
+  default n
+  help
+    CONFIG_MTK_NFC_PN544
