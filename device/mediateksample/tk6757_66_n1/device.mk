@@ -69,6 +69,34 @@ endif
 # alps/external/libnfc-opennfc/open_nfc/hardware/libhardware/modules/nfcc/nfc_hal_microread/Android.mk
 # PRODUCT_COPY_FILES += external/libnfc-opennfc/open_nfc/hardware/libhardware/modules/nfcc/nfc_hal_microread/driver/open_nfc_driver.ko:$(TARGET_COPY_OUT_VENDOR)/lib/open_nfc_driver.ko:mtk
 
+# for NFC_SUPPORT start ---->
+
+PRODUCT_COPY_FILES +=$(call add-to-product-copy-files-if-exists,frameworks/base/nfc-extras/com.android.nfc_extras.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/com.android.nfc_extras.xml)
+
+PRODUCT_COPY_FILES += \
+	$(call find-copy-subdir-files,*,$(LOCAL_PATH)/nfc,system)
+
+PRODUCT_PACKAGES += com.android.nfc_extras
+PRODUCT_PACKAGES += nfcservice
+PRODUCT_PACKAGES += libem_nfc_jni
+PRODUCT_PACKAGES += NxpSecureElement
+PRODUCT_PACKAGES += Nfc
+PRODUCT_PACKAGES += Tag
+PRODUCT_PACKAGES += nfcc.default
+PRODUCT_PROPERTY_OVERRIDES +=  ro.nfc.port=I2C
+
+# $(call inherit-product-if-exists, vendor/mediatek/proprietary/hardware/nfc/mtknfc.mk)
+$(call inherit-product-if-exists, vendor/mediatek/proprietary/external/mtknfc/mtknfc.mk)
+
+PRODUCT_COPY_FILES += $(MTK_TARGET_PROJECT_FOLDER)/nfcse.cfg:$(TARGET_COPY_OUT_VENDOR)/etc/nfcse.cfg:mtk
+
+PRODUCT_COPY_FILES += $(call add-to-product-copy-files-if-exists,frameworks/native/data/etc/android.hardware.nfc.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.nfc.xml)
+PRODUCT_COPY_FILES += $(call add-to-product-copy-files-if-exists,frameworks/native/data/etc/android.hardware.nfc.hce.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.nfc.hce.xml)
+
+DEVICE_MANIFEST_FILE += device/mediatek/common/project_manifest/manifest_nfc.xml
+
+# for NFC_SUPPORT end ---->
+
 # alps/frameworks/av/media/libeffects/factory/Android.mk
 PRODUCT_COPY_FILES += frameworks/av/media/libeffects/data/audio_effects.conf:system/etc/audio_effects.conf
 
