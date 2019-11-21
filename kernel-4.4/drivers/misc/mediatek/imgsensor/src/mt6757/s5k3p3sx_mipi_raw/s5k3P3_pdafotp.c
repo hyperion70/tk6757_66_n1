@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/videodev2.h>
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
@@ -45,8 +32,8 @@ extern int iMultiReadReg(u16 a_u2Addr , u8 * a_puBuff , u16 i2cId, u8 number);
 #define S5K3P3_I2C_SPEED        100
 #define S5K3P3_MAX_OFFSET		0xFFFF
 
-#define DATA_SIZE 2048
-BYTE s5k3P3_eeprom_data[DATA_SIZE]= {0};
+//#define DATA_SIZE 2048
+//BYTE s5k3P3_eeprom_data[DATA_SIZE]= {0};
 static bool get_done = false;
 static int last_size = 0;
 static int last_offset = 0;
@@ -55,13 +42,14 @@ static int last_offset = 0;
 static bool selective_read_eeprom(kal_uint16 addr, BYTE* data)
 {
 	char pu_send_cmd[2] = {(char)(addr >> 8) , (char)(addr & 0xFF) };
-    if(addr > S5K3P3_MAX_OFFSET)
+    if(addr > S5K3P3_MAX_OFFSET){
         return false;
-    //kdSetI2CSpeed(S5K3P3_I2C_SPEED);
+    }
+	//kdSetI2CSpeed(S5K3P3_I2C_SPEED);
 
-	    if(iReadRegI2C(pu_send_cmd, 2, (u8*)data, 1, S5K3P3_EEPROM_WRITE_ID)<0)
-		    return false;
-        return true;
+	if(iReadRegI2C(pu_send_cmd, 2, (u8*)data, 1, S5K3P3_EEPROM_WRITE_ID)<0)
+		return false;
+    return true;
 }
 
 static bool _read_3P3_eeprom(kal_uint16 addr, BYTE* data, kal_uint32 size ){
@@ -81,24 +69,21 @@ static bool _read_3P3_eeprom(kal_uint16 addr, BYTE* data, kal_uint32 size ){
 }
 
 bool read_3P3_eeprom( kal_uint16 addr, BYTE* data, kal_uint32 size){
-	addr = 0x763;
-	size = 1404;
-	//BYTE header[9]= {0};
-	//_read_3P3_eeprom(0x0000, header, 9);
-
-	LOG_INF("read 3P3 eeprom, size = %d\n", size);
-
-	if(!get_done || last_size != size || last_offset != addr) {
-		if(!_read_3P3_eeprom(addr, s5k3P3_eeprom_data, size)){
-			get_done = 0;
-            last_size = 0;
-            last_offset = 0;
-			return false;
-		}
+	LOG_INF("read_3P3_eeprom enter");
+	/* if(!get_done || last_size != size || last_offset != addr) { */
+	/* if(!_read_eeprom(addr, eeprom_data, size)){ */
+	if (!_read_3P3_eeprom(addr, data, size)) {
+		get_done = 0;
+		last_size = 0;
+		last_offset = 0;
+		LOG_INF("_read_3P3_eeprom fail");
+		return false;
 	}
+	/* } */
+	/* memcpy(data, eeprom_data, size); */
+	LOG_INF("read_eeprom end");
 
-	memcpy(data, s5k3P3_eeprom_data, size);
-    return true;
+	return true;
 }
 
 

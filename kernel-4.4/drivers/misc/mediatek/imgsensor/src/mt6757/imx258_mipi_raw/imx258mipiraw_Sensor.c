@@ -64,7 +64,7 @@ static DEFINE_SPINLOCK(imgsensor_drv_lock);
 static imgsensor_info_struct imgsensor_info = {
 	.sensor_id = IMX258_SENSOR_ID,	/* record sensor id defined in Kd_imgsensor.h */
 
-	.checksum_value = 0x38ebe79e,	/*checksum value for Camera Auto Test */
+	.checksum_value = 0x4ED6FE8C,	/*checksum value for Camera Auto Test */
 
 	.pre = {
 		.pclk = 259200000,	/* record different mode's pclk */
@@ -107,7 +107,6 @@ static imgsensor_info_struct imgsensor_info = {
 					 * 16M max framerate is 20fps, 20M max framerate is 15fps
 					 */
 	},
-#if 0
 	/*
 	 * PIP capture. capture for PIP 24fps relative information, capture1 mode must use same framelength,
 	 * linelength with Capture mode for shutter calculate
@@ -125,7 +124,6 @@ static imgsensor_info_struct imgsensor_info = {
 					 * 16M max framerate is 20fps, 20M max framerate is 15fps
 					 */
 	},
-#endif
 	.normal_video = {
 		.pclk = 518400000,
 		.linelength = 5352,
@@ -138,13 +136,13 @@ static imgsensor_info_struct imgsensor_info = {
 		.max_framerate = 300,	/* modify */
 	},
 	.hs_video = {		/*slow motion */
-		.pclk = 480000000,	/*518400000, */
+		.pclk = 518400000,	/*480000000, */
 		.linelength = 5352,
-		.framelength = 746,	/*806, */
+		.framelength = 812,	/*746, */
 		.startx = 0,
 		.starty = 0,
 		.grabwindow_width = 1048,	/*1400, */
-		.grabwindow_height = 480,	/*752, */
+		.grabwindow_height = 780,	/*480, */
 		.mipi_data_lp2hs_settle_dc = 85,	/* unit , ns */
 		.max_framerate = 1200,	/* modify */
 
@@ -2888,7 +2886,6 @@ static kal_uint32 capture(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 		imgsensor.min_frame_length = imgsensor_info.cap1.framelength;
 		imgsensor.autoflicker_en = KAL_FALSE;
 	}
-#if 0
 	else if (imgsensor.current_fps == imgsensor_info.cap2.max_framerate) {
 		/* PIP capture: 24fps for less than 13M, 20fps for 16M,15fps for 20M */
 		imgsensor.pclk = imgsensor_info.cap2.pclk;
@@ -2897,7 +2894,6 @@ static kal_uint32 capture(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 		imgsensor.min_frame_length = imgsensor_info.cap2.framelength;
 		imgsensor.autoflicker_en = KAL_FALSE;
 	}
-#endif
 	else {
 		if (imgsensor.current_fps != imgsensor_info.cap.max_framerate)
 			LOG_INF("Warning: current_fps %d fps is not support, so use cap's setting: %d fps!\n",
@@ -3263,6 +3259,13 @@ static kal_uint32 set_max_framerate_by_scenario(MSDK_SCENARIO_ID_ENUM scenario_i
 			imgsensor.frame_length = imgsensor_info.cap1.framelength + imgsensor.dummy_line;
 			imgsensor.min_frame_length = imgsensor.frame_length;
 			spin_unlock(&imgsensor_drv_lock);
+		} else if (imgsensor.current_fps == imgsensor_info.cap2.max_framerate) {
+                frame_length = imgsensor_info.cap2.pclk / framerate * 10 / imgsensor_info.cap2.linelength;
+                spin_lock(&imgsensor_drv_lock);
+		            imgsensor.dummy_line = (frame_length > imgsensor_info.cap2.framelength) ? (frame_length - imgsensor_info.cap2.framelength) : 0;
+		            imgsensor.frame_length = imgsensor_info.cap2.framelength + imgsensor.dummy_line;
+		            imgsensor.min_frame_length = imgsensor.frame_length;
+		            spin_unlock(&imgsensor_drv_lock);
 		} else {
 			if (imgsensor.current_fps != imgsensor_info.cap.max_framerate)
 				LOG_INF("Warning: current_fps %d fps is not support, so use cap's setting: %d fps!\n",
