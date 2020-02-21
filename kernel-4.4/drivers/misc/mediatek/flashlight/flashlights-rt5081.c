@@ -41,8 +41,8 @@
 
 /* define channel, level */
 #define RT5081_CHANNEL_NUM 2
-#define RT5081_CHANNEL_CH1 0
-#define RT5081_CHANNEL_CH2 1
+#define RT5081_CHANNEL_CH1 1
+#define RT5081_CHANNEL_CH2 0
 
 #define RT5081_NONE (-1)
 #define RT5081_DISABLE 0
@@ -156,39 +156,32 @@ static int rt5081_verify_level(int level)
 }
 
 /* flashlight enable function */
-static int rt5081_enable(void)
-{
-	int ret = 0;
-	enum flashlight_mode mode = FLASHLIGHT_MODE_TORCH;
+static int rt5081_enable(signed int light_mode){
+    int mode;
+    int ns;
 
-	if (!flashlight_dev_ch1 || !flashlight_dev_ch2) {
-		pr_err("Failed to enable since no flashlight device.\n");
-		return -1;
-	}
-
-	/* set flash mode if any channel is flash mode */
-	if ((rt5081_en_ch1 == RT5081_ENABLE_FLASH)
-			|| (rt5081_en_ch2 == RT5081_ENABLE_FLASH))
-		mode = FLASHLIGHT_MODE_FLASH;
-
-	/* enable channel 1 and channel 2 */
-	if (rt5081_en_ch1)
-		ret |= flashlight_set_mode(
-				flashlight_dev_ch1, mode);
-	else
-		ret |= flashlight_set_mode(
-				flashlight_dev_ch1, FLASHLIGHT_MODE_OFF);
-	if (rt5081_en_ch2)
-		ret |= flashlight_set_mode(
-				flashlight_dev_ch2, mode);
-	else
-		ret |= flashlight_set_mode(
-				flashlight_dev_ch2, FLASHLIGHT_MODE_OFF);
-
-	if (ret < 0)
-		pr_err("Failed to enable.\n");
-
-	return ret;
+    mode = rt5081_en_ch1;
+    if ((rt5081_en_ch1 != 2) && (mode = 2, rt5081_en_ch2 != 2)) {
+      mode = 1;
+    }
+    pr_info("Flashlight select == %d.\n", light_mode);
+    
+    if ((rt5081_en_ch1 == 0) || ((light_mode & 1) == 0)) {
+      ns = flashlight_set_mode(flashlight_dev_ch1 , 0);
+    }
+    else {
+      ns = flashlight_set_mode(flashlight_dev_ch1, mode);
+    }
+    if ((rt5081_en_ch2 == 0) || ((light_mode >> 1 & 1) == 0)) {
+      mode = flashlight_set_mode(flashlight_dev_ch2 , 0);
+    }
+    else {
+      mode = flashlight_set_mode(flashlight_dev_ch2 , mode);
+    }
+    
+    pr_info("rt5081_enable.\n");
+    
+    return 0;
 }
 
 /* flashlight disable function */
@@ -435,7 +428,7 @@ static int rt5081_operate(int channel, int enable)
 						(rt5081_timeout_ms[RT5081_CHANNEL_CH2] % 1000) * 1000000);
 				rt5081_timer_start(RT5081_CHANNEL_CH2, ktime);
 			}
-			rt5081_enable();
+			rt5081_enable(3);
 		}
 
 		/* clear flashlight state */
