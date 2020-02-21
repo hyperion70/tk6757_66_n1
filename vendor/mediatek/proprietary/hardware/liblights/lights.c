@@ -113,19 +113,6 @@ char const*const GREEN_DELAY_ON_FILE
 char const*const GREEN_DELAY_OFF_FILE
         = "/sys/class/leds/green/delay_off";
 
-/* BLUE LED */
-char const*const BLUE_LED_FILE
-        = "/sys/class/leds/blue/brightness";
-
-char const*const BLUE_TRIGGER_FILE
-        = "/sys/class/leds/blue/trigger";
-
-char const*const BLUE_DELAY_ON_FILE
-        = "/sys/class/leds/blue/delay_on";
-
-char const*const BLUE_DELAY_OFF_FILE
-        = "/sys/class/leds/blue/delay_off";
-
 /* LCD BACKLIGHT */
 char const*const LCD_FILE
         = "/sys/class/leds/lcd-backlight/brightness";
@@ -303,50 +290,6 @@ blink_green(int level, int onMS, int offMS)
 }
 
 static int
-blink_blue(int level, int onMS, int offMS)
-{
-	static int preStatus = 0; // 0: off, 1: blink, 2: no blink
-	int nowStatus;
-	int i = 0;
-
-	if (level == 0)
-		nowStatus = 0;
-	else if (onMS && offMS)
-		nowStatus = 1;
-	else
-		nowStatus = 2;
-
-	if (preStatus == nowStatus)
-		return -1;
-
-#ifdef LIGHTS_DBG_ON
-	ALOGD("blink_blue, level=%d, onMS=%d, offMS=%d\n", level, onMS, offMS);
-#endif
-	if (nowStatus == 0) {
-        	write_int(BLUE_LED_FILE, 0);
-	}
-	else if (nowStatus == 1) {
-//        	write_int(BLUE_LED_FILE, level); // default full brightness
-		write_str(BLUE_TRIGGER_FILE, "timer");
-		while (((access(BLUE_DELAY_OFF_FILE, F_OK) == -1) || (access(BLUE_DELAY_OFF_FILE, R_OK|W_OK) == -1)) && i<10) {
-			ALOGD("BLUE_DELAY_OFF_FILE doesn't exist or cannot write!!\n");
-			led_wait_delay(5);//sleep 5ms for wait kernel LED class create led delay_off/delay_on node of fs
-			i++;
-		}
-		write_int(BLUE_DELAY_OFF_FILE, offMS);
-		write_int(BLUE_DELAY_ON_FILE, onMS);
-	}
-	else {
-		write_str(BLUE_TRIGGER_FILE, "none");
-        	write_int(BLUE_LED_FILE, 255); // default full brightness
-	}
-
-	preStatus = nowStatus;
-
-	return 0;
-}
-
-static int
 handle_trackball_light_locked(__attribute__((__unused__)) struct light_device_t* dev)
 {
     int mode = g_attention;
@@ -420,7 +363,7 @@ set_speaker_light_locked(__attribute__((__unused__)) struct light_device_t* dev,
         struct light_state_t const* state)
 {
     int len;
-    int alpha, red, green, blue;
+    int alpha, red, green;
     int onMS, offMS;
     unsigned int colorRGB;
 
@@ -447,30 +390,21 @@ set_speaker_light_locked(__attribute__((__unused__)) struct light_device_t* dev,
     if (alpha) {
     	red = (colorRGB >> 16) & 0xFF;
     	green = (colorRGB >> 8) & 0xFF;
-    	blue = colorRGB & 0xFF;
     } else { // alpha = 0 means turn the LED off
-    	red = green = blue = 0;
+    	red = green = 0;
     }
 
     if (red) {
         blink_green(0, 0, 0);
-        blink_blue(0, 0, 0);
         blink_red(red, onMS, offMS);
     }
     else if (green) {
         blink_red(0, 0, 0);
-        blink_blue(0, 0, 0);
         blink_green(green, onMS, offMS);
-    }
-    else if (blue) {
-        blink_red(0, 0, 0);
-        blink_green(0, 0, 0);
-        blink_blue(blue, onMS, offMS);
     }
     else {
         blink_red(0, 0, 0);
         blink_green(0, 0, 0);
-        blink_blue(0, 0, 0);
     }
 
     return 0;
@@ -582,8 +516,6 @@ static int open_lights(const struct hw_module_t* module, char const* name,
             return -errno;
         if (access(GREEN_LED_FILE, F_OK) < 0)
             return -errno;
-        if (access(BLUE_LED_FILE, F_OK) < 0)
-            return -errno;
     }
     else if (0 == strcmp(LIGHT_ID_NOTIFICATIONS, name)) {
         set_light = set_light_notifications;
@@ -591,16 +523,12 @@ static int open_lights(const struct hw_module_t* module, char const* name,
             return -errno;
         if (access(GREEN_LED_FILE, F_OK) < 0)
             return -errno;
-        if (access(BLUE_LED_FILE, F_OK) < 0)
-            return -errno;
     }
     else if (0 == strcmp(LIGHT_ID_ATTENTION, name)) {
         set_light = set_light_attention;
         if (access(RED_LED_FILE, F_OK) < 0)
             return -errno;
         if (access(GREEN_LED_FILE, F_OK) < 0)
-            return -errno;
-        if (access(BLUE_LED_FILE, F_OK) < 0)
             return -errno;
     }
     else {
