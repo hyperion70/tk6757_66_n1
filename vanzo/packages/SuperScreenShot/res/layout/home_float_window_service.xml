@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/background" >
+
+    	<TextView
+            android:id="@+id/home_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_centerInParent="true"
+            android:layout_marginTop="8dp"
+            android:textSize="16sp"
+            android:text="@string/superScreenshots" />
+
+	<LinearLayout
+	    android:layout_width="match_parent"  
+	    android:layout_height="wrap_content" 
+            android:layout_below="@id/home_button"
+	    android:id="@+id/lineone"
+	    android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+	    android:orientation="vertical" >
+
+            <TextView
+                android:visibility="gone"
+                android:id="@+id/long_button"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="0"
+  	        android:gravity="center"
+                android:text="@string/longScreenshots"
+                android:drawableTop="@drawable/long_button" />
+
+            <TextView
+                android:id="@+id/rectangle_button"
+                android:layout_width="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"  
+                android:layout_gravity="center"
+                android:layout_marginTop="10dp"
+                android:text="@string/rectangle"
+                android:drawableTop="@drawable/rectangle_drawable" />
+<!--2016.07.08 临时去掉长截屏-->
+<!--        </LinearLayout>  
+
+	<LinearLayout  
+	       android:layout_width="match_parent"  
+	       android:layout_height="wrap_content" 
+	       android:layout_below="@id/lineone"
+	       android:layout_marginTop="50dp"  
+	       android:orientation="horizontal" > 
+-->	       
+            <TextView
+                android:id="@+id/lariat_button"
+                android:layout_width="wrap_content"
+                android:layout_height="0dp"
+		android:layout_weight="1"  
+                android:layout_gravity="center"
+                android:layout_marginTop="10dp"
+                android:text="@string/lariat"
+                android:drawableTop="@drawable/lariat_drawable"  />
+
+	    <TextView
+                android:id="@+id/scrawl_button"
+                android:layout_width="wrap_content"
+                android:layout_height="0dp"
+     		android:layout_gravity="center"
+                android:layout_marginTop="10dp"
+                android:layout_weight="1"  
+                android:text="@string/scrawl"
+                android:drawableTop="@drawable/scrawl_drawable"  />
+ 	</LinearLayout>  
+ 
+</RelativeLayout>

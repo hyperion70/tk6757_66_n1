@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent" >
+    
+    <com.fineos.superscreenshot.funscreenshot.ClearView 
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent" 
+        android:id="@+id/myclear"/>
+
+    <com.fineos.superscreenshot.funscreenshot.RectClearView 
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
+        android:visibility="gone"
+        android:id="@+id/myrectclear"/>
+
+    <include layout="@layout/cling_layout"
+		android:id="@+id/mycling"/>
+
+    <ImageView 
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
+        android:visibility="gone"
+        android:id="@+id/myimage"/>
+
+    <TableLayout
+        android:id="@+id/tableLayout"
+        android:layout_width="fill_parent"
+		android:layout_alignParentBottom="true"
+        android:layout_height="wrap_content"
+		android:background="@drawable/bottom_bg" >
+
+        <TableRow
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent"
+            android:layout_gravity="center"
+            android:layout_marginTop="2.5dp"
+            android:orientation="horizontal" >
+
+            <TextView
+                android:id="@+id/exit"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:drawableTop="@drawable/exit_drawable"
+                android:drawablePadding="1.5dp"
+				android:layout_weight="1"
+				android:gravity="center"
+				android:textColor="@color/text_color"
+                android:text="@string/exit" />
+
+            <TextView
+                android:id="@+id/rectangle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:drawableTop="@drawable/rectangle_drawable"
+                android:drawablePadding="1.5dp"
+				android:layout_weight="1"
+				android:gravity="center"
+				android:textColor="@color/text_color"
+                android:text="@string/rectangle" />
+
+            <TextView
+                android:id="@+id/lariat"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:drawableTop="@drawable/lariat_drawable"
+                android:drawablePadding="1.5dp"
+				android:layout_weight="1"
+				android:gravity="center"
+				android:textColor="@color/text_color"
+                android:text="@string/lariat" />
+
+            <TextView
+                android:id="@+id/scrawl"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:drawableTop="@drawable/scrawl_drawable"
+                android:drawablePadding="1.5dp"
+				android:layout_weight="1"
+				android:gravity="center"
+				android:textColor="@color/text_color"
+                android:text="@string/scrawl" />
+
+            <TextView
+                android:id="@+id/rework"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:drawableTop="@drawable/rework_drawable"
+                android:drawablePadding="1.5dp"
+				android:layout_weight="1"
+				android:gravity="center"
+				android:visibility="gone"
+				android:textColor="@color/text_color"
+                android:text="@string/rework" />
+
+            <TextView
+                android:id="@+id/backup"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:drawableTop="@drawable/backup_drawable"
+                android:drawablePadding="1.5dp"
+				android:layout_weight="1"
+				android:gravity="center"
+				android:visibility="gone"
+				android:textColor="@color/text_color"
+                android:text="@string/backup" />
+
+            <TextView
+                android:id="@+id/preview"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:drawableTop="@drawable/save_drawable"
+                android:drawablePadding="1.5dp"
+				android:layout_weight="1"
+				android:gravity="center"
+				android:visibility="gone"
+				android:textColor="@color/text_color"
+                android:text="@string/preview" />
+
+            <TextView
+                android:id="@+id/save"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:drawableTop="@drawable/save_drawable"
+                android:drawablePadding="1.5dp"
+				android:layout_weight="1"
+				android:gravity="center"
+				android:visibility="gone"
+				android:textColor="@color/text_color"
+                android:text="@string/save" />
+        </TableRow>
+    </TableLayout>
+</RelativeLayout>

@@ -6,7 +6,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)
 # Inherit from those products. Most specific first.
 $(call inherit-product, $(SRC_TARGET_DIR)/product/full_base.mk)
 
-MTK_BUILD_GAPPS = no
+MTK_BUILD_GAPPS = yes
 
 # Set target and base project for flavor build
 MTK_TARGET_PROJECT := $(subst full_,,$(TARGET_PRODUCT))
@@ -47,7 +47,13 @@ include $(LOCAL_PATH)/nfc_device.mk
 ifeq ($(MTK_BUILD_GAPPS),yes)
 $(call inherit-product, device/mediateksample/tk6757_66_n1/opengapps.mk)
 
-BUILD_FINGERPRINT := "Xiaomi/sirius/sirius:8.1.0/OPM1.171019.019/V9.5.9.0.OEBCNFA:user/release-keys"
-PRIVATE_BUILD_DESC := "sirius-user 8.1.0 OPM1.171019.019 V9.5.9.0.OEBCNFA release-keys"
+BUILD_FINGERPRINT := "Xiaomi/sirius/sirius:9/PKQ1.181121.001/9.3.28:user/release-keys"
+
+PRODUCT_BUILD_PROP_OVERRIDES += \
+    PRIVATE_BUILD_DESC="sirius-user 9 PKQ1.181121.001 9.3.28 release-keys" \
+    PRODUCT_NAME="sirius" \
+    TARGET_DEVICE="sirius"
+
+PRODUCT_GMS_CLIENTID_BASE := android-xiaomi
 
 endif

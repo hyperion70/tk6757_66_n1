@@ -18,12 +18,10 @@ GAPPS_FORCE_PACKAGE_OVERRIDES := true
 GAPPS_FORCE_WEBVIEW_OVERRIDES := true
 GAPPS_FORCE_BROWSER_OVERRIDES := true
 GAPPS_FORCE_PIXEL_LAUNCHER := true
+GAPPS_PRODUCT_PACKAGES += Chrome
+GAPPS_EXCLUDED_PACKAGES := Videos
 
-GAPPS_EXCLUDED_PACKAGES := \
-	Video \
-	Videos
-
-WITH_DEXPREOPT := true
+WITH_DEXPREOPT := false
 
 $(call inherit-product-if-exists, vendor/opengapps/build/opengapps-packages.mk)
 

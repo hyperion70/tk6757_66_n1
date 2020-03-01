@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+   <!-- add by huangjie for next page begin-->
+    <string name="super_screen_next_page">下一页</string>
+    <string name="super_screen_up_page">上一页</string> 	
+	<string name="back">退出</string>    
+	<string name="screen_shot">保存</string>	
+	<string name="finish">结束</string>
+   <!-- add by huangjie for next page end-->
+	<string name="scrawl_tips_intr_text">在当前界面截取手势涂抹区域的屏幕形状作为涂鸦截屏内容</string>
+	<string name="lariat_tips_intr_text">在屏幕上画出任意闭合图形后，将形成目标截屏区域</string>
+	<string name="rect_tips_intr_text">以拖拽方式选取截屏窗口</string>
+	<string name="scrawl_tips_sure_text">我知道了</string>
+   <!-- add by liukai3-->   
+   <string name="screenshot_saving_ticker">"正在保存屏幕截图..."</string>
+   <string name="screenshot_saving_title">"正在保存屏幕截图..."</string>
+   <string name="screenshot_saving_text">"正在保存屏幕截图。"</string>
+   <string name="screenshot_saved_title">"已抓取屏幕截图。"</string>
+   <string name="screenshot_saved_text">"触摸可查看您的屏幕截图。"</string>
+   <string name="screenshot_failed_title">"无法抓取屏幕截图。"</string>
+   <string name="screenshot_failed_text">"无法保存屏幕截图。存储设备可能正在使用中。"</string>
+   <string name="share">分享</string>
+   <string name="page_too_long_warning">最多可截13屏</string>
+   <!-- add by liukai3--> 
+	<string name="region_text">截屏区域</string>
+   <string name="save">保存</string>
+   <string name="exit">"  退出"</string>
+   <string name="rectangle">矩形截屏</string>
+   <string name="lariat">套索截屏</string>
+   <string name="scrawl">涂鸦截屏</string>
+   <string name="rework">重做</string>
+   <string name="backup">撤销</string>
+   <string name="preview">预览</string>
+   <string name="closed_space_error_text">请画一个闭合空间</string>
+   <string name="longScreenshots">长截屏</string>
+   <string name="superScreenshots">魔法截屏</string>
+</resources>

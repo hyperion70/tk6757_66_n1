@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+   <string name="exit">خروج</string>
+   <string name="rectangle">صفحه مستطیل</string>
+   <string name="lariat">صفحه کمند</string>
+   <string name="scrawl">گرافیتی صفحه</string>
+</resources>

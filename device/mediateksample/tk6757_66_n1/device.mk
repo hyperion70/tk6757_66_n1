@@ -159,6 +159,10 @@ PRODUCT_FULL_TREBLE_OVERRIDE := true
 
 $(call inherit-product-if-exists, vendor/mediatek/libs/$(MTK_TARGET_PROJECT)/device-vendor.mk)
 
+# VANZO_OVERSEAS_CUSTOM_APPS
+$(call inherit-product-if-exists, vanzo/cross-platform-packages.mk)
+PRODUCT_PACKAGES += QRcode
+
 # setup dm-verity configs.
 ifneq ($(strip $(MTK_DM_VERITY_OFF)), yes)
     PRODUCT_SYSTEM_VERITY_PARTITION := /dev/block/platform/mtk-msdc.0/11230000.msdc0/by-name/system

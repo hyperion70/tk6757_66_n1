@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+      package="com.fineos.superscreenshot"
+      android:sharedUserId="android.uid.system"
+      android:versionCode="1"
+      android:versionName="1.0">
+    <uses-sdk
+        android:minSdkVersion="11"
+        android:targetSdkVersion="23" />
+
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" /> 
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+
+     <application
+	android:allowClearUserData="false"
+        android:name="com.fineos.superscreenshot.SuperScreenShotApplication"
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:largeHeap="true"
+        android:persistent="true">
+
+        <activity
+            android:name="com.fineos.superscreenshot.SuperScreenShot"
+            android:label="@string/app_name" >
+        </activity>
+
+        <service android:name=".longss.LongScreenShotView" >
+        </service>
+ 
+        <receiver android:name=".service.SuperScreenShotReceiver">
+	    <intent-filter >
+                <action android:name="broad.longscreenshot.show"/>
+                <action android:name="broad.longscreenshot.dismiss"/>
+                <action android:name="broad.homescreenshot.show"/>
+                <action android:name="broad.homescreenshot.dismiss"/>
+                <action android:name="broad.funsscreenshot.show"/>
+                <action android:name="broad.funsscreenshot.dismiss"/>
+                <action android:name="broad.normalscreenshot.show"/>
+                <action android:name="broad.normalscreenshot.dismiss"/>
+                <action android:name="android.intent.action.PHONE_STATE"/>
+            </intent-filter>
+        </receiver>
+
+        <service android:name=".service.SuperScreenShotService">
+        </service>
+ 
+        <service 
+            android:name="com.fineos.superscreenshot.HomeScreenShotView"
+            android:enabled="true"
+            android:exported="true">
+        </service>
+        <service android:name="com.fineos.superscreenshot.funscreenshot.ClearService" >
+        </service> 
+        <service android:name="com.fineos.superscreenshot.funscreenshot.FunScreenShotView" >
+        </service>
+    </application>
+
+</manifest>

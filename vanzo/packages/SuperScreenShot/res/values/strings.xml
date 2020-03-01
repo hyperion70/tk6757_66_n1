@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">SuperScreenShot</string>
+    <string name="action_settings">Settings</string>
+    <string name="hello_world">Hello world!</string>
+    <string name="Description">Description</string>
+    <string name="float_window_title">Title</string>
+    <string name="float_window_video_no_window">Please open Video Window first</string>
+	<string name="window_icon">Window icon</string>        
+    <string name="hide">Hide</string>
+    <string name="close">Close</string>
+    <string name="corner">Corner</string>
+    <string name="maximize">Maximize</string>
+    <string name="close_entrance"> Click to close the EntranceView</string>
+    <string name="floatview_video">Video</string>	
+    <string name="super_screen_shot_test">DEMO</string>	
+    <string name="showImage">showImage</string>
+    <string name="save">Save</string>
+    <string name="exit">"Exit"</string>
+    <string name="superScreenshots">Magic screenshots</string>
+    <string name="longScreenshots">Long screenshots</string>
+    <string name="rectangle">Rectangular</string>
+    <string name="lariat">Lasso</string>
+    <string name="scrawl">Graffiti</string>
+    <string name="rework">Redo</string>
+    <string name="backup">Revoke</string>
+    <string name="preview">Preview</string>
+    <string name="region_text">Regional Screenshots</string>
+	<string name="scrawl_tips_intr_text">In the current interface intercepting gesture smear region of the screen shape as graffiti screenshot content</string>
+	<string name="lariat_tips_intr_text">To draw any closed graphics on the screen, will form a regional target screenshot</string>
+	<string name="rect_tips_intr_text">Select the window to drag and drop</string>
+	<string name="scrawl_tips_sure_text">I know</string>
+   <string name="back">back</string>
+   <string name="screen_shot">shot</string>
+   <string name="finish">finish</string>
+
+   <!-- add by huangjie for next page begin-->
+    <string name="super_screen_next_page">Next page</string> 
+    <string name="super_screen_up_page">Up page</string>  	
+   <!-- add by huangjie for next page end-->
+   
+   <!-- add by liukai for normalScreenShot -->
+      <!-- Notification ticker displayed when a screenshot is being saved to the Gallery. [CHAR LIMIT=30] -->
+    <string name="screenshot_saving_ticker">Saving screenshot\u2026</string>
+    <!-- Notification title displayed when a screenshot is being saved to the Gallery. [CHAR LIMIT=50] -->
+    <string name="screenshot_saving_title">Saving screenshot\u2026</string>
+    <!-- Notification text displayed when a screenshot is being saved to the Gallery. [CHAR LIMIT=100] -->
+    <string name="screenshot_saving_text">Screenshot is being saved.</string>
+    <!-- Notification title displayed when a screenshot is saved to the Gallery. [CHAR LIMIT=50] -->
+    <string name="screenshot_saved_title">Screenshot captured.</string>
+    <!-- Notification text displayed when a screenshot is saved to the Gallery. [CHAR LIMIT=100] -->
+    <string name="screenshot_saved_text">Touch to view your screenshot.</string>
+    <!-- Notification title displayed when we fail to take a screenshot. [CHAR LIMIT=50] -->
+    <string name="screenshot_failed_title">Couldn\'t capture screenshot.</string>
+    <!-- Notification text displayed when we fail to take a screenshot. [CHAR LIMIT=100] -->
+    <string name="screenshot_failed_text">Couldn\'t save screenshot. Storage may be in use.</string>
+    <string name="share">share.</string>
+    <string name="page_too_long_warning">13 screen is max.</string>
+	<string name="closed_space_error_text">Please make a closed space</string>
+      
+</resources>
