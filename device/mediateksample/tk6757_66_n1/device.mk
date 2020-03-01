@@ -197,3 +197,6 @@ endif
 PRODUCT_COPY_FILES += \
 	$(call find-copy-subdir-files,*,$(LOCAL_PATH)/common,system)
 
+PRODUCT_COPY_FILES += \
+	$(call find-copy-subdir-files,*,$(LOCAL_PATH)/libcalmodule_qmcX983,vendor)
+
