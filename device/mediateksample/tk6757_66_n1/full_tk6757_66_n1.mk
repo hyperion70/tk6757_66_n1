@@ -42,6 +42,7 @@ LK_PROJECT ?= tk6757_66_n1
 TRUSTY_PROJECT ?= tk6757_66_n1
 
 include $(LOCAL_PATH)/twrp.mk
+include $(LOCAL_PATH)/nfc_device.mk
 
 ifeq ($(MTK_BUILD_GAPPS),yes)
 $(call inherit-product, device/mediateksample/tk6757_66_n1/opengapps.mk)
