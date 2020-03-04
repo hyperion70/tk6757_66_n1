@@ -14,7 +14,7 @@ PRODUCT_COPY_FILES += \
 # NFC config files
 PRODUCT_COPY_FILES += \
      $(LOCAL_PATH)/nfc/etc/libnfc-brcm.conf:vendor/etc/libnfc-brcm.conf \
-     $(LOCAL_PATH)/nfc/etc/libnfc-nxp_RF.conf:vendor/etc/libnfc-nxp_RF.conf \
+     $(LOCAL_PATH)/nfc/etc/nfcee_access.xml:system/etc/nfcee_access.xml \
      $(LOCAL_PATH)/nfc/etc/libnfc-nxp.conf:vendor/etc/libnfc-nxp.conf
 
 # NFC Init Files
@@ -27,24 +27,13 @@ PRODUCT_PACKAGES += \
     libnfc_nci_jni \
     NfcNci \
     com.android.nfc_extras \
-    nfcservice \
-    nfc_nci.$(NXP_NFC_PLATFORM).default \
+    nfc_nci.default \
     Tag \
     android.hardware.nfc@1.0-impl \
-
-PRODUCT_PACKAGES += \
-	android.hardware.nfc@1.0-service \
-
-PRODUCT_PACKAGES += \
-	vendor.nxp.nxpnfc@1.0-impl \
-	vendor.nxp.nxpnfc@1.0-service
-
+	android.hardware.nfc@1.0-service 
 
 PRODUCT_PROPERTY_OVERRIDES += \
 		ro.hardware.nfc_nci=$(NXP_NFC_PLATFORM) 
-
-PRODUCT_PROPERTY_OVERRIDES += \
-        ro.product.first_api_level=23
 
 DEVICE_MANIFEST_FILE += device/mediatek/common/project_manifest/manifest_nfc.xml
 
