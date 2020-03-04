@@ -35,8 +35,6 @@ ifeq ($(PN553),4)
 D_CFLAGS += -DPN553=4
 endif
 
-NXP_CHIP_TYPE := PN548C2
-
 ifeq ($(NXP_CHIP_TYPE),$(PN547C2))
 D_CFLAGS += -DNFC_NXP_CHIP_TYPE=PN547C2
 else ifeq ($(NXP_CHIP_TYPE),$(PN548C2))
@@ -51,7 +49,7 @@ endif
 
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
-LOCAL_MODULE := nfc_nci.pn54x.default
+LOCAL_MODULE := nfc_nci.$(TARGET_DEVICE)
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_SRC_FILES := \
