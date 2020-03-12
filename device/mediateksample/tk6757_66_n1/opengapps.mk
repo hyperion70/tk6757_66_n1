@@ -21,7 +21,7 @@ GAPPS_FORCE_PIXEL_LAUNCHER := true
 GAPPS_PRODUCT_PACKAGES += Chrome
 GAPPS_EXCLUDED_PACKAGES := Videos
 
-WITH_DEXPREOPT := false
+WITH_DEXPREOPT := true
 
 $(call inherit-product-if-exists, vendor/opengapps/build/opengapps-packages.mk)
 
