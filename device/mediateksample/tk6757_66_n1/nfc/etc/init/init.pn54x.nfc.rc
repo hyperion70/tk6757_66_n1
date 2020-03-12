@@ -3,5 +3,5 @@ on post-fs-data
     mkdir /data/vendor 0777 nfc nfc
     mkdir /data/vendor/nfc 0777 nfc nfc
     mkdir /data/vendor/nfc/param 0777 nfc nfc
-    chmod 0660 /dev/pn544
+    chmod 0666 /dev/pn544
     chown nfc nfc /dev/pn544

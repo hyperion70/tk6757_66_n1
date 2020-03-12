@@ -42,5 +42,7 @@ PRODUCT_PACKAGES += \
 PRODUCT_PROPERTY_OVERRIDES += \
 		ro.hardware.nfc_nci=pn54x.default
 
+BOARD_SEPOLICY_DIRS += $(LOCAL_PATH)/nfc/sepolicy
+
 DEVICE_MANIFEST_FILE += device/mediatek/common/project_manifest/manifest_nfc.xml
 
