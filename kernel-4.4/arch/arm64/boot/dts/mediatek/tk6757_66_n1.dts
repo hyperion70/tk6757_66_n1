@@ -997,80 +997,80 @@
 
 	fp_rst_high: fp_rst_high {
 		pins_cmd_dat {
-			pins = <0x1100>;
-			slew-rate = <0x1>;
+			pins = <PINMUX_GPIO17__FUNC_GPIO17>;
+			slew-rate = <1>;
 			output-high;
 		};
 	};
 
 	fp_rst_low: fp_rst_low {
 		pins_cmd_dat {
-			pins = <0x1100>;
-			slew-rate = <0x1>;
+			pins = <PINMUX_GPIO17__FUNC_GPIO17>;
+			slew-rate = <1>;
 			output-low;
 		};
 	};
 
 	fp_eint_as_int: eint@9 {
 		pins_cmd_dat {
-			pins = <0x1000>;
-			slew-rate = <0x0>;
+			pins = <PINMUX_GPIO16__FUNC_GPIO16>;
+			slew-rate = <0>;
 			bias-disable;
 		};
 	};
 
 	fp_eint_in_low: eint_in_low {
 		pins_cmd_dat {
-			pins = <0x1000>;
-			slew-rate = <0x0>;
-			bias-pull-down = <0x0>;
+			pins = <PINMUX_GPIO16__FUNC_GPIO16>;
+			slew-rate = <0>;
+			output-low;
 		};
 	};
 
 	fp_eint_in_high: eint_in_high{
 		pins_cmd_dat {
-			pins = <0x1000>;
-			slew-rate = <0x0>;
-			bias-pull-up = <0x0>;
+			pins = <PINMUX_GPIO16__FUNC_GPIO16>;
+			slew-rate = <0>;
+			output-high;
 		};
 	};
 
 	fp_eint_in_float: eint_in_float {
 		pins_cmd_dat {
-			pins = <0x1000>;
-			slew-rate = <0x0>;
+			pins = <PINMUX_GPIO16__FUNC_GPIO16>;
+			slew-rate = <0>;
 			bias-disable;
 		};
 	};
 
 	fp_miso_pull_up: miso_pull_up {
 		pins_cmd_dat {
-			pins = <0x5f01>;
-			slew-rate = <0x0>;
-			bias-pull-up = <0x0>;
+			pins = <PINMUX_GPIO95__FUNC_GPIO95>;
+			slew-rate = <0>;
+			output-high;
 		};
 	};
 
 	fp_miso_pull_disable: miso_pull_disable {
 		pins_cmd_dat {
-			pins = <0x5f01>;
+			pins = <PINMUX_GPIO95__FUNC_GPIO95>;
 			bias-disable;
 		};
 	};
 
 	fp_enable_low: fp_enable_low {
 		pins_cmd_dat {
-			pins = <0x6001>;
-			slew-rate = <0x0>;
-			bias-pull-down = <0x0>;
+			pins = <PINMUX_GPIO96__FUNC_GPIO96>;
+			slew-rate = <0>;
+			output-low;
 		};
 	};
 
 	fp_enable_high: fp_enable_high {
 		pins_cmd_dat {
-			pins = <0x6001>;
-			slew-rate = <0x0>;
-			bias-pull-up = <0x0>;
+			pins = <PINMUX_GPIO96__FUNC_GPIO96>;
+			slew-rate = <0>;
+			output-high;
 		};
 	};
 };
