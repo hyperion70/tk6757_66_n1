@@ -969,6 +969,112 @@
 	};
 };
 
+&fingerprint {
+	compatible = "mediatek,fingerprint";
+	interrupt-parent = <&eintc>;
+	interrupts = <0x10 0x1>;
+	debounce = <0x10 0x0>;
+	status = "okay";
+	pinctrl-names = "fp_default", "fp_rst_high", "fp_rst_low", "eint_as_int", "eint_in_low", "eint_in_float", "miso_pull_up", "miso_pull_disable", "eint_in_high", "fp_enable_low", "fp_enable_high";
+	pinctrl-0 = <&fp_default>;
+	pinctrl-1 = <&fp_rst_high>;
+	pinctrl-2 = <&fp_rst_low>;
+	pinctrl-3 = <&fp_eint_as_int>;
+	pinctrl-4 = <&fp_eint_in_low>;
+	pinctrl-5 = <&fp_eint_in_high>;
+	pinctrl-6 = <&fp_eint_in_float>;
+	pinctrl-7 = <&fp_miso_pull_up>;
+	pinctrl-8 = <&fp_miso_pull_disable>;
+	pinctrl-9 = <&fp_enable_low>;
+	pinctrl-10 = <&fp_enable_high>;
+};
+	
+&pio {
+	fp_default: fp_default {
+
+	};
+
+
+	fp_rst_high: fp_rst_high {
+		pins_cmd_dat {
+			pins = <0x1100>;
+			slew-rate = <0x1>;
+			output-high;
+		};
+	};
+
+	fp_rst_low: fp_rst_low {
+		pins_cmd_dat {
+			pins = <0x1100>;
+			slew-rate = <0x1>;
+			output-low;
+		};
+	};
+
+	fp_eint_as_int: eint@9 {
+		pins_cmd_dat {
+			pins = <0x1000>;
+			slew-rate = <0x0>;
+			bias-disable;
+		};
+	};
+
+	fp_eint_in_low: eint_in_low {
+		pins_cmd_dat {
+			pins = <0x1000>;
+			slew-rate = <0x0>;
+			bias-pull-down = <0x0>;
+		};
+	};
+
+	fp_eint_in_high: eint_in_high{
+		pins_cmd_dat {
+			pins = <0x1000>;
+			slew-rate = <0x0>;
+			bias-pull-up = <0x0>;
+		};
+	};
+
+	fp_eint_in_float: eint_in_float {
+		pins_cmd_dat {
+			pins = <0x1000>;
+			slew-rate = <0x0>;
+			bias-disable;
+		};
+	};
+
+	fp_miso_pull_up: miso_pull_up {
+		pins_cmd_dat {
+			pins = <0x5f01>;
+			slew-rate = <0x0>;
+			bias-pull-up = <0x0>;
+		};
+	};
+
+	fp_miso_pull_disable: miso_pull_disable {
+		pins_cmd_dat {
+			pins = <0x5f01>;
+			bias-disable;
+		};
+	};
+
+	fp_enable_low: fp_enable_low {
+		pins_cmd_dat {
+			pins = <0x6001>;
+			slew-rate = <0x0>;
+			bias-pull-down = <0x0>;
+		};
+	};
+
+	fp_enable_high: fp_enable_high {
+		pins_cmd_dat {
+			pins = <0x6001>;
+			slew-rate = <0x0>;
+			bias-pull-up = <0x0>;
+		};
+	};
+};
+
 #include <tk6757_66_n1/cust.dtsi>
 /*End of this file, DO NOT ADD ANYTHING HERE*/
 

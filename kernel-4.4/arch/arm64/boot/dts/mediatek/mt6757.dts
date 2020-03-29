@@ -3724,6 +3724,10 @@
 		status = "disabled";
 	};
 
+	fingerprint: fingerprint@ {
+		compatible = "mediatek,fingerprint";
+	};
+
 	mse: mse {
 		compatible = "mediatek, mse-eint";
 		status = "disabled";
