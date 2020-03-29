@@ -1,7 +1,7 @@
 TARGET_BOARD_PLATFORM := mt6757
 
 # Use the non-open-source part, if present
--include vendor/mediatek/tk6757_66_n1/BoardConfigVendor.mk
+-include vendor/mediateksample/tk6757_66_n1/BoardConfigVendor.mk
 
 # Use the 6757 common part
 include device/mediatek/mt6757/BoardConfig.mk

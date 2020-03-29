@@ -159,6 +159,19 @@ PRODUCT_FULL_TREBLE_OVERRIDE := true
 
 $(call inherit-product-if-exists, vendor/mediatek/libs/$(MTK_TARGET_PROJECT)/device-vendor.mk)
 
+# Fingerprint
+ifeq ($(strip $(MTK_FINGERPRINT_SUPPORT)), yes) 
+
+PRODUCT_PACKAGES += android.hardware.biometrics.fingerprint@2.1-etservice
+PRODUCT_PACKAGES += android.hardware.biometrics.fingerprint@2.1
+PRODUCT_PACKAGES += android.hardware.biometrics.fingerprint@2.1-service
+PRODUCT_PACKAGES += fingerprint.default
+PRODUCT_COPY_FILES +=frameworks/native/data/etc/android.hardware.fingerprint.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.fingerprint.xml
+DEVICE_MANIFEST_FILE += device/mediatek/common/project_manifest/manifest_fingerprint.xml
+PRODUCT_COPY_FILES += $(LOCAL_PATH)/fingerprint/lib64/hw/gxfingerprint.default.so:$(TARGET_COPY_OUT_VENDOR)/lib64/hw/gxfingerprint.default.so
+
+endif
+
 # VANZO_OVERSEAS_CUSTOM_APPS
 $(call inherit-product-if-exists, vanzo/cross-platform-packages.mk)
 PRODUCT_PACKAGES += QRcode
