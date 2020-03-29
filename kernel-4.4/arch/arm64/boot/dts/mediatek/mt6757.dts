@@ -3663,7 +3663,11 @@
 	};
 
 	irq_nfc: irq_nfc@ {
-		compatible = "mediatek,irq_nfc-eint";
+		compatible = "mediatek, irq_nfc-eint";
+		interrupt-parent = <&eintc>;
+		interrupts = <26 4>;
+		debounce = <26 0>;
+		status = "okay";
 	};
 
 	dsi_te: dsi_te {

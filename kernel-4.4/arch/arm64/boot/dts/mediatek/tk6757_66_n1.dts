@@ -478,7 +478,7 @@
 
 	nfc_eint_high: state_eint_high {
 		pins_cmd_dat {
-			pins = <PINMUX_GPIO14__FUNC_GPIO14>;
+			pins = <PINMUX_GPIO28__FUNC_GPIO28>;
 			slew-rate = <1>;
 			output-high;
 		};
@@ -486,7 +486,7 @@
 
 	nfc_eint_low: state_eint_low {
 		pins_cmd_dat {
-			pins = <PINMUX_GPIO14__FUNC_GPIO14>;
+			pins = <PINMUX_GPIO28__FUNC_GPIO28>;
 			slew-rate = <1>;
 			output-low;
 		};
