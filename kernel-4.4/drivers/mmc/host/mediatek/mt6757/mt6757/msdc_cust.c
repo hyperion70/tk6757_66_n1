@@ -133,7 +133,8 @@ void msdc_ldo_power(u32 on, struct regulator *reg, int voltage_mv, u32 *status)
 		}
 	} else {  /* want to power off */
 		if (*status != 0) {  /* has been powerred on */
-			pr_warn("msdc power off\n");
+			/* Comment out to reduce log */
+			/* pr_info("msdc power off\n"); */
 			regulator_disable(reg);
 			*status = 0;
 		} else {

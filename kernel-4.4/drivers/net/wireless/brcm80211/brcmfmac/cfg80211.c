@@ -4295,9 +4295,6 @@ static int brcmf_cfg80211_stop_ap(struct wiphy *wiphy, struct net_device *ndev)
 		err = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_AP, 0);
 		if (err < 0)
 			brcmf_err("setting AP mode failed %d\n", err);
-		err = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_INFRA, 0);
-		if (err < 0)
-			brcmf_err("setting INFRA mode failed %d\n", err);
 		if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_MBSS))
 			brcmf_fil_iovar_int_set(ifp, "mbss", 0);
 		err = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_REGULATORY,
@@ -6170,7 +6167,7 @@ static void brcmf_cfg80211_reg_notifier(struct wiphy *wiphy,
 		  req->alpha2[0], req->alpha2[1]);
 
 	/* ignore non-ISO3166 country codes */
-	for (i = 0; i < sizeof(req->alpha2); i++)
+	for (i = 0; i < 2; i++)
 		if (req->alpha2[i] < 'A' || req->alpha2[i] > 'Z') {
 			brcmf_err("not a ISO3166 code\n");
 			return;

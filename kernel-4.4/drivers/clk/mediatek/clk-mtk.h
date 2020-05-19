@@ -198,10 +198,14 @@ struct mtk_pll_data {
 	const struct clk_ops *ops;
 	u32 rst_bar_mask;
 	unsigned long fmax;
+	unsigned long fmin;
+	uint32_t pcwchgreg;
+	int pcwintbits;
 	int pcwbits;
 	uint32_t pcw_reg;
 	int pcw_shift;
 	const struct mtk_pll_div_table *div_table;
+	const char *parent_name;
 };
 
 void mtk_clk_register_plls(struct device_node *node,

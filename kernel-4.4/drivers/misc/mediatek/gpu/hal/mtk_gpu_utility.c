@@ -18,6 +18,7 @@
 
 #include <mt-plat/mtk_gpu_utility.h>
 #include "ged_monitor_3D_fence.h"
+#include "ged_gpu_tuner.h"
 
 unsigned int (*mtk_get_gpu_memory_usage_fp)(void) = NULL;
 EXPORT_SYMBOL(mtk_get_gpu_memory_usage_fp);
@@ -716,6 +717,19 @@ EXPORT_SYMBOL(mtk_get_gpu_pmu_init);
 
 /* ----------------------------------------------------------------------------- */
 
+int (*mtk_get_gpu_pmu_deinit_fp)(void);
+EXPORT_SYMBOL(mtk_get_gpu_pmu_deinit_fp);
+
+bool mtk_get_gpu_pmu_deinit(void)
+{
+	if (mtk_get_gpu_pmu_deinit_fp != NULL)
+		return mtk_get_gpu_pmu_deinit_fp() == 0;
+	return false;
+}
+EXPORT_SYMBOL(mtk_get_gpu_pmu_deinit);
+
+/* ----------------------------------------------------------------------------- */
+
 int (*mtk_get_gpu_pmu_swapnreset_fp)(GPU_PMU *pmus, int pmu_size);
 EXPORT_SYMBOL(mtk_get_gpu_pmu_swapnreset_fp);
 
@@ -726,6 +740,19 @@ bool mtk_get_gpu_pmu_swapnreset(GPU_PMU *pmus, int pmu_size)
 	return false;
 }
 EXPORT_SYMBOL(mtk_get_gpu_pmu_swapnreset);
+
+/* ----------------------------------------------------------------------------- */
+
+int (*mtk_get_gpu_pmu_swapnreset_stop_fp)(void);
+EXPORT_SYMBOL(mtk_get_gpu_pmu_swapnreset_stop_fp);
+
+bool mtk_get_gpu_pmu_swapnreset_stop(void)
+{
+	if (mtk_get_gpu_pmu_swapnreset_stop_fp != NULL)
+		return mtk_get_gpu_pmu_swapnreset_stop_fp() == 0;
+	return false;
+}
+EXPORT_SYMBOL(mtk_get_gpu_pmu_swapnreset_stop);
 
 /* ----------------------------------------------------------------------------- */
 
@@ -808,3 +835,28 @@ void mtk_notify_gpu_power_change(int power_on)
 	mutex_unlock(&g_power_change.lock);
 }
 EXPORT_SYMBOL(mtk_notify_gpu_power_change);
+
+bool mtk_gpu_tuner_hint_set(char *packagename, enum GPU_TUNER_FEATURE eFeature)
+{
+	return ged_gpu_tuner_hint_set(packagename, eFeature);
+}
+EXPORT_SYMBOL(mtk_gpu_tuner_hint_set);
+
+bool mtk_gpu_tuner_hint_restore(char *packagename,
+	enum GPU_TUNER_FEATURE eFeature)
+{
+	return ged_gpu_tuner_hint_restore(packagename, eFeature);
+}
+EXPORT_SYMBOL(mtk_gpu_tuner_hint_restore);
+
+bool mtk_gpu_tuner_get_stauts_by_packagename(char *packagename, int *feature)
+{
+	struct GED_GPU_TUNER_ITEM item;
+	GED_ERROR err = ged_gpu_get_stauts_by_packagename(packagename, &item);
+
+	if (err == GED_OK)
+		*feature = item.status.feature;
+
+	return err;
+}
+EXPORT_SYMBOL(mtk_gpu_tuner_get_stauts_by_packagename);

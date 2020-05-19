@@ -27,8 +27,6 @@
 #define LOGE(fmt, msg...)	no_printk(fmt, ##msg)
 #define LOGW	LOGE
 
-#define IPANIC_MODULE_TAG "KERNEL-PANIC"
-
 #define AE_INVALID              0xAEEFF000
 #define AE_NOT_AVAILABLE        0xAEE00000
 #define AE_DEFAULT              0xAEE00001
@@ -182,6 +180,7 @@ struct aee_siginfo {
 #define AEEIOCTL_SET_AEE_FORCE_EXP _IOR('p', 0x0F, int)
 #define AEEIOCTL_GET_AEE_SIGINFO _IOW('p', 0x10, struct aee_siginfo)
 #define AEEIOCTL_SET_HANG_FLAG _IOW('p', 0x11, int)
+#define AEEIOCTL_SET_HANG_REBOOT _IO('p', 0x12)
 
 #define AED_FILE_OPS(entry) \
 	static const struct file_operations proc_##entry##_fops = { \
@@ -210,8 +209,6 @@ void aee_rr_proc_done(struct proc_dir_entry *aed_proc_dir);
 void dram_console_init(struct proc_dir_entry *aed_proc_dir);
 void dram_console_done(struct proc_dir_entry *aed_proc_dir);
 
-struct aee_oops *ipanic_oops_copy(void);
-void ipanic_oops_free(struct aee_oops *oops, int erase);
 extern struct atomic_notifier_head panic_notifier_list;
 extern int ksysfs_bootinfo_init(void);
 extern void ksysfs_bootinfo_exit(void);

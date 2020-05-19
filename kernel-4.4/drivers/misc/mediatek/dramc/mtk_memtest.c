@@ -302,8 +302,8 @@ static int dramc_format_dram_addr(phys_addr_t addr, char *buf, unsigned int len)
 	sz = 0;
 
 	if (!dramc_dram_address_get(addr, &rank, &row, &bank, &col, &ch)) {
-		sz = snprintf(buf, len, "addr: 0x%llx (rank=0x%x, row=0x%x, bank=0x%x, col=0x%x, ch=0x%x)\n",
-				addr, rank, row, bank, col, ch);
+		sz = snprintf(buf, len, "addr: 0x%pa (rank=0x%x, row=0x%x, bank=0x%x, col=0x%x, ch=0x%x)\n",
+				&addr, rank, row, bank, col, ch);
 	}
 
 	return sz;

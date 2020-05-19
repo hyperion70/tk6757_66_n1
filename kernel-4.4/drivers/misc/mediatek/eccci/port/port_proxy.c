@@ -891,6 +891,9 @@ static inline int proxy_dispatch_recv_skb(struct port_proxy *proxy_p, int hif_id
 	int md_id = proxy_p->md_id;
 	int md_state = ccci_fsm_get_md_state(md_id);
 	int channel = CCCI_INVALID_CH_ID;
+	int wakeup_src;
+	unsigned int wakeup_count;
+	unsigned int reserved = 0;
 
 	if (unlikely(!skb)) {
 		ret = -CCCI_ERR_INVALID_PARAM;
@@ -900,6 +903,7 @@ static inline int proxy_dispatch_recv_skb(struct port_proxy *proxy_p, int hif_id
 	if (flag == NORMAL_DATA) {
 		ccci_h = (struct ccci_header *)skb->data;
 		channel = ccci_h->channel;
+		reserved = ccci_h->reserved;
 	} else if (flag == CLDMA_NET_DATA) {
 		lhif_h = (struct lhif_header *)skb->data;
 		if (!ccci_get_ccmni_channel(proxy_p->md_id, lhif_h->netif, &ccmni))
@@ -928,6 +932,39 @@ static inline int proxy_dispatch_recv_skb(struct port_proxy *proxy_p, int hif_id
 			((port->ops->recv_match == NULL) ?
 			(channel == port->rx_ch) : port->ops->recv_match(port, skb));
 		if (matched) {
+			wakeup_src = ccci_hif_get_wakeup_src(hif_id, &wakeup_count);
+			if (wakeup_src) {
+				if (channel == CCCI_IPC_RX) {
+					reserved &= 0xF;
+					switch (reserved) {
+					case CCCI_IPC_AGPS:
+						port->user = "agps";
+						break;
+					case CCCI_IPC_GPS:
+						port->user = "gps";
+						break;
+					case CCCI_IPC_WMT:
+						port->user = "wmt";
+						break;
+					default:
+						port->user = "null";
+						break;
+					}
+				}
+				/* check wakeup source */
+				switch (hif_id) {
+				case CCIF_HIF_ID:
+					CCCI_NOTICE_LOG(md_id, TAG, "CCIF_MD wakeup source:(%d/%d/%x)(%u)(%s)\n",
+						port->rxq_index, channel, reserved, wakeup_count, port->user);
+					break;
+				case CLDMA_HIF_ID:
+					CCCI_NOTICE_LOG(md_id, TAG, "CLDMA_MD wakeup source:(%d/%d/%x)(%u)(%s)\n",
+						port->rxq_index, channel, reserved, wakeup_count, port->user);
+					break;
+				default:
+					break;
+				}
+			}
 			if (likely(skb && port->ops->recv_skb)) {
 				ret = port->ops->recv_skb(port, skb);
 			} else {
@@ -1228,6 +1265,36 @@ void ccci_port_dump_status(int md_id)
 	proxy_dump_status(proxy_p);
 }
 
+static inline void user_broadcast_wrapper(int md_id, unsigned int state)
+{
+	int mapped_event = -1;
+
+	switch (state) {
+	case GATED:
+		break;
+	case BOOT_WAITING_FOR_HS1:
+		break;
+	case BOOT_WAITING_FOR_HS2:
+		mapped_event = MD_STA_EV_HS1;
+		break;
+	case READY:
+		mapped_event = MD_STA_EV_READY;
+		break;
+	case EXCEPTION:
+		mapped_event = MD_STA_EV_EXCEPTION;
+		break;
+	case RESET:
+		break;
+	case WAITING_TO_STOP:
+		break;
+	default:
+		break;
+	}
+
+	if (mapped_event >= 0)
+		inject_md_status_event(md_id, mapped_event, NULL);
+}
+
 /*
 * This API is called by ccci_fsm,
 * and used to dispatch modem status for all ports,
@@ -1240,6 +1307,7 @@ void ccci_port_md_status_notify(int md_id, unsigned int state)
 	CHECK_MD_ID(md_id);
 	proxy_p = GET_PORT_PROXY(md_id);
 	proxy_dispatch_md_status(proxy_p, (unsigned int)state);
+	user_broadcast_wrapper(md_id, state);
 }
 
 

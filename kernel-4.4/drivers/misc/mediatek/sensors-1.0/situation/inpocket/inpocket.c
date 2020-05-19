@@ -23,6 +23,7 @@
 #include <linux/kobject.h>
 #include <linux/platform_device.h>
 #include <linux/atomic.h>
+#include <linux/pm_wakeup.h>
 
 #include <hwmsensor.h>
 #include <sensors_io.h>
@@ -43,13 +44,13 @@
 
 
 static struct situation_init_info inpocket_init_info;
+static struct wakeup_source inpocket_wake_lock;
 
 static int inpocket_get_data(int *probability, int *status)
 {
 	int err = 0;
 	struct data_unit_t data;
 	uint64_t time_stamp = 0;
-	uint64_t time_stamp_gpt = 0;
 
 	err = sensor_get_data_from_hub(ID_IN_POCKET, &data);
 	if (err < 0) {
@@ -57,9 +58,8 @@ static int inpocket_get_data(int *probability, int *status)
 		return -1;
 	}
 	time_stamp		= data.time_stamp;
-	time_stamp_gpt	= data.time_stamp_gpt;
 	*probability	= data.gesture_data_t.probability;
-	INPOCKET_LOG("recv ipi: timestamp: %lld, timestamp_gpt: %lld, probability: %d!\n", time_stamp, time_stamp_gpt,
+	INPOCKET_LOG("recv ipi: timestamp: %lld, probability: %d!\n", time_stamp,
 		*probability);
 	return 0;
 }
@@ -87,8 +87,10 @@ static int inpocket_recv_data(struct data_unit_t *event, void *reserved)
 {
 	if (event->flush_action == FLUSH_ACTION)
 		INPOCKET_LOG("inpocket do not support flush\n");
-	else if (event->flush_action == DATA_ACTION)
+	else if (event->flush_action == DATA_ACTION) {
+		__pm_wakeup_event(&inpocket_wake_lock, msecs_to_jiffies(100));
 		situation_notify(ID_IN_POCKET);
+	}
 	return 0;
 }
 
@@ -120,6 +122,7 @@ static int inpocket_local_init(void)
 		INPOCKET_PR_ERR("SCP_sensorHub_data_registration fail!!\n");
 		goto exit_create_attr_failed;
 	}
+	wakeup_source_init(&inpocket_wake_lock, "inpocket_wake_lock");
 	return 0;
 exit:
 exit_create_attr_failed:

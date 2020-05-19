@@ -17,9 +17,21 @@ GAPPS_VARIANT := pico
 GAPPS_FORCE_PACKAGE_OVERRIDES := true
 GAPPS_FORCE_WEBVIEW_OVERRIDES := true
 GAPPS_FORCE_BROWSER_OVERRIDES := true
-GAPPS_FORCE_PIXEL_LAUNCHER := true
-GAPPS_PRODUCT_PACKAGES += Chrome
-GAPPS_EXCLUDED_PACKAGES := Videos
+
+PRODUCT_PACKAGES += \
+       Chrome \
+       CalculatorGoogle \
+       PrebuiltDeskClockGoogle \
+       PrebuiltBugle \
+       CalendarGooglePrebuilt \
+       LatinImeGoogle \
+       DigitalWellbeing \
+       GoogleTTS \
+       Velvet \
+       GoogleContacts
+
+# GAPPS_FORCE_PIXEL_LAUNCHER := true
+GAPPS_EXCLUDED_PACKAGES += Videos
 
 WITH_DEXPREOPT := true
 

@@ -36,6 +36,8 @@
 #include <linux/uaccess.h>
 #include <linux/ratelimit.h>
 #include <linux/timekeeping.h>
+#include <linux/math64.h>
+#include <linux/of_address.h>
 
 #include "include/pmic.h"
 #include "include/pmic_auxadc.h"
@@ -83,6 +85,106 @@ unsigned int __attribute__ ((weak)) g_pmic_pad_vbif28_vol = 1;
 unsigned int __attribute__ ((weak)) pmic_get_vbif28_volt(void)
 {
 	return 0;
+}
+
+bool is_isense_supported(void)
+{
+	/* PMIC MT6358 supports ISENSE */
+	return false;
+}
+
+static unsigned int g_DEGC;
+static unsigned int g_O_VTS;
+static unsigned int g_O_SLOPE_SIGN;
+static unsigned int g_O_SLOPE;
+static unsigned int g_CALI_FROM_EFUSE_EN;
+static unsigned int g_GAIN_AUX;
+static unsigned int g_SIGN_AUX;
+static unsigned int g_GAIN_BGRL;
+static unsigned int g_SIGN_BGRL;
+static unsigned int g_TEMP_L_CALI;
+static unsigned int g_GAIN_BGRH;
+static unsigned int g_SIGN_BGRH;
+static unsigned int g_TEMP_H_CALI;
+static unsigned int g_AUXCALI_EN;
+static unsigned int g_BGRCALI_EN;
+
+static int wk_aux_cali(int T_curr, int vbat_out)
+{
+	signed long long coeff_gain_aux = 0;
+	signed long long vbat_cali = 0;
+
+	coeff_gain_aux = (317220 + 11960 * (signed long long)g_GAIN_AUX);
+	vbat_cali = div_s64((vbat_out * (T_curr - 250) * coeff_gain_aux), 255);
+	vbat_cali = div_s64(vbat_cali, 1000000000);
+	if (g_SIGN_AUX == 0)
+		vbat_out += vbat_cali;
+	else
+		vbat_out -= vbat_cali;
+	return vbat_out;
+}
+
+static int wk_bgr_cali(int T_curr, int vbat_out)
+{
+	signed long long coeff_gain_bgr = 0;
+	signed int T_L = -100 + g_TEMP_L_CALI * 25;
+	signed int T_H = 600 + g_TEMP_H_CALI * 25;
+
+	if (T_curr < T_L) {
+		coeff_gain_bgr = (127 + 8 * (signed long long)g_GAIN_BGRL);
+		if (g_SIGN_BGRL == 0)
+			vbat_out += div_s64((vbat_out * (T_curr - T_L) * coeff_gain_bgr), 127000000);
+		else
+			vbat_out -= div_s64((vbat_out * (T_curr - T_L) * coeff_gain_bgr), 127000000);
+	} else if (T_curr > T_H) {
+		coeff_gain_bgr = (127 + 8 * (signed long long)g_GAIN_BGRH);
+		if (g_SIGN_BGRH == 0)
+			vbat_out -= div_s64((vbat_out * (T_curr - T_H) * coeff_gain_bgr), 127000000);
+		else
+			vbat_out += div_s64((vbat_out * (T_curr - T_H) * coeff_gain_bgr), 127000000);
+	}
+
+	return vbat_out;
+}
+
+/* vbat_out unit is 0.1mV, vthr unit is mV */
+int wk_vbat_cali(int vbat_out, int vthr)
+{
+	int mV_diff = 0;
+	int T_curr = 0; /* unit: 0.1 degrees C*/
+	int vbat_out_old = vbat_out;
+
+	mV_diff = vthr - g_O_VTS * 1800 / 4096;
+	if (g_O_SLOPE_SIGN == 0)
+		T_curr = mV_diff * 10000 / (signed int)(1681 + g_O_SLOPE * 10);
+	else
+		T_curr = mV_diff * 10000 / (signed int)(1681 - g_O_SLOPE * 10);
+	T_curr = (g_DEGC * 10 / 2) - T_curr;
+	/*pr_info("%d\n", T_curr);*/
+
+	if (g_AUXCALI_EN == 1) {
+		vbat_out = wk_aux_cali(T_curr, vbat_out);
+		/*pr_info("vbat_out_auxcali = %d\n", vbat_out);*/
+	}
+
+	if (g_BGRCALI_EN == 1) {
+		vbat_out = wk_bgr_cali(T_curr, vbat_out);
+		/*pr_info("vbat_out_bgrcali = %d\n", vbat_out);*/
+	}
+
+	if (abs(vbat_out - vbat_out_old) > 1000) {
+		pr_notice("vbat_out_old=%d, vthr=%d, T_curr=%d, vbat_out=%d\n",
+			vbat_out_old, vthr, T_curr, vbat_out);
+		pr_notice("%d %d %d %d %d %d %d %d %d %d %d %d %d %d\n",
+			g_DEGC, g_O_VTS, g_O_SLOPE_SIGN, g_O_SLOPE,
+			g_SIGN_AUX, g_SIGN_BGRL, g_SIGN_BGRH,
+			g_AUXCALI_EN, g_BGRCALI_EN,
+			g_GAIN_AUX, g_GAIN_BGRL, g_GAIN_BGRH,
+			g_TEMP_L_CALI, g_TEMP_H_CALI);
+		aee_kernel_warning("PMIC AUXADC CALI", "VBAT CALI");
+	}
+
+	return vbat_out;
 }
 
 void wk_auxadc_bgd_ctrl(unsigned char en)
@@ -264,11 +366,11 @@ struct pmic_auxadc_channel_new mt6358_auxadc_channel[] = {
 		PMIC_AUXADC_ADC_RDY_CH4_BY_THR2, PMIC_AUXADC_ADC_OUT_CH4_BY_THR2},
 	{12, 1, 4, PMIC_AUXADC_RQST_CH4_BY_THR3, /* VGPU_TEMP */
 		PMIC_AUXADC_ADC_RDY_CH4_BY_THR3, PMIC_AUXADC_ADC_OUT_CH4_BY_THR3},
-	{12, 1.5, 6, PMIC_AUXADC_RQST_CH6, /* DCXO voltage */
+	{12, 3, 6, PMIC_AUXADC_RQST_CH6, /* DCXO voltage */
 		PMIC_AUXADC_ADC_RDY_CH6, PMIC_AUXADC_ADC_OUT_CH6},
 };
 
-#ifdef CONFIG_MTK_MD1_SUPPORT
+static bool mts_enable = true;
 static int mts_timestamp;
 static unsigned int mts_count;
 static unsigned int mts_adc;
@@ -349,7 +451,7 @@ void mt6358_auxadc_monitor_mts_regs(void)
 		pr_notice("AUXADC_ADC16 = 0x%x\n", upmu_get_reg_value(MT6358_AUXADC_ADC16));
 		pr_notice("AUXADC_ADC17 = 0x%x\n", upmu_get_reg_value(MT6358_AUXADC_ADC17));
 	}
-	if (mts_count > 15) {
+	if (mts_count > 30) {
 #ifdef CONFIG_MTK_PMIC_WRAP_HAL
 		pwrap_dump_all_register();
 #endif
@@ -410,7 +512,7 @@ int mts_kthread(void *x)
 				pmic_set_register_value(PMIC_RG_AUXADC_RST, 1);
 				pmic_set_register_value(PMIC_RG_AUXADC_RST, 0);
 			}
-			if (polling_cnt >= 312) { /* 312 * 32ms ~= 10s*/
+			if (polling_cnt >= 624) { /* 624 * 32ms ~= 20s*/
 				mt6358_mts_reg_dump();
 				aee_kernel_warning("PMIC AUXADC:MDRT", "MDRT");
 				break;
@@ -426,9 +528,6 @@ int mts_kthread(void *x)
 	return 0;
 }
 /*--Monitor MTS reg End--*/
-#else
-static unsigned int mts_adc;
-#endif
 
 static void mt6358_auxadc_timeout_dump(unsigned short ch_num)
 {
@@ -532,6 +631,7 @@ int mt6358_get_auxadc_value(u8 channel)
 {
 	int bat_cur = 0, is_charging = 0;
 	signed int adc_result = 0, reg_val = 0;
+	signed int vbat_cali = 0, vthr = 0;
 	struct pmic_auxadc_channel_new *auxadc_channel;
 	static DEFINE_RATELIMIT_STATE(ratelimit, 1 * HZ, 5);
 
@@ -562,6 +662,8 @@ int mt6358_get_auxadc_value(u8 channel)
 	else if (auxadc_channel->resolution == 15)
 		adc_result = (reg_val * auxadc_channel->r_val *
 					VOLTAGE_FULL_RANGE) / 32768;
+	if (channel == AUXADC_LIST_DCXO_VOLT)
+		adc_result /= 2;
 
 	if (channel != AUXADC_LIST_VCORE_TEMP &&
 	    channel != AUXADC_LIST_VPROC_TEMP &&
@@ -576,6 +678,13 @@ int mt6358_get_auxadc_value(u8 channel)
 			pr_notice("[%s] ch_idx = %d, channel = %d, bat_cur = %d, reg_val = 0x%x, adc_result = %d\n",
 				__func__, channel, auxadc_channel->ch_num,
 				bat_cur, reg_val, adc_result);
+		} else if (channel == AUXADC_LIST_BATADC) {
+			vthr = pmic_get_auxadc_value(AUXADC_LIST_CHIP_TEMP);
+			vbat_cali = DIV_ROUND_CLOSEST(wk_vbat_cali(adc_result * 10, vthr), 10);
+			pr_notice("[%s] ch_idx = %d, channel = %d, reg_val = 0x%x, old_vbat = %d, vthr = %d, adc_result = %d\n",
+				__func__, channel, auxadc_channel->ch_num,
+				reg_val, adc_result, vthr, vbat_cali);
+			adc_result = vbat_cali;
 		} else {
 			pr_notice("[%s] ch_idx = %d, channel = %d, reg_val = 0x%x, adc_result = %d\n",
 				__func__, channel, auxadc_channel->ch_num,
@@ -607,13 +716,31 @@ int mt6358_get_auxadc_value(u8 channel)
 		battmp = adc_result;
 	}
 
-#ifdef CONFIG_MTK_MD1_SUPPORT
 	/*--Monitor MTS Thread--*/
-	if (channel == AUXADC_LIST_BATADC)
+	if ((channel == AUXADC_LIST_BATADC) && mts_enable)
 		mt6358_auxadc_monitor_mts_regs();
-#endif
 
 	return adc_result;
+}
+
+void parsing_cust_setting(void)
+{
+	struct device_node *np;
+	unsigned int disable_modem;
+
+	/* check customer setting */
+	np = of_find_compatible_node(NULL, NULL, "mediatek,mt-pmic-custom-setting");
+	if (!np) {
+		HKLOG("[%s]Failed to find device-tree node\n", __func__);
+		return;
+	}
+
+	if (!of_property_read_u32(np, "disable-modem", &disable_modem)) {
+		if (disable_modem)
+			mts_enable = false;
+	}
+
+	of_node_put(np);
 }
 
 void adc_dbg_init(void)
@@ -637,7 +764,6 @@ void adc_dbg_init(void)
 	adc_dbg_addr[i++] = MT6358_PCHR_VREF_ELR_1;
 }
 
-#ifdef CONFIG_MTK_MD1_SUPPORT
 static void mts_thread_init(void)
 {
 	mts_thread_handle = kthread_create(mts_kthread, (void *)NULL, "mts_thread");
@@ -648,7 +774,54 @@ static void mts_thread_init(void)
 		HKLOG("[adc_kthread] kthread_create Done\n");
 	}
 }
-#endif
+
+void mt6358_adc_cali_init(void)
+{
+	unsigned int efuse = 0;
+
+	if (pmic_get_register_value(PMIC_AUXADC_EFUSE_ADC_CALI_EN) == 1) {
+		g_DEGC = pmic_get_register_value(PMIC_AUXADC_EFUSE_DEGC_CALI);
+		if (g_DEGC < 38 || g_DEGC > 60)
+			g_DEGC = 53;
+		g_O_VTS = pmic_get_register_value(PMIC_AUXADC_EFUSE_O_VTS);
+		g_O_SLOPE_SIGN = pmic_get_register_value(PMIC_AUXADC_EFUSE_O_SLOPE_SIGN);
+		g_O_SLOPE = pmic_get_register_value(PMIC_AUXADC_EFUSE_O_SLOPE);
+	} else {
+		g_DEGC = 50;
+		g_O_VTS = 1600;
+	}
+
+	efuse = pmic_Read_Efuse_HPOffset(39);
+	g_CALI_FROM_EFUSE_EN = (efuse >> 2) & 0x1;
+	if (g_CALI_FROM_EFUSE_EN == 1) {
+		g_SIGN_AUX = (efuse >> 3) & 0x1;
+		g_AUXCALI_EN = (efuse >> 6) & 0x1;
+		g_GAIN_AUX = (efuse >> 8) & 0xFF;
+	} else {
+		g_SIGN_AUX = 0;
+		g_AUXCALI_EN = 1;
+		g_GAIN_AUX = 106;
+	}
+	g_SIGN_BGRL = (efuse >> 4) & 0x1;
+	g_SIGN_BGRH = (efuse >> 5) & 0x1;
+	g_BGRCALI_EN = (efuse >> 7) & 0x1;
+
+	efuse = pmic_Read_Efuse_HPOffset(40);
+	g_GAIN_BGRL = (efuse >> 9) & 0x7F;
+	efuse = pmic_Read_Efuse_HPOffset(41);
+	g_GAIN_BGRH = (efuse >> 9) & 0x7F;
+
+	efuse = pmic_Read_Efuse_HPOffset(42);
+	g_TEMP_L_CALI = (efuse >> 10) & 0x7;
+	g_TEMP_H_CALI = (efuse >> 13) & 0x7;
+
+	pr_info("%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n",
+		g_DEGC, g_O_VTS, g_O_SLOPE_SIGN, g_O_SLOPE,
+		g_CALI_FROM_EFUSE_EN, g_SIGN_AUX, g_SIGN_BGRL, g_SIGN_BGRH,
+		g_AUXCALI_EN, g_BGRCALI_EN,
+		g_GAIN_AUX, g_GAIN_BGRL, g_GAIN_BGRH,
+		g_TEMP_L_CALI, g_TEMP_H_CALI);
+}
 
 void mt6358_auxadc_init(void)
 {
@@ -657,13 +830,14 @@ void mt6358_auxadc_init(void)
 			WAKE_LOCK_SUSPEND, "PMIC AuxADC wakelock");
 	mutex_init(&pmic_adc_mutex);
 
-#ifdef CONFIG_MTK_MD1_SUPPORT
-	wake_lock_init(&mts_monitor_wake_lock,
+	parsing_cust_setting();
+	if (mts_enable) {
+		wake_lock_init(&mts_monitor_wake_lock,
 			WAKE_LOCK_SUSPEND, "PMIC MTS Monitor wakelock");
-	mutex_init(&mts_monitor_mutex);
-	mts_adc = pmic_get_register_value(PMIC_AUXADC_ADC_OUT_MDRT);
-	mts_thread_init();
-#endif
+		mutex_init(&mts_monitor_mutex);
+		mts_adc = pmic_get_register_value(PMIC_AUXADC_ADC_OUT_MDRT);
+		mts_thread_init();
+	}
 
 	/* Remove register setting which is set by PMIC initial setting in PL */
 	battmp = pmic_get_auxadc_value(AUXADC_LIST_BATTEMP);
@@ -676,5 +850,7 @@ void mt6358_auxadc_init(void)
 	adc_dbg_init();
 	pr_info("****[%s] DONE, BAT TEMP = %d, MTS_ADC = 0x%x\n",
 		__func__, battmp, mts_adc);
+
+	mt6358_adc_cali_init();
 }
 EXPORT_SYMBOL(mt6358_auxadc_init);

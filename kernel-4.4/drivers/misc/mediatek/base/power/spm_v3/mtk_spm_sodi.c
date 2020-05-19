@@ -195,12 +195,19 @@ static void spm_sodi_notify_sspm_after_wfi_async_wait(void)
 
 void spm_trigger_wfi_for_sodi(u32 pcm_flags)
 {
-	int spm_dormant_sta;
+	int spm_dormant_sta = 0;
 
 	if (is_cpu_pdn(pcm_flags))
 		spm_dormant_sta = mtk_enter_idle_state(MTK_SODI_MODE);
-	else
+	else {
+		#if defined(CONFIG_MACH_MT6775)
+		mt_secure_call(MTK_SIP_KERNEL_SPM_ARGS, SPM_ARGS_SODI, 0, 0);
+		mt_secure_call(MTK_SIP_KERNEL_SPM_LEGACY_SLEEP, 0, 0, 0);
+		mt_secure_call(MTK_SIP_KERNEL_SPM_ARGS, SPM_ARGS_SODI_FINISH, 0, 0);
+		#else
 		spm_dormant_sta = mtk_enter_idle_state(MTK_LEGACY_SODI_MODE);
+		#endif
+	}
 
 	if (spm_dormant_sta < 0)
 		sodi_pr_err("spm_dormant_sta(%d) < 0\n", spm_dormant_sta);
@@ -451,7 +458,7 @@ unsigned int spm_go_to_sodi(u32 spm_flags, u32 spm_data, u32 sodi_flags, u32 ope
 	unsigned int wr = WR_NONE;
 	struct pcm_desc *pcmdesc = NULL;
 	struct pwr_ctrl *pwrctrl = __spm_sodi.pwrctrl;
-	u32 cpu = spm_data;
+	u32 cpu = smp_processor_id();
 	int ch;
 
 	spm_sodi_footprint(SPM_SODI_ENTER);

@@ -1,0 +1,40 @@
+type fingerprintd_custom_service, service_manager_type;
+
+r_dir_file(fingerprintd, firmware_file)
+allow fingerprintd storage_file:dir search;
+allow fingerprintd tee_device:chr_file rw_file_perms;
+allow fingerprintd uhid_device:chr_file rw_file_perms;
+allow fingerprintd storage_file:lnk_file read;
+allow fingerprintd mnt_user_file:dir search;
+allow fingerprintd mnt_user_file:lnk_file read;
+allow fingerprintd fuse:dir search;
+allow fingerprintd gx_fpd:binder { transfer call };
+allow fingerprintd gx_fpd_service:service_manager { find };
+allow fingerprintd fingerprint_service:service_manager { find };
+#allow fingerprintd fingerprint_custom_service:service_manager { find };
+
+# For Goodix fingerprint
+# allow gx_fpd_lib_file
+#allow fingerprintd gx_fpd_lib_file:file { read open getattr execute map };
+#allow fingerprintd gx_fpd_lib_file:chr_file { ioctl read getattr lock map open };
+#allow fingerprintd gx_fpd_lib_file:dir r_dir_perms;
+
+# allow gx_fp_lib_file
+#allow fingerprintd gx_fp_lib_file:file { read open getattr execute map };
+#allow fingerprintd gx_fp_lib_file:chr_file { ioctl read getattr lock map open };
+#allow fingerprintd gx_fp_lib_file:dir r_dir_perms;
+
+# allow fingerprintd_data_file
+allow fingerprintd fingerprintd_data_file:file create_file_perms;
+allow fingerprintd fingerprintd_data_file:chr_file { ioctl read write create getattr setattr lock append map unlink open };
+r_dir_file(fingerprintd, fingerprintd_data_file)
+allow fingerprintd fingerprintd_data_file:dir create_dir_perms;
+
+# allow gx_fpd_data_file
+allow fingerprintd gx_fpd_data_file:file create_file_perms;
+allow fingerprintd gx_fpd_data_file:chr_file { ioctl read getattr lock map open };
+r_dir_file(fingerprintd, gx_fpd_data_file)
+allow fingerprintd gx_fpd_data_file:dir create_dir_perms;
+
+set_prop(fingerprintd, system_prop)
+

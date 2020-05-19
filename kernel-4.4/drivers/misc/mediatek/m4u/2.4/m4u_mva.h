@@ -50,7 +50,7 @@
 /*reserved mva region for vpu exclusive use*/
 #if defined(CONFIG_MACH_MT6775) || defined(CONFIG_MACH_MT6771)
 #define VPU_RESET_VECTOR_FIX_MVA_START   0x7DA00000
-#define VPU_RESET_VECTOR_FIX_MVA_END     0x82600000
+#define VPU_RESET_VECTOR_FIX_MVA_END     (0x82600000 - 1)
 #else
 #define VPU_RESET_VECTOR_FIX_MVA_START   0x50000000
 #define VPU_RESET_VECTOR_FIX_MVA_END     0x5007FFFF
@@ -60,13 +60,17 @@
 
 #if defined(CONFIG_MACH_MT6775) || defined(CONFIG_MACH_MT6771)
 #define VPU_FIX_MVA_START                0x7DA00000
-#define VPU_FIX_MVA_END                  0x82600000
+#define VPU_FIX_MVA_END                  (0x82600000 - 1)
 #else
 #define VPU_FIX_MVA_START                0x60000000
 #define VPU_FIX_MVA_END                  0x7CDFFFFF
 #endif
 #define VPU_FIX_MVA_SIZE                 (VPU_FIX_MVA_END - VPU_FIX_MVA_START + 1)
 #define VPU_FIX_BLOCK_NR                 MVA_GRAPH_BLOCK_NR_ALIGNED(VPU_FIX_MVA_SIZE)
+
+/*reserved ccu mva region*/
+#define CCU_FIX_MVA_START			0x40000000
+#define CCU_FIX_MVA_END				0x48000000
 
 #define MVA_COMMON_CONTIG_RETGION_START          0x80000000
 

@@ -43,6 +43,7 @@
 #include <linux/slab.h>
 #include <linux/compat.h>
 
+#include <asm/cacheflush.h>
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
 #include <asm/div64.h>
@@ -601,7 +602,7 @@ static int timer_fixup_assert_init(void *addr, enum debug_obj_state state)
 			debug_object_init(timer, &timer_debug_descr);
 			return 0;
 		} else {
-			debug_object_mtk_aee_warning("time shall be initialized");
+			debug_object_mtk_aee_warning("timer shall be initialized");
 			setup_timer(timer, stub_timer, 0);
 			return 1;
 		}
@@ -780,8 +781,15 @@ static struct tvec_base *lock_timer_base(struct timer_list *timer,
 	__acquires(timer->base->lock)
 {
 	for (;;) {
-		u32 tf;
 		struct tvec_base *base;
+		u32 tf;
+
+		/*
+		 * We need to use READ_ONCE() here, otherwise the compiler
+		 * might re-read @tf between the check for TIMER_MIGRATING
+		 * and spin_lock().
+		 */
+		tf = READ_ONCE(timer->flags);
 
 		/*
 		 * We need to use READ_ONCE() here, otherwise the compiler
@@ -1087,6 +1095,28 @@ int try_to_del_timer_sync(struct timer_list *timer)
 		ret = detach_if_pending(timer, base, true);
 	}
 	spin_unlock_irqrestore(&base->lock, flags);
+
+#if defined(CONFIG_SMP) && !defined(CONFIG_ARM64_LSE_ATOMICS)
+
+#ifndef dmac_flush_range
+#define dmac_flush_range __dma_flush_range
+#endif
+
+	/*
+	 * MTK PATCH to fix ARM v8.0 live spinlock issue.
+	 *
+	 * Flush lock value here if timer deletion is not finished.
+	 *
+	 * In this case, Other CPU may need to get cpu_base spinlock
+	 * to update running timer information. Flush lock value here
+	 * to promise that other CPU can see correct lock value to avoid
+	 * starvation or unfair spinlock competition.
+	 */
+	if (ret == -1 && irqs_disabled()) {
+		dmac_flush_range((void *)&base->lock,
+			(void *)&base->lock + sizeof(spinlock_t) - 1);
+	}
+#endif
 
 	return ret;
 }

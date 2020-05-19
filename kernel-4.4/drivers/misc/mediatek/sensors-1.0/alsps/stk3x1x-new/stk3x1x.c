@@ -370,7 +370,7 @@ static struct i2c_driver stk3x1x_i2c_driver = {
 static struct stk3x1x_priv *stk3x1x_obj = NULL;
 static int stk3x1x_get_ps_value(struct stk3x1x_priv *obj, u16 ps);
 static int stk3x1x_get_ps_value_only(struct stk3x1x_priv *obj, u16 ps);
-static int stk3x1x_get_als_value(struct stk3x1x_priv *obj, u16 als);
+//static int stk3x1x_get_als_value(struct stk3x1x_priv *obj, u16 als); /* unused var */
 static int stk3x1x_read_als(struct i2c_client *client, u16 *data);
 static int stk3x1x_read_ps(struct i2c_client *client, u16 *data);
 //static int stk3x1x_set_als_int_thd(struct i2c_client *client, u16 als_data_reg);
@@ -2373,7 +2373,7 @@ static int stk_ps_tune_zero_func_fae(struct stk3x1x_priv *obj)
    // printk("wingtech stk test  2 psi_set = %d >>>>>>>>>>\n",obj->psi_set);	
 	if((obj->psi_set!=0))
 	{
-		if((obj->ps_distance_last == 1))
+		if(obj->ps_distance_last == 1)
 		{
 			ret = stk3x1x_ps_val();
           //  printk("stk test  3 ret= %d >>>>>>>>>>\n",ret);				
@@ -4293,6 +4293,7 @@ static uint32_t stk3x1x_get_ges_value(struct stk3x1x_priv *obj, unsigned int *ge
 #endif
 
 
+/*
 static int stk3x1x_get_als_value(struct stk3x1x_priv *obj, u16 als)
 {
 #if 1
@@ -4348,6 +4349,7 @@ static int stk3x1x_get_als_value(struct stk3x1x_priv *obj, u16 als)
 	}
 #endif
 }
+*/
 
 /*----------------------------------------------------------------------------*/
 static int stk3x1x_get_ps_value_only(struct stk3x1x_priv *obj, u16 ps)
@@ -4670,38 +4672,7 @@ static long stk3x1x_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned
 				clear_bit(STK_BIT_PS, &obj->enable);
 			}
 			break;
-
-		case ALSPS_GET_PS_MODE:
-			enable = test_bit(STK_BIT_PS, &obj->enable) ? (1) : (0);
-			if(copy_to_user(ptr, &enable, sizeof(enable)))
-			{
-				err = -EFAULT;
-				goto err_out;
-			}
-			break;
-
-		case ALSPS_GET_PS_DATA:    
-			if((err = stk3x1x_read_ps(obj->client, &obj->ps)))
-			{
-				goto err_out;
-			}
-			
-			dat = stk3x1x_get_ps_value(obj, obj->ps);
-			if(dat < 0)
-			{
-				err = dat;
-				goto err_out;
-			}
-#ifdef STK_PS_POLLING_LOG	
-			APS_LOG("%s:ps raw 0x%x -> value 0x%x \n",__FUNCTION__, obj->ps, dat);			
-#endif			
-			if(copy_to_user(ptr, &dat, sizeof(dat)))
-			{
-				err = -EFAULT;
-				goto err_out;
-			}  
-			break;
-
+            
 		case ALSPS_GET_PS_RAW_DATA:    
 			if((err = stk3x1x_read_ps(obj->client, &obj->ps)))
 			{
@@ -4742,29 +4713,6 @@ static long stk3x1x_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned
 				}
 				clear_bit(STK_BIT_ALS, &obj->enable);
 			}
-			break;
-
-		case ALSPS_GET_ALS_MODE:
-			enable = test_bit(STK_BIT_ALS, &obj->enable) ? (1) : (0);
-			if(copy_to_user(ptr, &enable, sizeof(enable)))
-			{
-				err = -EFAULT;
-				goto err_out;
-			}
-			break;
-
-		case ALSPS_GET_ALS_DATA: 
-			if((err = stk3x1x_read_als(obj->client, &obj->als)))
-			{
-				goto err_out;
-			}
-
-			dat = stk3x1x_get_als_value(obj, obj->als);
-			if(copy_to_user(ptr, &dat, sizeof(dat)))
-			{
-				err = -EFAULT;
-				goto err_out;
-			}              
 			break;
 
 		case ALSPS_GET_ALS_RAW_DATA:    

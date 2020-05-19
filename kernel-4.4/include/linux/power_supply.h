@@ -39,7 +39,9 @@ enum {
 	POWER_SUPPLY_STATUS_DISCHARGING,
 	POWER_SUPPLY_STATUS_NOT_CHARGING,
 	POWER_SUPPLY_STATUS_FULL,
+#if CONFIG_MTK_GAUGE_VERSION == 10
 	POWER_SUPPLY_STATUS_CMD_DISCHARGING,
+#endif
 };
 
 enum {
@@ -156,7 +158,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_CHARGE_ENABLED,
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT,
-	/* Add for battery voltage/temp */
+#if CONFIG_MTK_GAUGE_VERSION == 10
 	POWER_SUPPLY_PROP_batt_vol,
 	POWER_SUPPLY_PROP_batt_temp,
 	/* Add for EM */
@@ -173,6 +175,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_present_smb,
 	/* ADB CMD Discharging */
 	POWER_SUPPLY_PROP_adjust_power,
+#endif
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_PROP_MODEL_NAME,
 	POWER_SUPPLY_PROP_MANUFACTURER,

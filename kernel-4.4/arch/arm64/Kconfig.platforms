@@ -245,6 +245,7 @@ config MACH_MT6763
 	select ARM64_CRYPTO
 	select CRYPTO_SHA2_ARM64_CE
 	select CRYPTO_AES_ARM64_CE_BLK
+	select FAST_CIRQ_CLONE_FLUSH
 	help
 	  This enables support for MediaTek MT6763
 	  Support for aarch64 Architecture
@@ -285,6 +286,8 @@ config MACH_MT6771
 	select MTK_SYS_CIRQ
 	select FAST_CIRQ_CLONE_FLUSH
 	select MTK_CACHE_FLUSH_BY_SF
+	select MTK_PID_MAP
+	select MTK_DYNAMIC_LOAD_STORE_BYPASS_WA
 	help
 	  This enables support for MediaTek MT6771
 	  Support for aarch64 Architecture
@@ -311,9 +314,19 @@ config MACH_MT6775
 	select MFD_SYSCON
 	select MTK_BASE_POWER
 	select MTK_GIC_V3_EXT
+	select MTK_SYSIRQ
+	select MTK_EINT_MULTI_TRIGGER_DESIGN
+	select MTK_CQDMA
 	select ARM64_CRYPTO
 	select CRYPTO_SHA2_ARM64_CE
 	select CRYPTO_AES_ARM64_CE_BLK
+	select MTK_SYSTRACKER_V2
+	select MTK_IRQ_NEW_DESIGN
+	select MTK_SYS_CIRQ
+	select MTK_FIQ_CACHE
+	select FAST_CIRQ_CLONE_FLUSH
+	select MTK_BOUNCING_CHECK
+	select MTK_LM_MODE if !MTK_GMO_RAM_OPTIMIZE
 	help
 	  This enables support for MediaTek MT6775
 	  Highly power-efficient, performance-oriented 4G LTE processor for premium,
@@ -368,6 +381,14 @@ config MACH_MT6739
 	select ARM_AMBA
 	select CPU_V7
 	select HAVE_SMP
+	select EXT4_FS
+	select EXT4_FS_ENCRYPTION
+	select EXT4_FS_SECURITY
+	select EXT4_ENCRYPTION
+	select F2FS_FS
+	select F2FS_FS_ENCRYPTION
+	select F2FS_FS_SECURITY
+	select F2FS_FS_XATTR
 	select NEED_MACH_MEMORY_H
 	select IRQ_DOMAIN
 	select IRQ_DOMAIN_DEBUG
@@ -388,6 +409,7 @@ config MACH_MT6739
 	select ARM64_ERRATUM_845719
 	select MTK_CQDMA
 	select MTK_SYSIRQ
+	select MTK_FIQ_CACHE
 	select FAST_CIRQ_CLONE_FLUSH
 	select ARM64_CRYPTO
 	select CRYPTO_SHA2_ARM64_CE
@@ -473,8 +495,6 @@ config ARCH_TEGRA_132_SOC
 	bool "NVIDIA Tegra132 SoC"
 	depends on ARCH_TEGRA
 	select PINCTRL_TEGRA124
-	select USB_ULPI if USB_PHY
-	select USB_ULPI_VIEWPORT if USB_PHY
 	help
 	  Enable support for NVIDIA Tegra132 SoC, based on the Denver
 	  ARMv8 CPU.  The Tegra132 SoC is similar to the Tegra124 SoC,

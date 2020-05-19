@@ -206,7 +206,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(charge_enabled),
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_ATTR(charge_counter_ext),
-	/* 20100723 James Lo */
+#if CONFIG_MTK_GAUGE_VERSION == 10
 	POWER_SUPPLY_ATTR(batt_vol),
 	POWER_SUPPLY_ATTR(batt_temp),
 	/* 20100405 Add for EM */
@@ -223,6 +223,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(present_smb),
 	/* ADB CMD Discharging */
 	POWER_SUPPLY_ATTR(adjust_power),
+#endif
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_ATTR(model_name),
 	POWER_SUPPLY_ATTR(manufacturer),

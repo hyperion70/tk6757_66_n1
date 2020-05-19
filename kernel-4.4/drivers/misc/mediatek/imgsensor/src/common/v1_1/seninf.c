@@ -36,6 +36,8 @@
 #include "seninf_common.h"
 #include "seninf_clk.h"
 #include "seninf.h"
+#include "kd_imgsensor_errcode.h"
+#include "imgsensor_ca.h"
 
 #define SENINF_WR32(addr, data)    mt_reg_sync_writel(data, addr)
 #define SENINF_RD32(addr)          ioread32((void *)addr)
@@ -189,6 +191,10 @@ static long seninf_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg
 	void *pbuff = NULL;
 	struct SENINF *pseninf = &gseninf;
 
+#ifdef CONFIG_MTK_CAM_SECURITY_SUPPORT
+	struct command_params c_params;
+#endif
+
 	if (_IOC_DIR(cmd) != _IOC_NONE) {
 		pbuff = kmalloc(_IOC_SIZE(cmd), GFP_KERNEL);
 		if (pbuff == NULL) {
@@ -205,9 +211,6 @@ static long seninf_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg
 				goto SENINF_IOCTL_EXIT;
 			}
 		}
-	} else {
-		ret = -EFAULT;
-		goto SENINF_IOCTL_EXIT;
 	}
 
 	switch (cmd) {
@@ -229,34 +232,17 @@ static long seninf_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg
 		break;
 
 	case KDSENINFIOC_X_GET_ISP_CLK:
-#if 0
-		/*E1(High):490, (Medium):364, (low):273 */
-#define ISP_CLK_LOW    273
-#define ISP_CLK_MEDIUM 364
-#define ISP_CLK_HIGH   490
-#ifdef CONFIG_MTK_SMI_EXT
-		PK_DBG("KDIMGSENSORIOC_X_GET_ISP_CLK current_mmsys_clk=%d\n", current_mmsys_clk);
-		if (mmdvfs_get_stable_isp_clk() == MMSYS_CLK_HIGH)
-			*(unsigned int *)pbuff = ISP_CLK_HIGH;
-		else if (mmdvfs_get_stable_isp_clk() == MMSYS_CLK_MEDIUM)
-			*(unsigned int *)pbuff = ISP_CLK_MEDIUM;
-		else
-			*(unsigned int *)pbuff = ISP_CLK_LOW;
-#else
-		*(unsigned int *)pbuff = ISP_CLK_HIGH;
-#endif
-#endif
+	case KDSENINFIOC_X_GET_CSI_CLK:
+		*(unsigned int *)pbuff =
+			seninf_clk_get_meter(&pseninf->clk, *(unsigned int *)pbuff);
 		break;
 
-	case KDSENINFIOC_X_GET_CSI_CLK:
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
-		*(unsigned int *)pbuff = mt_get_ckgen_freq(*(unsigned int *)pbuff);
-		PK_DBG("f_fcamtg_ck = %d\n", mt_get_ckgen_freq(8));
-		PK_DBG("f_fcamtg2_ck = %d\n", mt_get_ckgen_freq(41));
-		PK_DBG("f_fcam_ck = %d\n", mt_get_ckgen_freq(5));
-		PK_DBG("f_fseninf_ck = %d\n", mt_get_ckgen_freq(35));
-#endif
+#ifdef CONFIG_MTK_CAM_SECURITY_SUPPORT
+	case KDSENINFIOC_X_SECURE_DUMP:
+		if (imgsensor_ca_invoke_command(IMGSENSOR_TEE_CMD_DUMP_REG, c_params, &ret) != 0)
+		ret = ERROR_TEE_CA_TA_FAIL;
 		break;
+#endif
 
 	default:
 		PK_DBG("No such command %d\n", cmd);

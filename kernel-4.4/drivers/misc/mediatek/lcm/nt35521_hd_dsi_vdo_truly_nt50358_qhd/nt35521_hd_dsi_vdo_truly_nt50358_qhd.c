@@ -218,8 +218,9 @@ static const unsigned char LCD_MODULE_ID = 0x01;
 #define FRAME_HEIGHT									(960)
 #define LCM_DENSITY									(240)
 
-#define LCM_PHYSICAL_WIDTH									(0)
-#define LCM_PHYSICAL_HEIGHT									(0)
+#define LCM_PHYSICAL_WIDTH									(51030)
+#define LCM_PHYSICAL_HEIGHT									(90720)
+
 
 
 #ifndef CONFIG_FPGA_EARLY_PORTING

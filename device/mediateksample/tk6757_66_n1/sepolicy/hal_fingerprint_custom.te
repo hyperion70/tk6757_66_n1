@@ -1,0 +1,73 @@
+type hal_fingerprint_custom, domain, binder_in_vendor_violators;
+hal_server_domain(hal_fingerprint_custom, hal_fingerprint)
+
+type hal_fingerprint_custom_exec, exec_type, vendor_file_type, file_type;
+binder_use(hal_fingerprint_custom)
+init_daemon_domain(hal_fingerprint_custom)
+
+allow hal_fingerprint_custom gx_fpd:binder { transfer call };
+allow hal_fingerprint_custom gx_fpd_service:service_manager { find };
+allow hal_fingerprint_custom fingerprint_service:service_manager find;
+allow hal_fingerprint_custom fingerprintd_custom_service:service_manager { add find };
+
+#allow hal_fingerprint_custom fpc_sysfs:file { rw_file_perms };
+
+allow hal_fingerprint_custom tee_device:chr_file { rw_file_perms };
+
+allow hal_fingerprint_custom servicemanager:binder { transfer call };
+
+# set_prop(hal_fingerprint_custom, system_prop)
+r_dir_file(hal_fingerprint_custom, firmware_file)
+allow hal_fingerprint_custom firmware_file:dir { search };
+allow hal_fingerprint_custom firmware_file:file { r_file_perms };
+
+#allow hal_fingerprint_custom fpc_data_file:dir rw_dir_perms;
+#allow hal_fingerprint_custom fpc_data_file:sock_file create_file_perms;
+
+# allow gx_fpd_lib_file
+#allow hal_fingerprint_custom gx_fpd_lib_file:file { read open getattr execute map };
+#allow hal_fingerprint_custom gx_fpd_lib_file:chr_file { ioctl read getattr lock map open };
+#allow hal_fingerprint_custom gx_fpd_lib_file:dir r_dir_perms;
+
+# allow gx_fp_lib_file
+#allow hal_fingerprint_custom gx_fp_lib_file:file { read open getattr execute map };
+#allow hal_fingerprint_custom gx_fp_lib_file:chr_file { ioctl read getattr lock map open };
+#allow hal_fingerprint_custom gx_fp_lib_file:dir r_dir_perms;
+
+
+# allow fingerprintd_data_file
+allow hal_fingerprint_custom fingerprintd_data_file:file create_file_perms;
+allow hal_fingerprint_custom fingerprintd_data_file:chr_file { ioctl read write create getattr setattr lock append map unlink open };
+r_dir_file(hal_fingerprint_custom, fingerprintd_data_file)
+allow hal_fingerprint_custom fingerprintd_data_file:dir create_dir_perms;
+
+# allow gx_fpd_data_file
+allow hal_fingerprint_custom gx_fpd_data_file:file create_file_perms;
+allow hal_fingerprint_custom gx_fpd_data_file:chr_file { ioctl read write create getattr setattr lock append map unlink open };
+r_dir_file(hal_fingerprint_custom, gx_fpd_data_file)
+allow hal_fingerprint_custom gx_fpd_data_file:dir create_dir_perms;
+
+allow hal_fingerprint_custom uhid_device:chr_file rw_file_perms;
+
+allow hal_fingerprint_custom keystore_service:service_manager { find };
+allow hal_fingerprint_custom keystore:keystore_key { add_auth };
+
+allow hal_fingerprint_custom storage_file:dir { search };
+allow hal_fingerprint_custom storage_file:lnk_file read;
+
+binder_call(hal_fingerprint_custom, gx_fpd)
+binder_call(hal_fingerprint_custom, servicemanager)
+binder_call(hal_fingerprint_custom, keystore)
+
+add_service(hal_fingerprint_custom, hal_fingerprint_custom_service);
+
+# For permissions checking
+binder_call(hal_fingerprint_custom, system_server);
+allow hal_fingerprint_custom permission_service:service_manager find;
+
+allow hal_fingerprint_custom mnt_user_file:dir search;
+
+allow hal_fingerprint_custom binder_device:chr_file { ioctl open read write };
+
+allow hal_fingerprint_custom unlabeled:file { getattr open read };
+

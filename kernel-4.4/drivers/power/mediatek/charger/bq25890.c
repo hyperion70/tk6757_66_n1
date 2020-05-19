@@ -19,6 +19,7 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
+#include <linux/power_supply.h>
 #ifdef CONFIG_OF
 #include <linux/of.h>
 #include <linux/of_irq.h>
@@ -161,7 +162,7 @@ struct bq25890_info {
 	struct device *dev;
 	const char *chg_dev_name;
 	const char *eint_name;
-	CHARGER_TYPE chg_type;
+	enum charger_type chg_type;
 	int irq;
 };
 
@@ -1197,7 +1198,7 @@ static int bq25890_get_charger_type(struct bq25890_info *info)
 	unsigned int vbus_stat = 0;
 	unsigned int pg_stat = 0;
 
-	CHARGER_TYPE CHR_Type_num = CHARGER_UNKNOWN;
+	enum charger_type CHR_Type_num = CHARGER_UNKNOWN;
 
 
 	pg_stat = bq25890_get_pg_state();
@@ -1845,7 +1846,7 @@ static int bq25890_dump_register(struct charger_device *chg_dev)
 static irqreturn_t bq25890_irq_handler(int irq, void *data)
 {
 	u8 pg_stat = 0;
-	CHARGER_TYPE org_chg_type;
+	enum charger_type org_chg_type;
 	bool en = false;
 	struct bq25890_info *info = (struct bq25890_info *)data;
 
@@ -2090,45 +2091,59 @@ static int bq25890_driver_probe(struct i2c_client *client, const struct i2c_devi
 unsigned char g_reg_value_bq25890;
 static ssize_t show_bq25890_access(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	pr_info("[show_bq25890_access] 0x%x\n", g_reg_value_bq25890);
-	return sprintf(buf, "%u\n", g_reg_value_bq25890);
+	pr_info("[%s] 0x%x\n", __func__, g_reg_value_bq25890);
+	return sprintf(buf, "0x%x\n", g_reg_value_bq25890);
 }
 
 static ssize_t store_bq25890_access(struct device *dev, struct device_attribute *attr,
 				    const char *buf, size_t size)
 {
 	int ret = 0;
-	char *pvalue = NULL, *addr, *val;
+	char *pvalue = NULL, *addr = NULL;
+	char temp_buf[32];
 	unsigned int reg_value = 0;
 	unsigned int reg_address = 0;
 
-	pr_info("[store_bq25890_access]\n");
+	strncpy(temp_buf, buf, sizeof(temp_buf) - 1);
+	temp_buf[sizeof(temp_buf) - 1] = '\0';
+	pvalue = temp_buf;
 
-	if (buf != NULL && size != 0) {
-		pr_info("[store_bq25890_access] buf is %s and size is %zu\n", buf,
-			    size);
-
-		pvalue = (char *)buf;
+	if (size != 0) {
 		if (size > 3) {
 			addr = strsep(&pvalue, " ");
-			ret = kstrtou32(addr, 16, (unsigned int *)&reg_address);
-		} else
-			ret = kstrtou32(pvalue, 16, (unsigned int *)&reg_address);
+			if (addr == NULL) {
+				pr_info("[%s] format error\n", __func__);
+				return -EINVAL;
+			}
+			ret = kstrtou32(addr, 16, &reg_address);
+			if (ret) {
+				pr_info("[%s] format error, ret = %d\n", __func__, ret);
+				return ret;
+			}
 
-		if (size > 3) {
-			val = strsep(&pvalue, " ");
-			ret = kstrtou32(val, 16, (unsigned int *)&reg_value);
-			pr_info(
-				    "[store_bq25890_access] write bq25890 reg 0x%x with value 0x%x !\n",
-				    (unsigned int) reg_address, reg_value);
+			if (pvalue == NULL) {
+				pr_info("[%s] format error\n", __func__);
+				return -EINVAL;
+			}
+			ret = kstrtou32(pvalue, 16, &reg_value);
+			if (ret) {
+				pr_info("[%s] format error, ret = %d\n", __func__, ret);
+				return ret;
+			}
+
+			pr_info("[%s] write bq25890 reg 0x%x with value 0x%x\n",
+				__func__, reg_address, reg_value);
 			ret = bq25890_config_interface(reg_address, reg_value, 0xFF, 0x0);
 		} else {
+			ret = kstrtou32(pvalue, 16, &reg_address);
+			if (ret) {
+				pr_info("[%s] format error, ret = %d\n", __func__, ret);
+				return ret;
+			}
 			ret = bq25890_read_interface(reg_address, &g_reg_value_bq25890, 0xFF, 0x0);
-			pr_info(
-				    "[store_bq25890_access] read bq25890 reg 0x%x with value 0x%x !\n",
-				    (unsigned int) reg_address, g_reg_value_bq25890);
-			pr_info(
-				    "[store_bq25890_access] Please use \"cat bq25890_access\" to get value\n");
+			pr_info("[%s] read bq25890 reg 0x%x with value 0x%x\n",
+				__func__, reg_address, g_reg_value_bq25890);
+			pr_info("[%s] Please use \"cat bq25890_access\" to get value\n", __func__);
 		}
 	}
 	return size;

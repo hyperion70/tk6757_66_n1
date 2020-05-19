@@ -11,16 +11,9 @@
 #include "mt6757.dts"
 #endif
 
-&memory {
-	device_type = "memory";
-	reg = <0 0x40000000 0 0x1e605000>,
-		  <1 0x00000000 0 0x20000000>;
-};
 
 /* chosen */
 &chosen {
-	bootargs = "console=tty0 console=ttyMT0,921600n1 root=/dev/ram initrd=0x45000000,
-	0x1000000 loglevel=8 androidboot.selinux=permissive androidboot.hardware=mt6757";
 	/* fpga may has no lk, we need to specify display info here */
 	/* fb buffer is reserved using this dts by memory node above */
 	atag,videolfb-fb_base_h = <0x0>;
@@ -38,12 +31,12 @@
 	#size-cells = <2>;
 	ranges;
 
-	zone-movable-cma-memory {
+	zmc-default {
 		compatible = "mediatek,zone_movable_cma";
 		size = <0 0xffc00000>;
 		/* 256MB alignment */
 		alignment = <0 0x10000000>;
-		alloc-ranges = <0 0xc0000000 1 0x0>;
+		alloc-ranges = <0 0xc0000000 1 0x00000000>;
 	};
 };
 
@@ -105,8 +98,8 @@
 	tpd-resolution = <1080 1920>;
 	use-tpd-button = <0>;
 	tpd-key-num = <3>;
-	tpd-key-local = <139 172 158 0>;
-	tpd-key-dim-local = <0x5a 0x373 0x64 0x28 0xe6 0x373 0x64 0x28 0x172 0x373 0x64 0x28 0x0 0x0 0x0 0x0>;
+	tpd-key-local= <139 172 158 0>;
+	tpd-key-dim-local = <90 883 100 40 230 883 100 40 370 883 100 40 0 0 0 0>;
 	tpd-max-touch-num = <5>;
 	tpd-filter-enable = <1>;
 	tpd-filter-pixel-density = <146>;
@@ -899,7 +892,7 @@
 	pinctrl-4 = <&mtkfb_pins_lcm_reset1>;
 	pinctrl-5 = <&mtkfb_pins_lcd_bias_enp0>;
 	pinctrl-6 = <&mtkfb_pins_lcd_bias_enp1>;
-	partial-update = <1>;
+	partial-update = <0>;
 	status = "okay";
 };/* DISPSYS GPIO standardization end */
 

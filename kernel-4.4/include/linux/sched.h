@@ -224,9 +224,10 @@ extern void proc_sched_set_task(struct task_struct *p);
 #define TASK_WAKING		256
 #define TASK_PARKED		512
 #define TASK_NOLOAD		1024
-#define TASK_STATE_MAX		2048
+#define TASK_NEW		2048
+#define TASK_STATE_MAX		4096
 
-#define TASK_STATE_TO_CHAR_STR "RSDTtXZxKWPN"
+#define TASK_STATE_TO_CHAR_STR "RSDTtXZxKWPNn"
 
 extern char ___assert_task_state[1 - 2*!!(
 		sizeof(TASK_STATE_TO_CHAR_STR)-1 != ilog2(TASK_STATE_MAX)+1)];
@@ -1030,12 +1031,13 @@ struct wake_q_node {
 struct wake_q_head {
 	struct wake_q_node *first;
 	struct wake_q_node **lastp;
+	int count;
 };
 
 #define WAKE_Q_TAIL ((struct wake_q_node *) 0x01)
 
 #define WAKE_Q(name)					\
-	struct wake_q_head name = { WAKE_Q_TAIL, &name.first }
+	struct wake_q_head name = { WAKE_Q_TAIL, &name.first, 0 }
 
 extern void wake_q_add(struct wake_q_head *head,
 		       struct task_struct *task);
@@ -1104,30 +1106,6 @@ struct idle_state {
 	unsigned long power;	 /* power consumption in this idle state */
 };
 
-struct energy_env {
-	struct sched_group      *sg_top;
-	struct sched_group      *sg_cap;
-	int                     cap_idx;
-	int                     util_delta;
-	int                     src_cpu;
-	int                     dst_cpu;
-	int                     energy;
-	int                     opp_idx[3]; /* [FIXME] cluster may > 3 */
-	int                     payoff;
-	struct task_struct      *task;
-	struct {
-		int before;
-		int after;
-		int delta;
-		int diff;
-	} nrg;
-	struct {
-		int before;
-		int after;
-		int delta;
-	} cap;
-};
-
 #ifdef CONFIG_MTK_SCHED_EAS_POWER_SUPPORT
 typedef int (*idle_power_func)(int, int, void*, int);
 typedef int (*busy_power_func)(int, void*, int);
@@ -1143,11 +1121,6 @@ typedef enum {
 	SCHED_UNKNOWN_LB
 } SCHED_LB_TYPE;
 
-#ifdef CONFIG_MTK_SCHED_EAS_POWER_SUPPORT
-extern bool is_eas_enabled(void);
-extern bool is_hybrid_enabled(void);
-extern int mtk_cluster_capacity_idx(int cid, struct energy_env *eenv);
-#endif
 
 #ifdef CONFIG_MTK_SCHED_BOOST
 extern bool sched_boost(void);
@@ -1186,6 +1159,37 @@ extern
 const struct sched_group_energy *cpu_cluster_energy(int cpu);
 
 struct sched_group;
+
+struct eas_stats {
+	/* select_idle_sibling() stats */
+	u64 sis_attempts;
+	u64 sis_idle;
+	u64 sis_cache_affine;
+	u64 sis_suff_cap;
+	u64 sis_idle_cpu;
+	u64 sis_count;
+
+	/* select_energy_cpu_brute() stats */
+	u64 secb_attempts;
+	u64 secb_sync;
+	u64 secb_idle_bt;
+	u64 secb_insuff_cap;
+	u64 secb_no_nrg_sav;
+	u64 secb_nrg_sav;
+	u64 secb_count;
+
+	/* find_best_target() stats */
+	u64 fbt_attempts;
+	u64 fbt_no_cpu;
+	u64 fbt_no_sd;
+	u64 fbt_pref_idle;
+	u64 fbt_count;
+
+	/* cas */
+	/* select_task_rq_fair() stats */
+	u64 cas_attempts;
+	u64 cas_count;
+};
 
 struct sched_domain {
 	/* These fields must be setup */
@@ -1247,6 +1251,8 @@ struct sched_domain {
 	unsigned int ttwu_wake_remote;
 	unsigned int ttwu_move_affine;
 	unsigned int ttwu_move_balance;
+
+	struct eas_stats eas_stats;
 #endif
 #ifdef CONFIG_SCHED_DEBUG
 	char *name;
@@ -1448,6 +1454,35 @@ struct sched_statistics {
 	u64			nr_wakeups_affine_attempts;
 	u64			nr_wakeups_passive;
 	u64			nr_wakeups_idle;
+
+	/* select_idle_sibling() */
+	u64			nr_wakeups_sis_attempts;
+	u64			nr_wakeups_sis_idle;
+	u64			nr_wakeups_sis_cache_affine;
+	u64			nr_wakeups_sis_suff_cap;
+	u64			nr_wakeups_sis_idle_cpu;
+	u64			nr_wakeups_sis_count;
+
+	/* energy_aware_wake_cpu() */
+	u64			nr_wakeups_secb_attempts;
+	u64			nr_wakeups_secb_sync;
+	u64			nr_wakeups_secb_idle_bt;
+	u64			nr_wakeups_secb_insuff_cap;
+	u64			nr_wakeups_secb_no_nrg_sav;
+	u64			nr_wakeups_secb_nrg_sav;
+	u64			nr_wakeups_secb_count;
+
+	/* find_best_target() */
+	u64			nr_wakeups_fbt_attempts;
+	u64			nr_wakeups_fbt_no_cpu;
+	u64			nr_wakeups_fbt_no_sd;
+	u64			nr_wakeups_fbt_pref_idle;
+	u64			nr_wakeups_fbt_count;
+
+	/* cas */
+	/* select_task_rq_fair() */
+	u64			nr_wakeups_cas_attempts;
+	u64			nr_wakeups_cas_count;
 };
 #endif
 
@@ -1550,6 +1585,7 @@ struct sched_dl_entity {
 	u64 dl_deadline;	/* relative deadline of each instance	*/
 	u64 dl_period;		/* separation of two instances (period) */
 	u64 dl_bw;		/* dl_runtime / dl_deadline		*/
+	u64 dl_density;		/* dl_runtime / dl_deadline		*/
 
 	/*
 	 * Actual scheduling parameters. Initialized with the values above,
@@ -1686,6 +1722,7 @@ struct task_struct {
 	 * of this task
 	 */
 	u32 init_load_pct;
+	u64 last_sleep_ts;
 #endif
 
 #ifdef CONFIG_CGROUP_SCHED
@@ -1812,6 +1849,10 @@ struct task_struct {
 
 	cputime_t utime, stime, utimescaled, stimescaled;
 	cputime_t gtime;
+#ifdef CONFIG_CPU_FREQ_TIMES
+	u64 *time_in_state;
+	unsigned int max_state;
+#endif
 	struct prev_cputime prev_cputime;
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
 	seqlock_t vtime_seqlock;
@@ -2119,7 +2160,8 @@ struct task_struct {
 #define TASK_ADDRS_COUNT 5
 	spinlock_t stack_trace_lock;
 	struct stack_trace stack_trace;
-	unsigned long addrs[TASK_ADDRS_COUNT];
+	int selected_trace;
+	unsigned long addrs[2][TASK_ADDRS_COUNT];
 #endif
 #endif
 
@@ -2366,12 +2408,14 @@ static inline void put_task_struct(struct task_struct *t)
 	unsigned long flags;
 
 	spin_lock_irqsave(&t->stack_trace_lock, flags);
+
 	t->stack_trace.nr_entries = 0;
 	t->stack_trace.max_entries = TASK_ADDRS_COUNT;
-	t->stack_trace.entries = t->addrs;
+	t->stack_trace.entries = t->addrs[t->selected_trace];
 	t->stack_trace.skip = 2;
 
 	save_stack_trace(&t->stack_trace);
+	t->selected_trace = (t->selected_trace ^ 0x1) & 0x1;
 	spin_unlock_irqrestore(&t->stack_trace_lock, flags);
 #endif
 #endif
@@ -2499,6 +2543,8 @@ static inline void memalloc_noio_restore(unsigned int flags)
 #define PFA_SPREAD_PAGE  1      /* Spread page cache over cpuset */
 #define PFA_SPREAD_SLAB  2      /* Spread some slab caches over cpuset */
 #define PFA_LMK_WAITING  3      /* Lowmemorykiller is waiting */
+#define PFA_SPEC_SSB_DISABLE		4	/* Speculative Store Bypass disabled */
+#define PFA_SPEC_SSB_FORCE_DISABLE	5	/* Speculative Store Bypass force disabled*/
 
 #define TASK_PFA_TEST(name, func)					\
 	static inline bool task_##func(struct task_struct *p)		\
@@ -2523,6 +2569,13 @@ TASK_PFA_CLEAR(SPREAD_SLAB, spread_slab)
 
 TASK_PFA_TEST(LMK_WAITING, lmk_waiting)
 TASK_PFA_SET(LMK_WAITING, lmk_waiting)
+
+TASK_PFA_TEST(SPEC_SSB_DISABLE, spec_ssb_disable)
+TASK_PFA_SET(SPEC_SSB_DISABLE, spec_ssb_disable)
+TASK_PFA_CLEAR(SPEC_SSB_DISABLE, spec_ssb_disable)
+
+TASK_PFA_TEST(SPEC_SSB_FORCE_DISABLE, spec_ssb_force_disable)
+TASK_PFA_SET(SPEC_SSB_FORCE_DISABLE, spec_ssb_force_disable)
 
 /*
  * task->jobctl flags
@@ -2946,6 +2999,11 @@ static inline void mmdrop(struct mm_struct * mm)
 
 /* mmput gets rid of the mappings and all user-space */
 extern void mmput(struct mm_struct *);
+/* same as above but performs the slow path from the async kontext. Can
+ * be called from the atomic context as well
+ */
+extern void mmput_async(struct mm_struct *);
+
 /* Grab a reference to a task's mm, if it is not already going away */
 extern struct mm_struct *get_task_mm(struct task_struct *task);
 /*
@@ -2974,7 +3032,14 @@ static inline int copy_thread_tls(
 }
 #endif
 extern void flush_thread(void);
-extern void exit_thread(void);
+
+#ifdef CONFIG_HAVE_EXIT_THREAD
+extern void exit_thread(struct task_struct *tsk);
+#else
+static inline void exit_thread(struct task_struct *tsk)
+{
+}
+#endif
 
 extern void exit_files(struct task_struct *);
 extern void __cleanup_sighand(struct sighand_struct *);
@@ -3610,12 +3675,19 @@ struct update_util_data {
 };
 
 void cpufreq_add_update_util_hook(int cpu, struct update_util_data *data,
-		void (*func)(struct update_util_data *data, u64 time,
-			unsigned int flags));
+                       void (*func)(struct update_util_data *data, u64 time,
+                                    unsigned int flags));
 void cpufreq_remove_update_util_hook(int cpu);
 #endif /* CONFIG_CPU_FREQ */
 
 enum fbq_type { regular, remote, all };
+
+enum group_type {
+	group_other = 0,
+	group_misfit_task,
+	group_imbalanced,
+	group_overloaded,
+};
 
 struct lb_env {
 	struct sched_domain     *sd;
@@ -3643,6 +3715,7 @@ struct lb_env {
 	unsigned int            loop_max;
 
 	enum fbq_type           fbq_type;
+	enum group_type		busiest_group_type;
 	struct list_head        tasks;
 };
 
@@ -3671,6 +3744,37 @@ extern inline int throttled_lb_pair(struct task_group *tg,
 extern int task_hot(struct task_struct *p, struct lb_env *env);
 
 /* for EAS */
+struct energy_env {
+	struct sched_group      *sg_top;
+	struct sched_group      *sg_cap;
+	int                     cap_idx;
+	int                     util_delta;
+	int                     src_cpu;
+	int                     dst_cpu;
+	int                     trg_cpu;
+	int                     energy;
+	int                     opp_idx[3]; /* [FIXME] cluster may > 3 */
+	int                     payoff;
+	struct task_struct      *task;
+	struct {
+		int before;
+		int after;
+		int delta;
+		int diff;
+	} nrg;
+	struct {
+		int before;
+		int after;
+		int delta;
+	} cap;
+};
+
+#ifdef CONFIG_MTK_SCHED_EAS_POWER_SUPPORT
+extern bool is_eas_enabled(void);
+extern bool is_hybrid_enabled(void);
+extern int mtk_cluster_capacity_idx(int cid, struct energy_env *eenv);
+#endif
+
 extern int calc_util_delta(struct energy_env *eenv, int cpu);
 extern unsigned long __get_cpu_usage(int cpu, int delta);
 extern int calc_usage_delta(struct energy_env *eenv, int cpu);

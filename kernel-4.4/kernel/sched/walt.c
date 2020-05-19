@@ -43,7 +43,7 @@ static __read_mostly unsigned int walt_io_is_busy = 0;
 unsigned int sysctl_sched_walt_init_task_load_pct = 15;
 
 /* 1 -> use PELT based load stats, 0 -> use window-based load stats */
-unsigned int __read_mostly walt_disabled = 0;
+unsigned int __read_mostly walt_disabled;
 
 static unsigned int max_possible_efficiency = 1024;
 static unsigned int min_possible_efficiency = 1024;
@@ -735,7 +735,7 @@ void walt_update_task_ravg(struct task_struct *p, struct rq *rq,
 	if (walt_disabled || !rq->window_start)
 		return;
 
-	lockdep_assert_held(&rq->lock);
+	/* lockdep_assert_held(&rq->lock); */
 
 	update_window_start(rq, wallclock);
 
@@ -846,6 +846,7 @@ void walt_fixup_busy_time(struct task_struct *p, int new_cpu)
 	struct rq *src_rq = task_rq(p);
 	struct rq *dest_rq = cpu_rq(new_cpu);
 	u64 wallclock;
+	int lock_needed = 0;
 
 	if (!p->on_rq && p->state != TASK_WAKING)
 		return;
@@ -855,6 +856,9 @@ void walt_fixup_busy_time(struct task_struct *p, int new_cpu)
 	}
 
 	if (p->state == TASK_WAKING)
+		lock_needed = 1;
+
+	if (lock_needed)
 		double_rq_lock(src_rq, dest_rq);
 
 	wallclock = walt_ktime_clock();
@@ -888,7 +892,7 @@ void walt_fixup_busy_time(struct task_struct *p, int new_cpu)
 	trace_walt_migration_update_sum(src_rq, p);
 	trace_walt_migration_update_sum(dest_rq, p);
 
-	if (p->state == TASK_WAKING)
+	if (lock_needed)
 		double_rq_unlock(src_rq, dest_rq);
 }
 

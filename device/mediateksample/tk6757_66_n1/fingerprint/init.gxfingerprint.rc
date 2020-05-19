@@ -1,0 +1,21 @@
+# fingerprint-goodix
+
+on init
+    chown system system  /dev/goodix_fp
+    chmod 0666 /dev/goodix_fp
+    mkdir /data/system/fingerprint0 0750 root root
+ 
+service gx_fpd /vendor/bin/gx_fpd
+    class late_start
+    user root
+    group root system
+
+service vendor.init_goodix /vendor/bin/init_goodix.sh
+    class post-fs-data
+    user root
+    group root system
+    oneshot
+    disabled
+
+on post-fs-data
+    start vendor.init_goodix

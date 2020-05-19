@@ -1,4 +1,3 @@
-
 config MTK_QMCX983
 	bool "QMCX983 for MediaTek package"
 	default n
@@ -6,4 +5,4 @@ config MTK_QMCX983
 	  It support different magnetometer sensor.
           If this option is set,
 	  it will support
-          QMCX983 magnetometer.
+          QMCX983 magnetometer. 

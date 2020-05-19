@@ -92,6 +92,8 @@ static char *dyna_load_pcm_path[] = {
 	[DYNA_LOAD_PCM_DEEPIDLE_BY_MP1] = "pcm_deepidle_by_mp1_mt6355.bin",
 	[DYNA_LOAD_PCM_DEEPIDLE_LPDDR4] = "pcm_deepidle_lpddr4_mt6355.bin",
 	[DYNA_LOAD_PCM_DEEPIDLE_LPDDR4_BY_MP1] = "pcm_deepidle_lpddr4_by_mp1_mt6355.bin",
+	[DYNA_LOAD_PCM_SODI_LPDDR4_2400] = "pcm_sodi_ddrdfs_lpddr4_2400_mt6355.bin",
+	[DYNA_LOAD_PCM_SODI_LPDDR4_2400_BY_MP1] = "pcm_sodi_ddrdfs_lpddr4_2400_by_mp1_mt6355.bin",
 	[DYNA_LOAD_PCM_MAX] = "pcm_path_max",
 };
 #else
@@ -108,6 +110,8 @@ static char *dyna_load_pcm_path[] = {
 	[DYNA_LOAD_PCM_DEEPIDLE_BY_MP1] = "pcm_deepidle_by_mp1.bin",
 	[DYNA_LOAD_PCM_DEEPIDLE_LPDDR4] = "pcm_deepidle_lpddr4.bin",
 	[DYNA_LOAD_PCM_DEEPIDLE_LPDDR4_BY_MP1] = "pcm_deepidle_lpddr4_by_mp1.bin",
+	[DYNA_LOAD_PCM_SODI_LPDDR4_2400] = "pcm_sodi_ddrdfs_lpddr4_2400_mt6355.bin",
+	[DYNA_LOAD_PCM_SODI_LPDDR4_2400_BY_MP1] = "pcm_sodi_ddrdfs_lpddr4_2400_by_mp1_mt6355.bin",
 	[DYNA_LOAD_PCM_MAX] = "pcm_path_max",
 };
 #endif
@@ -124,6 +128,8 @@ MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_DEEPIDLE]);
 MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_DEEPIDLE_BY_MP1]);
 MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_DEEPIDLE_LPDDR4]);
 MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_DEEPIDLE_LPDDR4_BY_MP1]);
+MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_SODI_LPDDR4_2400]);
+MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_SODI_LPDDR4_2400_BY_MP1]);
 #endif
 struct dyna_load_pcm_t dyna_load_pcm[DYNA_LOAD_PCM_MAX];
 
@@ -380,8 +386,10 @@ static void spm_register_init(void)
 	if (!node)
 		spm_err("find SLEEP node failed\n");
 	spm_base = of_iomap(node, 0);
-	if (!spm_base)
+	if (!spm_base) {
 		spm_err("base spm_base failed\n");
+		return;
+	}
 
 	spm_irq_0 = irq_of_parse_and_map(node, 0);
 	if (!spm_irq_0)
@@ -580,15 +588,24 @@ static void spm_register_init(void)
 
 #ifdef CONFIG_MTK_MD3_SUPPORT
 #if CONFIG_MTK_MD3_SUPPORT /* Using this to check > 0 */
-	spm_write(SPM_INFRA_MISC, (spm_read(SPM_INFRA_MISC) &
-		~(0xff << MD_SRC_REQ_BIT)) | (0x6d << MD_SRC_REQ_BIT));
+	if (spm_infracfg_ao_base)
+		spm_write(SPM_INFRA_MISC,
+				(spm_read(SPM_INFRA_MISC) &
+				 ~(0xff << MD_SRC_REQ_BIT)) |
+				(0x6d << MD_SRC_REQ_BIT));
 #else /* CONFIG_MTK_MD3_SUPPORT is 0 */
-	spm_write(SPM_INFRA_MISC, (spm_read(SPM_INFRA_MISC) &
-		~(0xff << MD_SRC_REQ_BIT)) | (0x29 << MD_SRC_REQ_BIT));
+	if (spm_infracfg_ao_base)
+		spm_write(SPM_INFRA_MISC,
+				(spm_read(SPM_INFRA_MISC) &
+					~(0xff << MD_SRC_REQ_BIT)) |
+				(0x29 << MD_SRC_REQ_BIT));
 #endif
 #else /* CONFIG_MTK_MD3_SUPPORT is not defined */
-	spm_write(SPM_INFRA_MISC, (spm_read(SPM_INFRA_MISC) &
-		~(0xff << MD_SRC_REQ_BIT)) | (0x29 << MD_SRC_REQ_BIT));
+	if (spm_infracfg_ao_base)
+		spm_write(SPM_INFRA_MISC,
+				(spm_read(SPM_INFRA_MISC) &
+					~(0xff << MD_SRC_REQ_BIT)) |
+				(0x29 << MD_SRC_REQ_BIT));
 #endif
 
 	/* enable register control */

@@ -169,7 +169,7 @@ int gf_power_init(struct gf_dev* pdev)
     //int ret = 0;
 
     FUNC_ENTRY();
-   /* pdev->avdd = regulator_get(&pdev->spi->dev, "vfp");
+   /* pdev->avdd = regulator_get(&pdev->spi->dev, "vfp");  // rt5081_ldo
     if(IS_ERR(pdev->avdd)) {
     	ret = PTR_ERR(pdev->avdd);
     	gf_print("Regulator get failed vdd ret=%d\n", ret);

@@ -12,15 +12,14 @@
  */
 
 /**
-* @file    mt_hotplug_strategy_algo.c
-* @brief   hotplug strategy(hps) - algo
-*/
+ * @file    mt_hotplug_strategy_algo.c
+ * @brief   hotplug strategy(hps) - algo
+ */
 
-#include <linux/kernel.h>	/* printk */
+#include <linux/kernel.h>
 #include <linux/module.h>	/* MODULE_DESCRIPTION, MODULE_LICENSE */
 #include <linux/init.h>		/* module_init, module_exit */
 #include <linux/kthread.h>	/* kthread_create */
-#include <linux/wakelock.h>	/* wake_lock_init */
 #include <linux/delay.h>	/* msleep */
 #include <asm-generic/bug.h>	/* WARN_ON */
 
@@ -95,7 +94,7 @@ static void algo_hmp_base(
 	WARN_ON(bo > bl);
 	WARN_ON(lo > ll);
 
-	if (bo < bb && bo < bl && hps_ctxt.state == STATE_LATE_RESUME) {
+	if (bo < bb && bo < bl) {
 		val = min(bb, bl) - bo;
 		for (cpu = hps_ctxt.big_cpu_id_min;
 			cpu <= hps_ctxt.big_cpu_id_max; ++cpu) {
@@ -112,12 +111,10 @@ static void algo_hmp_base(
 		hps_ctxt.action |= BIT(ACTION_BASE_BIG);
 	}
 
-	if (lo < lb && lo < ll &&
-		(num_online < hps_ctxt.little_num_base_perf_serv +
-			hps_ctxt.big_num_base_perf_serv)) {
+	if (lo < lb && lo < ll && (num_online < lb + bb)) {
 		val = min(lb, ll) - lo;
-		if (bo > hps_ctxt.big_num_base_perf_serv)
-			val -= bo - hps_ctxt.big_num_base_perf_serv;
+		if (bo > bb)
+			val -= bo - bb;
 		if (val > 0) {
 			for (cpu = hps_ctxt.little_cpu_id_min;
 				cpu <= hps_ctxt.little_cpu_id_max; ++cpu) {
@@ -183,8 +180,7 @@ static void algo_hmp_rush_boost(
 				break;
 		}
 		hps_ctxt.action |= BIT(ACTION_RUSH_BOOST_LITTLE);
-	} else if (val && big_num_online < big_num_limit &&
-			hps_ctxt.state == STATE_LATE_RESUME) {
+	} else if (val && big_num_online < big_num_limit) {
 		for (cpu = hps_ctxt.big_cpu_id_min;
 			cpu <= hps_ctxt.big_cpu_id_max; ++cpu) {
 			if (cpumask_test_cpu(cpu, big_online_cpumask))
@@ -255,8 +251,7 @@ static void algo_hmp_up(
 			}
 		}
 		hps_ctxt.action |= BIT(ACTION_UP_LITTLE);
-	} else if (big_num_online < big_num_limit &&
-			hps_ctxt.state == STATE_LATE_RESUME) {
+	} else if (big_num_online < big_num_limit) {
 		for (cpu = hps_ctxt.big_cpu_id_min;
 			cpu <= hps_ctxt.big_cpu_id_max; ++cpu) {
 			if (!cpumask_test_cpu(cpu, big_online_cpumask)) {
@@ -316,6 +311,9 @@ static void algo_hmp_down(
 	while (hps_ctxt.down_loads_sum < down_threshold * (val - 1))
 		--val;
 	val = num_online - val;
+
+	if (val > 1 && !hps_ctxt.quick_landing_enabled)
+		val = 1;
 
 	if (val && big_num_online > big_num_base) {
 		for (cpu = hps_ctxt.big_cpu_id_max;
@@ -464,23 +462,14 @@ void hps_algo_hmp(void)
 	/*
 	 * algo - get boundary
 	 */
-	little_num_limit = min(hps_ctxt.little_num_limit_thermal,
-				hps_ctxt.little_num_limit_low_battery);
-	little_num_limit = min3(little_num_limit,
-				hps_ctxt.little_num_limit_ultra_power_saving,
-				hps_ctxt.little_num_limit_power_serv);
-	little_num_base = hps_ctxt.little_num_base_perf_serv;
+	little_num_limit = num_limit_little_cpus();
+	little_num_base = num_base_little_cpus();
 	cpumask_and(&little_online_cpumask, &hps_ctxt.little_cpumask,
 		cpu_online_mask);
 	little_num_online = cpumask_weight(&little_online_cpumask);
 	/* TODO: no need if is_hmp */
-	big_num_limit = min(hps_ctxt.big_num_limit_thermal,
-				hps_ctxt.big_num_limit_low_battery);
-	big_num_limit = min3(big_num_limit,
-				hps_ctxt.big_num_limit_ultra_power_saving,
-				hps_ctxt.big_num_limit_power_serv);
-	big_num_base = max(hps_ctxt.cur_nr_heavy_task,
-				hps_ctxt.big_num_base_perf_serv);
+	big_num_limit = num_limit_big_cpus();
+	big_num_base = num_base_big_cpus();
 	cpumask_and(&big_online_cpumask, &hps_ctxt.big_cpumask,
 			cpu_online_mask);
 	big_num_online = cpumask_weight(&big_online_cpumask);
@@ -488,7 +477,7 @@ void hps_algo_hmp(void)
 	log_alog(" CPU:%s\n", str1);
 	log_alog("LOAD:%s\n", str2);
 	log_alog(
-		"loads(%u), hvy_tsk(%u), tlp(%u), iowait(%u), limit_t(%u)(%u), limit_lb(%u)(%u), limit_ups(%u)(%u), limit_pos(%u)(%u), base_pes(%u)(%u)\n",
+		"loads(%u), hvy_tsk(%u), tlp(%u), iowait(%u), limit_t(%u)(%u), limit_lb(%u)(%u), limit_ups(%u)(%u), limit_pos(%u)(%u), limit_c1(%u)(%u), limit_c2(%u)(%u), base_pes(%u)(%u), base_c1(%u)(%u), base_c2(%u)(%u)\n",
 		hps_ctxt.cur_loads, hps_ctxt.cur_nr_heavy_task,
 		hps_ctxt.cur_tlp, hps_ctxt.cur_iowait,
 		hps_ctxt.little_num_limit_thermal,
@@ -499,8 +488,16 @@ void hps_algo_hmp(void)
 		hps_ctxt.big_num_limit_ultra_power_saving,
 		hps_ctxt.little_num_limit_power_serv,
 		hps_ctxt.big_num_limit_power_serv,
+		hps_ctxt.little_num_limit_custom1,
+		hps_ctxt.big_num_limit_custom1,
+		hps_ctxt.little_num_limit_custom2,
+		hps_ctxt.big_num_limit_custom2,
 		hps_ctxt.little_num_base_perf_serv,
-		hps_ctxt.big_num_base_perf_serv);
+		hps_ctxt.big_num_base_perf_serv,
+		hps_ctxt.little_num_base_custom1,
+		hps_ctxt.big_num_base_custom1,
+		hps_ctxt.little_num_base_custom2,
+		hps_ctxt.big_num_base_custom2);
 
 	/*
 	 * algo - thermal, low battery
@@ -585,7 +582,7 @@ void hps_algo_hmp(void)
 	 */
 ALGO_END_WITH_ACTION:
 	log_act(
-		"(%04x)(%u)(%u)action end(%u)(%u)(%u)(%u) (%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u) (%u)(%u)(%u) (%u)(%u)(%u) (%u)(%u)(%u)(%u)(%u)\n",
+		"(%04x)(%u)(%u)action end(%u)(%u)(%u)(%u) (%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u) (%u)(%u)(%u) (%u)(%u)(%u) (%u)(%u)(%u)(%u)(%u)\n",
 		hps_ctxt.action, little_num_online, big_num_online,
 		hps_ctxt.cur_loads, hps_ctxt.cur_tlp,
 		hps_ctxt.cur_iowait, hps_ctxt.cur_nr_heavy_task,
@@ -597,8 +594,16 @@ ALGO_END_WITH_ACTION:
 		hps_ctxt.big_num_limit_ultra_power_saving,
 		hps_ctxt.little_num_limit_power_serv,
 		hps_ctxt.big_num_limit_power_serv,
+		hps_ctxt.little_num_limit_custom1,
+		hps_ctxt.big_num_limit_custom1,
+		hps_ctxt.little_num_limit_custom2,
+		hps_ctxt.big_num_limit_custom2,
 		hps_ctxt.little_num_base_perf_serv,
 		hps_ctxt.big_num_base_perf_serv,
+		hps_ctxt.little_num_base_custom1,
+		hps_ctxt.big_num_base_custom1,
+		hps_ctxt.little_num_base_custom2,
+		hps_ctxt.big_num_base_custom2,
 		hps_ctxt.up_loads_sum, hps_ctxt.up_loads_count,
 		hps_ctxt.up_loads_history_index,
 		hps_ctxt.down_loads_sum, hps_ctxt.down_loads_count,
@@ -823,6 +828,9 @@ static void algo_smp_down(
 		--val;
 	val = little_num_online - val;
 
+	if (val > 1 && !hps_ctxt.quick_landing_enabled)
+		val = 1;
+
 	if (!val || little_num_online <= little_num_base)
 		return;
 
@@ -900,12 +908,8 @@ void hps_algo_smp(void)
 	/*
 	 * algo - get boundary
 	 */
-	little_num_limit = min(hps_ctxt.little_num_limit_thermal,
-				hps_ctxt.little_num_limit_low_battery);
-	little_num_limit = min3(little_num_limit,
-				hps_ctxt.little_num_limit_ultra_power_saving,
-				hps_ctxt.little_num_limit_power_serv);
-	little_num_base = hps_ctxt.little_num_base_perf_serv;
+	little_num_limit = num_limit_little_cpus();
+	little_num_base = num_base_little_cpus();
 	cpumask_and(&little_online_cpumask,
 		&hps_ctxt.little_cpumask, cpu_online_mask);
 	little_num_online = cpumask_weight(&little_online_cpumask);
@@ -913,14 +917,18 @@ void hps_algo_smp(void)
 	log_alog(" CPU:%s\n", str1);
 	log_alog("LOAD:%s\n", str2);
 	log_alog(
-		"loads(%u), hvy_tsk(%u), tlp(%u), iowait(%u), limit_t(%u), limit_lb(%u), limit_ups(%u), limit_pos(%u), base_pes(%u)\n",
+		"loads(%u), hvy_tsk(%u), tlp(%u), iowait(%u), limit_t(%u), limit_lb(%u), limit_ups(%u), limit_pos(%u), limit_c1(%u), limit_c2(%u), base_pes(%u), base_c1(%u), base_c2(%u)\n",
 		hps_ctxt.cur_loads, hps_ctxt.cur_nr_heavy_task,
 		hps_ctxt.cur_tlp, hps_ctxt.cur_iowait,
 		hps_ctxt.little_num_limit_thermal,
 		hps_ctxt.little_num_limit_low_battery,
 		hps_ctxt.little_num_limit_ultra_power_saving,
 		hps_ctxt.little_num_limit_power_serv,
-		hps_ctxt.little_num_base_perf_serv);
+		hps_ctxt.little_num_limit_custom1,
+		hps_ctxt.little_num_limit_custom2,
+		hps_ctxt.little_num_base_perf_serv,
+		hps_ctxt.little_num_base_custom1,
+		hps_ctxt.little_num_base_custom2);
 
 	/*
 	 * algo - thermal, low battery
@@ -990,7 +998,7 @@ void hps_algo_smp(void)
 	 */
 ALGO_END_WITH_ACTION:
 	log_act(
-		"(%04x)(%u)action end(%u)(%u)(%u)(%u) (%u)(%u)(%u)(%u)(%u) (%u)(%u)(%u) (%u)(%u)(%u) (%u)(%u)(%u)(%u)(%u)\n",
+		"(%04x)(%u)action end(%u)(%u)(%u)(%u) (%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u)(%u) (%u)(%u)(%u) (%u)(%u)(%u) (%u)(%u)(%u)(%u)(%u)\n",
 		hps_ctxt.action, little_num_online,
 		hps_ctxt.cur_loads, hps_ctxt.cur_tlp, hps_ctxt.cur_iowait,
 		hps_ctxt.cur_nr_heavy_task,
@@ -998,7 +1006,11 @@ ALGO_END_WITH_ACTION:
 		hps_ctxt.little_num_limit_low_battery,
 		hps_ctxt.little_num_limit_ultra_power_saving,
 		hps_ctxt.little_num_limit_power_serv,
+		hps_ctxt.little_num_limit_custom1,
+		hps_ctxt.little_num_limit_custom2,
 		hps_ctxt.little_num_base_perf_serv,
+		hps_ctxt.little_num_base_custom1,
+		hps_ctxt.little_num_base_custom2,
 		hps_ctxt.up_loads_sum, hps_ctxt.up_loads_count,
 		hps_ctxt.up_loads_history_index,
 		hps_ctxt.down_loads_sum, hps_ctxt.down_loads_count,

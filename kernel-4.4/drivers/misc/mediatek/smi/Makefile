@@ -108,6 +108,7 @@ else ifneq (,$(filter $(CONFIG_MTK_PLATFORM), "mt6771"))
 ccflags-y += -DSMI_SYL
 ccflags-y += -DSMI_MMU_V2
 ccflags-y += -DMMDVFS_HOOK
+ccflags-y += -DDYNAMIC_DISP_HRT
 ccflags-y += -I$(srctree)/drivers/clk/mediatek
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/cmdq/v3/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/cmdq/v3/$(MTK_PLATFORM)/
@@ -118,6 +119,7 @@ obj-y += smi_configuration_mt6771.o
 SUPPORT_USE_DDR_TYPE := true
 SUPPORT_MET_SMI := true
 SUPPORT_QOS := true
+SUPPORT_MMP := true
 
 else
 ccflags-y += -DSMI_DUMMY
@@ -128,6 +130,13 @@ endif
 ifeq ($(CONFIG_MTK_QOS_SUPPORT),y)
 ifeq (true, $(SUPPORT_QOS))
 obj-y += mmdvfs_pmqos.o
+endif
+endif
+
+ifeq ($(CONFIG_MMPROFILE),y)
+ifeq (true, $(SUPPORT_MMP))
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/mmp/
+ccflags-y += -DMMDVFS_MMP
 endif
 endif
 

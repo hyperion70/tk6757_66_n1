@@ -34,18 +34,6 @@ LCM_DSI_MODE_CON lcm_dsi_mode;
 #endif
 
 LCM_DRIVER *lcm_driver_list[] = {
-#if defined(TD4310_FHD_DSI_VDO_CHUANGWEI_MALATA)
-	&td4310_fhd_dsi_vdo_chuangwei_malata_lcm_drv,
-#endif
-#if defined(RM69297_LFHD_DSI_VIDEO_BOE)
-	&rm69297_lfhd_dsi_vdo_boe_lcm_drv,
-#endif
-#if defined(FT8006U_AUO60_HAIFEI_LHD)
-	&ft8006u_auo60_haifei_lhd_lcm_drv,
-#endif
-#if defined(ILI9881F_AUO60_YKL_LHD)
-	&ili9881f_auo60_ykl_lhd_lcm_drv,
-#endif
 #if defined(OTM1284A_HD720_DSI_VDO_TM)
 	&otm1284a_hd720_dsi_vdo_tm_lcm_drv,
 #endif
@@ -53,6 +41,10 @@ LCM_DRIVER *lcm_driver_list[] = {
 	&otm1285a_hd720_dsi_vdo_tm_lcm_drv,
 #endif
 
+#if defined(TD4310_FHD_DSI_VDO_CHUANGWEI_MALATA)
+    &td4310_fhd_dsi_vdo_chuangwei_malata_lcm_drv,
+#endif
+    
 #if defined(NT35595_FHD_DSI_CMD_TRULY_8163)
 	&nt35595_fhd_dsi_cmd_truly_8163_lcm_drv,
 #endif
@@ -1000,6 +992,9 @@ LCM_DRIVER *lcm_driver_list[] = {
 	&st7789h2_dbi_lcm_drv,
 #endif
 
+#if defined(NT71397_WUXGA_DSI_VDO_NT65902)
+	&nt71397_wuxga_dsi_vdo_nt65902_lcm_drv,
+#endif
 #if defined(CM_N070ICE_DSI_VDO_MT8173)
 	&cm_n070ice_dsi_vdo_mt8173_lcm_drv,
 #endif
@@ -1151,6 +1146,14 @@ LCM_DRIVER *lcm_driver_list[] = {
 
 #if defined(ST7789H2_DBI_C_3WIRE)
 	&st7789h2_dbi_c_3wire_lcm_drv,
+#endif
+
+#if defined(SSD2858_KD097D05_QXGA_DSI_VDO)
+	&ssd2858_kd097d05_qxga_dsi_vdo_lcm_drv,
+#endif
+
+#if defined(ES6311_ANX6585_ZIGZAG_WXGA)
+	&es6311_anx6585_zigzag_wxga_lcm_drv,
 #endif
 };
 

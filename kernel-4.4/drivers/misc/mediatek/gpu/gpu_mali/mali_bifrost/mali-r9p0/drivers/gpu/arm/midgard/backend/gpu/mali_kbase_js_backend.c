@@ -183,14 +183,11 @@ static enum hrtimer_restart timer_callback(struct hrtimer *timer)
 					 * now. Hard stop the slot.
 					 */
 #if !KBASE_DISABLE_SCHEDULING_HARD_STOPS
-					int ms =
-						js_devdata->scheduling_period_ns
-								/ 1000000u;
+					int ms = js_devdata->scheduling_period_ns / 1000000u;
 					dev_warn(kbdev->dev, "JS: Job Hard-Stopped (took more than %lu ticks at %lu ms/tick)",
 							(unsigned long)ticks,
 							(unsigned long)ms);
-					kbase_job_slot_hardstop(atom->kctx, s,
-									atom);
+					kbase_job_slot_hardstop(atom->kctx, s, atom);
 #endif
 				} else if (ticks == gpu_reset_ticks) {
 					/* Job has been scheduled for at least

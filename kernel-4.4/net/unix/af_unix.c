@@ -1193,20 +1193,20 @@ out:
 
 #ifdef CONFIG_MTK_NET_LOGGING
 struct wait_for_peer_info_t {
-	char *process;
+	char process[20];
 	int pid;
-	unsigned long long when;
+	unsigned long when;
 };
 
 static void print_wait_peer_sock_info(unsigned long data)
 {
 	struct wait_for_peer_info_t *wait_info = (struct wait_for_peer_info_t *)data;
-	unsigned long long time = jiffies - wait_info->when;
+	unsigned long time = jiffies - wait_info->when;
 
 	/*Compatible 32bit projet and 64 bit project*/
 	do_div(time, HZ);
 	pr_info("----------------------wait for peer block info-----------------------\n");
-	pr_info("[mtk_net][sock]sockdbg %s[%d] is blocking because wait for peer more than %lld sec\n",
+	pr_info("[mtk_net][sock]sockdbg %s[%d] is blocking because wait for peer more than %ld sec\n",
 		wait_info->process, wait_info->pid, time);
 }
 #endif
@@ -1222,7 +1222,7 @@ static long unix_wait_for_peer(struct sock *other, long timeo)
 	struct wait_for_peer_info_t wait_sk_info;
 
 	wait_sk_info.pid = current->pid;
-	wait_sk_info.process = current->comm;
+	strncpy(wait_sk_info.process, current->comm, sizeof(wait_sk_info.process));
 	wait_sk_info.when = jiffies;
 	init_timer_on_stack(&wait_peer_timer);
 	wait_peer_timer.function = print_wait_peer_sock_info;

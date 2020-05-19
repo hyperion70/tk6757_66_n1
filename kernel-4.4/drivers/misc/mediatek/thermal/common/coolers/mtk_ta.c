@@ -77,7 +77,9 @@ static int g_tad_pid;
 static bool init_flag;
 static int g_tad_ttj;
 struct SPA_T thermal_spa_t;
-
+static struct tad_nl_msg_t tad_ret_msg;
+static unsigned int g_ta_status;
+static int g_ta_counter;
 /*=============================================================
  *Local function prototype
  *=============================================================
@@ -184,6 +186,7 @@ void atm_ctrl_cmd_from_user(void *nl_data, struct tad_nl_msg_t *ret_msg)
 
 	default:
 			tsta_warn("bad TA_DAEMON_CTRL_CMD_FROM_USER 0x%x\n", msg->tad_cmd);
+				g_ta_status = g_ta_status | 0x01000000;
 		break;
 	}
 
@@ -207,9 +210,10 @@ static void ta_nl_send_to_user(int pid, int seq, struct tad_nl_msg_t *reply_msg)
 	int ret;
 
 	skb = alloc_skb(len, GFP_ATOMIC);
-	if (!skb)
+	if (!skb) {
+		g_ta_status = g_ta_status | 0x00010000;
 		return;
-
+	}
 	nlh = nlmsg_put(skb, pid, seq, 0, size, 0);
 	data = NLMSG_DATA(nlh);
 	memcpy(data, reply_msg, size);
@@ -221,8 +225,11 @@ static void ta_nl_send_to_user(int pid, int seq, struct tad_nl_msg_t *reply_msg)
 
 
 	ret = netlink_unicast(daemo_nl_sk, skb, pid, MSG_DONTWAIT);
-	if (ret < 0)
+	if (ret < 0) {
+		g_ta_status = g_ta_status | 0x00000010;
 		pr_err("[ta_nl_send_to_user] send failed %d\n", ret);
+		return;
+	}
 
 
 	tsta_dprintk("[ta_nl_send_to_user] netlink_unicast- ret=%d\n", ret);
@@ -237,7 +244,7 @@ static void ta_nl_data_handler(struct sk_buff *skb)
 	int seq;
 	void *data;
 	struct nlmsghdr *nlh;
-	struct tad_nl_msg_t *tad_msg, *tad_ret_msg = NULL;
+	struct tad_nl_msg_t *tad_msg = NULL;
 	int size = 0;
 
 	nlh = (struct nlmsghdr *)skb->data;
@@ -249,27 +256,23 @@ static void ta_nl_data_handler(struct sk_buff *skb)
 	data = NLMSG_DATA(nlh);
 
 	tad_msg = (struct tad_nl_msg_t *)data;
+
 	if (tad_msg->tad_ret_data_len >= TAD_NL_MSG_MAX_LEN) {
+		g_ta_status = g_ta_status | 0x00000100;
 		tsta_warn("[ta_nl_data_handler] tad_msg->=ad_ret_data_len=%d\n", tad_msg->tad_ret_data_len);
 		return;
 	}
 
 	size = tad_msg->tad_ret_data_len + TAD_NL_MSG_T_HDR_LEN;
 
-	/*tad_ret_msg = (struct tad_nl_msg_t *)vmalloc(size);*/
-	tad_ret_msg = vmalloc(size);
-	if (tad_ret_msg != NULL) {
-		memset(tad_ret_msg, 0, size);
 
-		atm_ctrl_cmd_from_user(data, tad_ret_msg);
-		ta_nl_send_to_user(pid, seq, tad_ret_msg);
-		tsta_dprintk("[ta_nl_data_handler] send to user space process done\n");
+	memset(&tad_ret_msg, 0, size);
 
-		vfree(tad_ret_msg);
+	atm_ctrl_cmd_from_user(data, &tad_ret_msg);
+	ta_nl_send_to_user(pid, seq, &tad_ret_msg);
+	tsta_dprintk("[ta_nl_data_handler] send to user space process done\n");
 
-	} else {
-		pr_warn("[Thermal/TC/TA][ta_nl_data_handler] vmalloc fail\n");
-	}
+
 
 }
 
@@ -277,6 +280,13 @@ int wakeup_ta_algo(int flow_state)
 {
 	tsta_dprintk("[wakeup_ta_algo]g_tad_pid=%d, state=%d\n", g_tad_pid, flow_state);
 
+	/*Avoid print log too much*/
+	if (g_ta_counter >= 3) {
+		g_ta_counter = 0;
+		if (g_ta_status != 0)
+			tsta_warn("[wakeup_ta_algo] status: 0x%x\n", g_ta_status);
+	}
+	g_ta_counter++;
 	if (g_tad_pid != 0) {
 		struct tad_nl_msg_t *tad_msg = NULL;
 		int size = TAD_NL_MSG_T_HDR_LEN + sizeof(flow_state);
@@ -284,9 +294,10 @@ int wakeup_ta_algo(int flow_state)
 		/*tad_msg = (struct tad_nl_msg_t *)vmalloc(size);*/
 		tad_msg = vmalloc(size);
 
-		if (tad_msg == NULL)
+		if (tad_msg == NULL) {
+			g_ta_status = g_ta_status | 0x00100000;
 			return -ENOMEM;
-
+		}
 		tsta_dprintk("[wakeup_ta_algo] malloc size=%d\n", size);
 		memset(tad_msg, 0, size);
 		tad_msg->tad_cmd = TA_DAEMON_CMD_NOTIFY_DAEMON;
@@ -296,6 +307,8 @@ int wakeup_ta_algo(int flow_state)
 		vfree(tad_msg);
 		return 0;
 	} else {
+		tsta_warn("[wakeup_ta_algo] error,g_tad_pid=0\n");
+		g_ta_status = g_ta_status | 0x00001000;
 		return -1;
 	}
 }
@@ -426,6 +439,7 @@ static int __init ta_init(void)
 	g_tad_pid = 0;
 	init_flag = false;
 	g_tad_ttj = 0;
+	g_ta_status = 0;
 
 	/*add by willcai for the userspace to kernelspace*/
 	daemo_nl_sk = NULL;
@@ -435,6 +449,7 @@ static int __init ta_init(void)
 
 	if (daemo_nl_sk == NULL) {
 		tsta_warn("[ta_init] netlink_kernel_create error\n");
+		g_ta_status = 0x00000001;
 		return -1;
 	}
 

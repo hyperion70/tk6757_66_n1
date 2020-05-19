@@ -253,7 +253,7 @@ static kal_bool fg_hv_thread;
  * FOR ADB CMD
  */
 /* Dual battery */
-int g_status_smb = POWER_SUPPLY_STATUS_DISCHARGING;
+int g_status_smb = POWER_SUPPLY_STATUS_NOT_CHARGING;
 int g_capacity_smb = 50;
 int g_present_smb;
 /* ADB charging CMD */
@@ -339,10 +339,12 @@ static enum power_supply_property battery_props[] = {
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
+	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	/* Add for Battery Service */
 	POWER_SUPPLY_PROP_batt_vol,
 	POWER_SUPPLY_PROP_batt_temp,
+	POWER_SUPPLY_PROP_TEMP,
 	/* Add for EM */
 	POWER_SUPPLY_PROP_TemperatureR,
 	POWER_SUPPLY_PROP_TempBattVoltage,
@@ -635,6 +637,9 @@ static int battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_batt_temp:
 		val->intval = data->BAT_batt_temp;
 		break;
+	case POWER_SUPPLY_PROP_TEMP:
+		val->intval = data->BAT_batt_temp;
+		break;
 	case POWER_SUPPLY_PROP_TemperatureR:
 		val->intval = data->BAT_TemperatureR;
 		break;
@@ -665,6 +670,11 @@ static int battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		val->intval = 5000000;
 		break;
+
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+		val->intval = data->BAT_batt_vol * 1000;
+		break;
+
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
 		val->intval = battery_meter_get_QMAX25() * 1000;
 		/* QMAX from battery, ma to ua */
@@ -746,13 +756,13 @@ static struct battery_data battery_main = {
 	.BAT_batt_vol = 4200,
 	.BAT_batt_temp = 22,
 	/* Dual battery */
-	.status_smb = POWER_SUPPLY_STATUS_DISCHARGING,
+	.status_smb = POWER_SUPPLY_STATUS_NOT_CHARGING,
 	.capacity_smb = 50,
 	.present_smb = 0,
 	/* ADB CMD discharging */
 	.adjust_power = -1,
 #else
-	.BAT_STATUS = POWER_SUPPLY_STATUS_DISCHARGING,
+	.BAT_STATUS = POWER_SUPPLY_STATUS_NOT_CHARGING,
 	.BAT_HEALTH = POWER_SUPPLY_HEALTH_GOOD,
 	.BAT_PRESENT = 1,
 	.BAT_TECHNOLOGY = POWER_SUPPLY_TECHNOLOGY_LION,
@@ -764,7 +774,7 @@ static struct battery_data battery_main = {
 	.BAT_batt_vol = 0,
 	.BAT_batt_temp = 0,
 	/* Dual battery */
-	.status_smb = POWER_SUPPLY_STATUS_DISCHARGING,
+	.status_smb = POWER_SUPPLY_STATUS_NOT_CHARGING,
 	.capacity_smb = 50,
 	.present_smb = 0,
 	/* ADB CMD discharging */
@@ -1959,7 +1969,7 @@ static void battery_update(struct battery_data *bat_data)
 
 	} else {		/* Only Battery */
 
-		bat_data->BAT_STATUS = POWER_SUPPLY_STATUS_DISCHARGING;
+		bat_data->BAT_STATUS = POWER_SUPPLY_STATUS_NOT_CHARGING;
 		if (BMT_status.bat_vol <= batt_cust_data.v_0percent_tracking)
 			resetBatteryMeter = mt_battery_0Percent_tracking_check();
 		else
@@ -2849,9 +2859,9 @@ static void mt_battery_update_status(void)
 }
 
 
-CHARGER_TYPE mt_charger_type_detection(void)
+enum charger_type mt_charger_type_detection(void)
 {
-	CHARGER_TYPE CHR_Type_num = CHARGER_UNKNOWN;
+	enum charger_type CHR_Type_num = CHARGER_UNKNOWN;
 
 	mutex_lock(&charger_type_mutex);
 
@@ -2912,7 +2922,7 @@ CHARGER_TYPE mt_charger_type_detection(void)
 	return BMT_status.charger_type;
 }
 
-CHARGER_TYPE mt_get_charger_type(void)
+enum charger_type mt_get_charger_type(void)
 {
 #if defined(CONFIG_POWER_EXT) || defined(CONFIG_MTK_FPGA)
 	return STANDARD_HOST;

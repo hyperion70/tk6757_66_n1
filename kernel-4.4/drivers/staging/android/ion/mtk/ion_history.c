@@ -24,6 +24,7 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <mmprofile.h>
+#include <mmprofile_function.h>
 #include <linux/debugfs.h>
 #include <linux/kthread.h>
 #include "ion_profile.h"
@@ -600,7 +601,8 @@ static int ion_history_record(void *data)
 
 			if (g_client_history) {
 				/* record page pool info */
-				ion_mm_heap_for_each_pool(write_mm_page_pool);
+				if (ion_mm_heap_for_each_pool(write_mm_page_pool) < 0)
+					break;
 
 				if (total_orphaned_size)
 					ion_client_write_record(g_client_history, NULL, NULL,

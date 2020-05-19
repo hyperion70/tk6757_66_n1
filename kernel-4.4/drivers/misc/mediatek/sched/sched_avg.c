@@ -18,10 +18,12 @@
 #include <linux/hrtimer.h>
 #include <linux/sched.h>
 #include <linux/math64.h>
+#include <linux/types.h>
 #include <trace/events/sched.h>
 #include "rq_stats.h"
 
 #include <mt-plat/met_drv.h>
+#include <mt-plat/fpsgo_v2_common.h>
 
 enum overutil_type_t {
 	NO_OVERUTIL = 0,
@@ -200,10 +202,14 @@ enum overutil_type_t is_task_overutil(struct task_struct *p)
 		return NO_OVERUTIL;
 }
 
+#define MAX_UTIL_TRACKER_PERIODIC_MS 32
 static int gb_task_util;
 static int gb_task_pid;
 static int gb_task_cpu;
 static int gb_boosted_util;
+
+static DEFINE_SPINLOCK(gb_max_util_lock);
+void (*fpsgo_sched_nominate_fp)(pid_t *, int *);
 
 void sched_max_util_task_tracking(void)
 {
@@ -213,6 +219,25 @@ void sched_max_util_task_tracking(void)
 	int boost_util = 0;
 	int max_cpu = 0;
 	int max_task_pid = 0;
+	ktime_t now = ktime_get();
+	unsigned long flag;
+	static ktime_t max_util_tracker_last_update;
+	pid_t tasks[NR_CPUS] = {0};
+	int   utils[NR_CPUS] = {0};
+
+	spin_lock_irqsave(&gb_max_util_lock, flag);
+
+	/* periodic: 32ms */
+	if (ktime_before(now, ktime_add_ms(
+		max_util_tracker_last_update, MAX_UTIL_TRACKER_PERIODIC_MS))) {
+		spin_unlock_irqrestore(&gb_max_util_lock, flag);
+		return;
+	}
+
+	/* update last update time for tracker */
+	max_util_tracker_last_update = now;
+
+	spin_unlock_irqrestore(&gb_max_util_lock, flag);
 
 	for_each_possible_cpu(cpu) {
 		cpu_overutil = &per_cpu(cpu_overutil_state, cpu);
@@ -224,6 +249,11 @@ void sched_max_util_task_tracking(void)
 			max_task_pid = cpu_overutil->max_task_pid;
 		}
 
+		if (fpsgo_sched_nominate_fp) {
+			tasks[cpu] = cpu_overutil->max_task_pid;
+			utils[cpu] = cpu_overutil->max_task_util;
+		}
+
 		cpu_overutil->max_task_util = 0;
 		cpu_overutil->max_boost_util = 0;
 		cpu_overutil->max_task_pid = 0;
@@ -233,6 +263,9 @@ void sched_max_util_task_tracking(void)
 	gb_boosted_util = boost_util;
 	gb_task_pid = max_task_pid;
 	gb_task_cpu = max_cpu;
+
+	if (fpsgo_sched_nominate_fp)
+		fpsgo_sched_nominate_fp(&tasks[0], &utils[0]);
 
 	met_tag_oneshot(0, "sched_max_task_util", max_util);
 #if MET_SCHED_DEBUG
@@ -993,14 +1026,6 @@ OUT:
 }
 EXPORT_SYMBOL(sched_update_nr_heavy_prod);
 
-static struct timer_list tracker_timer;
-
-static void tracker_isr(unsigned long data)
-{
-	sched_max_util_task_tracking();
-	mod_timer(&tracker_timer, jiffies + HZ/32); /* 32ms */
-}
-
 static int init_heavy_tlb(void)
 {
 	if (!init_heavy) {
@@ -1072,12 +1097,6 @@ static int init_heavy_tlb(void)
 				__func__, tmp_cpu, cpu_overutil->overutil_thresh_l, cpu_overutil->overutil_thresh_h,
 				(unsigned long int)cluster_heavy_tbl[cid].max_capacity);
 		}
-
-
-		init_timer_deferrable(&tracker_timer);
-		tracker_timer.function = tracker_isr;
-		tracker_timer.expires = jiffies + HZ/32; /*32ms*/
-		add_timer(&tracker_timer);
 
 		init_heavy = 1;
 	}

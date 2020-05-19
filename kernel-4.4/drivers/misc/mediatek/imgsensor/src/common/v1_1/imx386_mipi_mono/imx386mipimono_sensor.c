@@ -184,7 +184,7 @@ static struct imgsensor_info_struct imgsensor_info = {
 	/* sensor gain delay frame for AE cycle,2 frame with ispGain_delay-sensor_gain_delay=2-0=2 */
 	.ae_sensor_gain_delay_frame = 0,
 	.ae_ispGain_delay_frame = 2,/* isp gain delay frame for AE cycle */
-	.frame_time_delay_frame = 2,
+	.frame_time_delay_frame = 3,
 	.ihdr_support = 0,	  /* 1, support; 0,not support */
 	.ihdr_le_firstline = 0,  /* 1,le first ; 0, se first */
 	.temperature_support = 1, /* 1, support; 0,not support */
@@ -2314,6 +2314,9 @@ static kal_uint32 get_info(MSDK_SCENARIO_ID_ENUM scenario_id,
 	sensor_info->SensorHightSampling = 0;	/* 0 is default 1x */
 	sensor_info->SensorPacketECCOrder = 1;
 	sensor_info->PDAF_Support = 2;
+
+	sensor_info->SensorHorFOV = 67;
+
 	switch (scenario_id) {
 	case MSDK_SCENARIO_ID_CAMERA_PREVIEW:
 		sensor_info->SensorGrabStartX = imgsensor_info.pre.startx;

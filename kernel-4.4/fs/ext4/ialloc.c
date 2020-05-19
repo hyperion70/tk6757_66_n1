@@ -88,6 +88,8 @@ static int ext4_validate_inode_bitmap(struct super_block *sb,
 		return -EFSCORRUPTED;
 
 	ext4_lock_group(sb, block_group);
+	if (buffer_verified(bh))
+		goto verified;
 	blk = ext4_inode_bitmap(sb, desc);
 	if (!ext4_inode_bitmap_csum_verify(sb, block_group, desc, bh,
 					   EXT4_INODES_PER_GROUP(sb) / 8)) {
@@ -105,6 +107,7 @@ static int ext4_validate_inode_bitmap(struct super_block *sb,
 		return -EFSBADCRC;
 	}
 	set_buffer_verified(bh);
+verified:
 	ext4_unlock_group(sb, block_group);
 	return 0;
 }
@@ -131,10 +134,9 @@ ext4_read_inode_bitmap(struct super_block *sb, ext4_group_t block_group)
 	bitmap_blk = ext4_inode_bitmap(sb, desc);
 	if ((bitmap_blk <= le32_to_cpu(sbi->s_es->s_first_data_block)) ||
 	    (bitmap_blk >= ext4_blocks_count(sbi->s_es))) {
-		ext4_error(sb,
-			   "Invalid inode bitmap blk %llu in block_group %u",
-			   bitmap_blk, block_group);
-		return ERR_PTR(-EUCLEAN);
+		ext4_error(sb, "Invalid inode bitmap blk %llu in "
+			   "block_group %u", bitmap_blk, block_group);
+		return ERR_PTR(-EFSCORRUPTED);
 	}
 	bh = sb_getblk(sb, bitmap_blk);
 	if (unlikely(!bh)) {
@@ -158,8 +160,8 @@ ext4_read_inode_bitmap(struct super_block *sb, ext4_group_t block_group)
 		if (block_group == 0) {
 			ext4_unlock_group(sb, block_group);
 			unlock_buffer(bh);
-			ext4_error(sb,
-				"Inode bitmap for bg 0 marked uninitialized");
+			ext4_error(sb, "Inode bitmap for bg 0 marked "
+				   "uninitialized");
 			err = -EFSCORRUPTED;
 			goto out;
 		}

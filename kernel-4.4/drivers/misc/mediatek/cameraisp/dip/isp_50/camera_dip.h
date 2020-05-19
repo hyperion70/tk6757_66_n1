@@ -37,6 +37,7 @@ m4u_callback_ret_t DIP_M4U_TranslationFault_callback(int port, unsigned int mva,
 #define DIP_MAGIC               'D'
 
 /*Chip Dependent Constanct*/
+#define DIP_IMGSYS_BASE_HW   0x15020000
 #define DIP_A_BASE_HW   0x15022000
 #define DIP_REG_RANGE           (0x6000) /*PAGE_SIZE*6 = 4096*6 <=dependent on device tree setting */
 
@@ -242,7 +243,6 @@ enum DIP_CMD_ENUM {
 	DIP_CMD_DEBUG_FLAG, /* Dump message level */
 	DIP_CMD_P2_BUFQUE_CTRL,
 	DIP_CMD_WAKELOCK_CTRL,
-	DIP_CMD_REGISTER_IRQ_USER_KEY, /* register for a user key to do irq operation */
 	DIP_CMD_FLUSH_IRQ_REQUEST, /* flush signal */
 	DIP_CMD_ION_IMPORT, /* get ion handle */
 	DIP_CMD_ION_FREE,  /* free ion handle */
@@ -264,7 +264,6 @@ enum DIP_CMD_ENUM {
 
 #define DIP_WAIT_IRQ        _IOW(DIP_MAGIC, DIP_CMD_WAIT_IRQ,      struct DIP_WAIT_IRQ_STRUCT)
 #define DIP_CLEAR_IRQ       _IOW(DIP_MAGIC, DIP_CMD_CLEAR_IRQ,     struct DIP_CLEAR_IRQ_STRUCT)
-#define DIP_REGISTER_IRQ_USER_KEY   _IOR(DIP_MAGIC, DIP_CMD_REGISTER_IRQ_USER_KEY, struct DIP_REGISTER_USERKEY_STRUCT)
 #define DIP_FLUSH_IRQ_REQUEST       _IOW(DIP_MAGIC, DIP_CMD_FLUSH_IRQ_REQUEST, struct DIP_WAIT_IRQ_STRUCT)
 #define DIP_DEBUG_FLAG      _IOW(DIP_MAGIC, DIP_CMD_DEBUG_FLAG,    unsigned char*)
 #define DIP_P2_BUFQUE_CTRL     _IOWR(DIP_MAGIC, DIP_CMD_P2_BUFQUE_CTRL, struct DIP_P2_BUFQUE_STRUCT)

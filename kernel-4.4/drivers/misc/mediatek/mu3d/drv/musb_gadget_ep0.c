@@ -95,8 +95,11 @@ __releases(musb->lock) __acquires(musb->lock)
 	int retval;
 
 	os_printk(K_DEBUG, "%s\n", __func__);
-	if (!musb->gadget_driver)
+	if (!musb->gadget_driver || !musb->softconnect) {
+		os_printk(K_NOTICE, "%s, driver<%p>, softconn<%d>\n",
+				__func__, musb->gadget_driver, musb->softconnect);
 		return -EOPNOTSUPP;
+	}
 	spin_unlock(&musb->lock);
 	retval = musb->gadget_driver->setup(&musb->g, ctrlrequest);
 
@@ -737,7 +740,7 @@ static void ep0_rxstate(struct musb *musb)
 		if (count < 64 || req->actual == req->length) {
 			/* musb->ep0_state = MUSB_EP0_STAGE_STATUSIN; */
 			/* in ssusb, there is no interrupt to transit to idle phase. */
-			musb->ep0_state = MUSB_EP0_IDLE;
+			musb->ep0_state = MUSB_EP0_STAGE_IDLE;
 			os_printk(K_DEBUG,
 				  "----- ep0 state: MUSB_EP0_STAGE_STATUSIN then MUSB_EP0_IDLE\n");
 

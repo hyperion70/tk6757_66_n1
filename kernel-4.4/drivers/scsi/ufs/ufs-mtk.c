@@ -203,7 +203,8 @@ static void ufs_mtk_advertise_hci_quirks(struct ufs_hba *hba)
 void ufs_mtk_hwfde_cfg_cmd(struct ufs_hba *hba,
 	struct scsi_cmnd *cmd)
 {
-	u32 dunl, dunu, lba;
+	u64 lba;
+	u32 dunl, dunu;
 	unsigned long flags;
 	int hwfde_key_idx_old;
 	struct ufshcd_lrb *lrbp;
@@ -378,6 +379,28 @@ static int ufs_mtk_init(struct ufs_hba *hba)
 	ufs_mtk_hba = hba;
 	hba->crypto_hwfde_key_idx = -1;
 
+#ifdef CONFIG_MTK_UFS_SUPPORT
+	/*
+	 * Rename device to unify device path for booting storage device.
+	 *
+	 * Device rename shall be prior to any pinctrl operation to avoid
+	 * known kernel panic issue which can be triggered by dumping pin
+	 * information, for example,
+	 *
+	 * "cat /sys/kernel/debug/pinctrl/10005000.pinctrl/pinmux-pins".
+	 *
+	 * The panic is because create_pinctrl() will keep the original
+	 * device name string instance in kobject. However, old name string
+	 * instance will be freed during device_rename() but NOT awared by
+	 * pinctrl.
+	 *
+	 * Please also remove default pin state in device tree and related
+	 * code because create_pinctrl() will be activated before device
+	 * probing if default pin state is declared.
+	 */
+	device_rename(hba->dev, "bootdevice");
+#endif
+
 	ufs_mtk_pltfrm_init();
 
 	ufs_mtk_pltfrm_parse_dt(hba);
@@ -404,11 +427,6 @@ static int ufs_mtk_init(struct ufs_hba *hba)
 
 	/* Get auto-hibern8 timeout from device tree */
 	ufs_mtk_parse_auto_hibern8_timer(hba);
-
-#ifdef CONFIG_MTK_UFS_BOOTING
-	/* Rename device to unify device path for booting storage device */
-	device_rename(hba->dev, "bootdevice");
-#endif
 
 	return 0;
 
@@ -1755,15 +1773,14 @@ void ufs_mtk_dump_asc_ascq(struct ufs_hba *hba, u8 asc, u8 ascq)
 }
 #endif
 
-void ufs_mtk_crypto_cal_dun(u32 alg_id, u32 lba, u32 *dunl, u32 *dunu)
+void ufs_mtk_crypto_cal_dun(u32 alg_id, u64 iv, u32 *dunl, u32 *dunu)
 {
-	if (alg_id != UFS_CRYPTO_ALGO_BITLOCKER_AES_CBC) {
-		*dunl = lba;
-		*dunu = 0;
-	} else {                             /* bitlocker dun use byte address */
-		*dunl = (lba & 0x7FFFF) << 12;   /* byte address for lower 32 bit */
-		*dunu = (lba >> (32 - 12)) << 12;  /* byte address for higher 32 bit */
-	}
+	/* bitlocker dun use byte address */
+	if (alg_id == UFS_CRYPTO_ALGO_BITLOCKER_AES_CBC)
+		iv = iv << 12;
+
+	*dunl = iv & 0xffffffff;
+	*dunu = (iv >> 32) & 0xffffffff;
 }
 
 bool ufs_mtk_is_data_write_cmd(char cmd_op)
@@ -1872,181 +1889,6 @@ void ufs_mtk_dbg_dump_scsi_cmd(struct ufs_hba *hba, struct scsi_cmnd *cmd, u32 f
 	}
 }
 
-#ifdef CONFIG_MTK_UFS_DEBUG
-#define MAX_UFS_MTK_TRACE_CMD_HLIST_ENTRY_CNT (500)
-
-struct ufs_mtk_trace_cmd_hlist_struct ufs_mtk_trace_cmd_hlist[MAX_UFS_MTK_TRACE_CMD_HLIST_ENTRY_CNT];
-int ufs_mtk_trace_cmd_ptr = MAX_UFS_MTK_TRACE_CMD_HLIST_ENTRY_CNT - 1;
-int ufs_mtk_trace_cnt;
-static spinlock_t ufs_mtk_cmd_dump_lock;
-static int ufs_mtk_is_cmd_dump_lock_init;
-
-void ufs_mtk_dbg_add_trace(enum ufs_trace_event event, u32 tag,
-	u8 lun, u32 transfer_len, sector_t lba, u8 opcode)
-{
-	int ptr;
-	unsigned long flags;
-
-	if (!ufs_mtk_is_cmd_dump_lock_init) {
-		spin_lock_init(&ufs_mtk_cmd_dump_lock);
-		ufs_mtk_is_cmd_dump_lock_init = 1;
-	}
-
-	spin_lock_irqsave(&ufs_mtk_cmd_dump_lock, flags);
-
-	ufs_mtk_trace_cmd_ptr++;
-
-	if (ufs_mtk_trace_cmd_ptr >= MAX_UFS_MTK_TRACE_CMD_HLIST_ENTRY_CNT)
-		ufs_mtk_trace_cmd_ptr = 0;
-
-	ptr = ufs_mtk_trace_cmd_ptr;
-
-	ufs_mtk_trace_cmd_hlist[ptr].event = event;
-	ufs_mtk_trace_cmd_hlist[ptr].tag = tag;
-	ufs_mtk_trace_cmd_hlist[ptr].transfer_len = transfer_len;
-	ufs_mtk_trace_cmd_hlist[ptr].lun = lun;
-	ufs_mtk_trace_cmd_hlist[ptr].lba = lba;
-	ufs_mtk_trace_cmd_hlist[ptr].opcode = opcode;
-	ufs_mtk_trace_cmd_hlist[ptr].time = sched_clock();
-
-	ufs_mtk_trace_cnt++;
-
-	spin_unlock_irqrestore(&ufs_mtk_cmd_dump_lock, flags);
-	/*
-	 * pr_info("[ufs]%d,%d,op=0x%x,lun=%u,t=%d,lba=%llu,len=%u,time=%llu\n",
-	 * ptr, event, opcode, lun, tag, (u64)(lba >> 3), transfer_len, sched_clock());
-	 */
-}
-
-void ufs_mtk_dbg_dump_trace(u32 latest_cnt, struct seq_file *m)
-{
-	int ptr;
-	int dump_cnt;
-	unsigned long flags;
-
-	if (!ufs_mtk_is_cmd_dump_lock_init) {
-		spin_lock_init(&ufs_mtk_cmd_dump_lock);
-		ufs_mtk_is_cmd_dump_lock_init = 1;
-	}
-
-	spin_lock_irqsave(&ufs_mtk_cmd_dump_lock, flags);
-
-	if (ufs_mtk_trace_cnt > MAX_UFS_MTK_TRACE_CMD_HLIST_ENTRY_CNT)
-		dump_cnt = MAX_UFS_MTK_TRACE_CMD_HLIST_ENTRY_CNT;
-	else
-		dump_cnt = ufs_mtk_trace_cnt;
-
-	if (latest_cnt)
-		dump_cnt = min_t(u32, latest_cnt, dump_cnt);
-
-	ptr = ufs_mtk_trace_cmd_ptr;
-
-	UFS_PRINFO_PROC_MSG(m, "[ufs]cmd history:req_cnt=%d,real_cnt=%d,ptr=%d\n",
-		latest_cnt, dump_cnt, ptr);
-
-	while (dump_cnt > 0) {
-
-		if (ufs_mtk_trace_cmd_hlist[ptr].event == UFS_TRACE_TM_SEND ||
-			ufs_mtk_trace_cmd_hlist[ptr].event == UFS_TRACE_TM_COMPLETED) {
-
-			UFS_PRINFO_PROC_MSG(m, "[ufs]%d-t,%d,tm=0x%x,t=%d,lun=0x%x,data=0x%x,%llu\n",
-				ptr,
-				ufs_mtk_trace_cmd_hlist[ptr].event,
-				ufs_mtk_trace_cmd_hlist[ptr].opcode,
-				ufs_mtk_trace_cmd_hlist[ptr].tag,
-				ufs_mtk_trace_cmd_hlist[ptr].lun,
-				ufs_mtk_trace_cmd_hlist[ptr].transfer_len,
-				(u64)ufs_mtk_trace_cmd_hlist[ptr].time
-				);
-
-		} else if (ufs_mtk_trace_cmd_hlist[ptr].event == UFS_TRACE_DEV_SEND ||
-			ufs_mtk_trace_cmd_hlist[ptr].event == UFS_TRACE_DEV_COMPLETED) {
-
-			UFS_PRINFO_PROC_MSG(m, "[ufs]%d-d,%d,0x%x,t=%d,lun=0x%x,idn=0x%x,idx=0x%x,sel=0x%x,%llu\n",
-				ptr,
-				ufs_mtk_trace_cmd_hlist[ptr].event,
-				ufs_mtk_trace_cmd_hlist[ptr].opcode,
-				ufs_mtk_trace_cmd_hlist[ptr].tag,
-				ufs_mtk_trace_cmd_hlist[ptr].lun,
-				(u8)ufs_mtk_trace_cmd_hlist[ptr].lba & 0xFF,
-				(u8)(ufs_mtk_trace_cmd_hlist[ptr].lba >> 8) & 0xFF,
-				(u8)(ufs_mtk_trace_cmd_hlist[ptr].lba >> 16) & 0xFF,
-				(u64)ufs_mtk_trace_cmd_hlist[ptr].time
-				);
-
-		} else {
-
-			UFS_PRINFO_PROC_MSG(m, "[ufs]%d-r,%d,0x%x,t=%d,lun=0x%x,lba=%lld,len=%d,%llu\n",
-				ptr,
-				ufs_mtk_trace_cmd_hlist[ptr].event,
-				ufs_mtk_trace_cmd_hlist[ptr].opcode,
-				ufs_mtk_trace_cmd_hlist[ptr].tag,
-				ufs_mtk_trace_cmd_hlist[ptr].lun,
-				(long long int)ufs_mtk_trace_cmd_hlist[ptr].lba,
-				ufs_mtk_trace_cmd_hlist[ptr].transfer_len,
-				(u64)ufs_mtk_trace_cmd_hlist[ptr].time
-				);
-		}
-
-		dump_cnt--;
-
-		ptr--;
-
-		if (ptr < 0)
-			ptr = MAX_UFS_MTK_TRACE_CMD_HLIST_ENTRY_CNT - 1;
-	}
-
-	spin_unlock_irqrestore(&ufs_mtk_cmd_dump_lock, flags);
-}
-
-void ufs_mtk_dbg_hang_detect_dump(void)
-{
-	/*
-	 * do not touch host to get unipro or mphy information via
-	 * dme commands during exception handling since interrupt
-	 * or preemption may be disabled.
-	 */
-	ufshcd_print_host_state(ufs_mtk_hba, 0, NULL);
-
-	ufs_mtk_dbg_dump_trace(ufs_mtk_hba->nutrs + ufs_mtk_hba->nutrs / 2, NULL);
-}
-
-static void ufs_mtk_dbg_dump_feature(struct ufs_hba *hba, struct seq_file *m)
-{
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "-- Crypto Features ----\n");
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "Features          = 0x%x\n",
-		hba->crypto_feature);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, " HW-FDE           = 0x%x\n",
-		UFS_CRYPTO_HW_FDE);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, " HW-FDE Encrypted = 0x%x\n",
-		UFS_CRYPTO_HW_FDE_ENCRYPTED);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, " HW-FBE           = 0x%x\n",
-		UFS_CRYPTO_HW_FBE);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, " HW-FBE Encrypted = 0x%x\n",
-		UFS_CRYPTO_HW_FBE_ENCRYPTED);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "-----------------------\n");
-}
-
-void ufs_mtk_dbg_proc_dump(struct seq_file *m)
-{
-	ufs_mtk_dbg_dump_feature(ufs_mtk_hba, m);
-
-	/*
-	 * do not touch host to get unipro or mphy information via
-	 * dme commands during exception handling since interrupt
-	 * or preemption may be disabled.
-	 */
-	ufshcd_print_host_state(ufs_mtk_hba, 0, m);
-
-	ufs_mtk_dbg_dump_trace(MAX_UFS_MTK_TRACE_CMD_HLIST_ENTRY_CNT, m);
-}
-
-#else
-#define ufs_mtk_dbg_add_trace        NULL
-#define ufs_mtk_dbg_dump_trace       NULL
-#define ufs_mtk_dbg_hang_detect_dump NULL
-#endif
-
 /**
  * struct ufs_hba_mtk_vops - UFS MTK specific variant operations
  *
@@ -2082,7 +1924,8 @@ static int ufs_mtk_hie_cfg_request(unsigned int mode, const char *key, int len, 
 	u32 hie_para, i;
 	u32 *key_ptr;
 	unsigned long flags;
-	u32 lba, dunl, dunu;
+	u64 iv, lba;
+	u32 dunl, dunu;
 	struct scsi_cmnd *cmd;
 	int need_update = 1;
 	int key_idx;
@@ -2124,7 +1967,14 @@ static int ufs_mtk_hie_cfg_request(unsigned int mode, const char *key, int len, 
 	lba = ((cmd->cmnd[2]) << 24) | ((cmd->cmnd[3]) << 16) |
 			((cmd->cmnd[4]) << 8) | (cmd->cmnd[5]);
 
-	ufs_mtk_crypto_cal_dun(UFS_CRYPTO_ALGO_AES_XTS, lba, &dunl, &dunu);
+	/* Get iv from hie */
+	iv = hie_get_iv(req);
+
+	/* If hie not assign iv, then use lba as iv */
+	if (!iv)
+		iv = lba;
+
+	ufs_mtk_crypto_cal_dun(UFS_CRYPTO_ALGO_AES_XTS, iv, &dunl, &dunu);
 
 	/* setup LRB for UTPRD's crypto fields */
 	lrbp = &info->hba->lrb[req->tag];

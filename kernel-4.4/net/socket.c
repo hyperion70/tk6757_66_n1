@@ -89,6 +89,7 @@
 #include <linux/magic.h>
 #include <linux/slab.h>
 #include <linux/xattr.h>
+#include <linux/nospec.h>
 
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -1038,10 +1039,10 @@ static int sock_close(struct inode *inode, struct file *filp)
 	struct socket *sock = SOCKET_I(inode);
 
 	if (sock && sock->sk) {
-		pr_info_ratelimited("[mtk_net][socekt]socket_close[%lu] refcnt: %d\n",
-				    inode->i_ino, atomic_read(&sock->sk->sk_refcnt));
+		pr_debug("[mtk_net][socekt]socket_close[%lu] refcnt: %d\n",
+			 inode->i_ino, atomic_read(&sock->sk->sk_refcnt));
 	} else {
-		pr_info_ratelimited("[mtk_net][socekt]socket_close[%lu]\n", inode->i_ino);
+		pr_debug("[mtk_net][socekt]socket_close[%lu]\n", inode->i_ino);
 	}
 #endif
 	sock_release(SOCKET_I(inode));
@@ -1267,9 +1268,9 @@ out:
 
  #ifdef CONFIG_MTK_NET_LOGGING
 	if ((retval >= 0) && sock && SOCK_INODE(sock))
-		pr_info_ratelimited("[mtk_net][socket]socket_create[%lu]:fd=%d\n", SOCK_INODE(sock)->i_ino, retval);
+		pr_debug("[mtk_net][socket]socket_create[%lu]:fd=%d\n", SOCK_INODE(sock)->i_ino, retval);
 	 else
-		pr_info_ratelimited("[mtk_net][socket]socket_create:fd=%d\n", retval);
+		pr_debug("[mtk_net][socket]socket_create:fd=%d\n", retval);
 #endif
 	return retval;
 
@@ -1742,6 +1743,7 @@ SYSCALL_DEFINE6(recvfrom, int, fd, void __user *, ubuf, size_t, size,
 	/* We assume all kernel code knows the size of sockaddr_storage */
 	msg.msg_namelen = 0;
 	msg.msg_iocb = NULL;
+	msg.msg_flags = 0;
 	if (sock->file->f_flags & O_NONBLOCK)
 		flags |= MSG_DONTWAIT;
 	err = sock_recvmsg(sock, &msg, iov_iter_count(&msg.msg_iter), flags);
@@ -2368,6 +2370,7 @@ SYSCALL_DEFINE2(socketcall, int, call, unsigned long __user *, args)
 
 	if (call < 1 || call > SYS_SENDMMSG)
 		return -EINVAL;
+	call = array_index_nospec(call, SYS_SENDMMSG + 1);
 
 	len = nargs[call];
 	if (len > sizeof(a))
@@ -2577,6 +2580,15 @@ out_fs:
 }
 
 core_initcall(sock_init);	/* early initcall */
+
+static int __init jit_init(void)
+{
+#ifdef CONFIG_BPF_JIT_ALWAYS_ON
+	bpf_jit_enable = 1;
+#endif
+	return 0;
+}
+pure_initcall(jit_init);
 
 #ifdef CONFIG_PROC_FS
 void socket_seq_show(struct seq_file *seq)

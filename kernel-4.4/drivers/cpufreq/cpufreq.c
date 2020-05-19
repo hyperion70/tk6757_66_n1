@@ -19,6 +19,7 @@
 
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#include <linux/cpufreq_times.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/init.h>
@@ -361,50 +362,76 @@ static void adjust_jiffies(unsigned long val, struct cpufreq_freqs *ci)
  *               FREQUENCY INVARIANT CPU CAPACITY                    *
  *********************************************************************/
 
-/* move to cpufreq.c if sched-asisted */
-#ifndef CONFIG_MTK_TINYSYS_SSPM_SUPPORT
-static DEFINE_PER_CPU(unsigned long, freq_scale) = SCHED_CAPACITY_SCALE;
+static inline bool sched_assist(void)
+{
+#ifdef CONFIG_CPU_FREQ_SCHED_ASSIST
+return true;
+#else
+return false;
 #endif
+}
+
+static DEFINE_PER_CPU(unsigned long, freq_scale) = SCHED_CAPACITY_SCALE;
 static DEFINE_PER_CPU(unsigned long, max_freq_scale) = SCHED_CAPACITY_SCALE;
 
 static void
 scale_freq_capacity(struct cpufreq_policy *policy, struct cpufreq_freqs *freqs)
 {
 	unsigned long cur = freqs ? freqs->new : policy->cur;
-	unsigned long scale = (cur << SCHED_CAPACITY_SHIFT) / policy->max;
+	unsigned long scale;
 	struct cpufreq_cpuinfo *cpuinfo = &policy->cpuinfo;
-	int cpu;
+	int cpu, cid, sched_freq;
 #ifdef CONFIG_HOTPLUG_CPU
-	int cid;
 	struct cpumask cls_cpus;
 #endif
+
+	cid = arch_get_cluster_id(policy->cpu);
+
+	sched_freq = get_sched_cur_freq(cid);
+
+#ifdef CONFIG_MTK_TINYSYS_SSPM_SUPPORT
+	/*
+	 * Consider current frequency for TINY-sys:
+	 *   sched gov: using get_sched_cur_freq()
+	 *   assist: update when no trigger in 20ms
+	 *   others: policy->cur
+	 */
+	if (sched_freq) {
+		/* sched-gov is used */
+		cur = sched_freq;
+		cur = clamp_t(int, cur, policy->min, policy->max);
+	}
+
+#endif
+	scale = (cur << SCHED_CAPACITY_SHIFT) / policy->max;
 
 	pr_debug("cpus %*pbl cur/cur max freq %lu/%u kHz freq scale %lu\n",
 		 cpumask_pr_args(policy->cpus), cur, policy->max, scale);
 
 #ifdef CONFIG_HOTPLUG_CPU
-	cid = arch_get_cluster_id(policy->cpu);
 	arch_get_cluster_cpus(&cls_cpus, cid);
 
 	for_each_cpu(cpu, &cls_cpus) {
-		/* move to cpufreq.c if sched-asisted */
-		#ifndef CONFIG_MTK_TINYSYS_SSPM_SUPPORT
-		per_cpu(freq_scale, cpu) = scale;
-		arch_scale_set_curr_freq(cpu, cur);
-		#endif
 		arch_scale_set_max_freq(cpu, policy->max);
 		arch_scale_set_min_freq(cpu, policy->min);
+
+		if (!sched_assist()) {
+			/* update current freqnecy */
+			per_cpu(freq_scale, cpu) = scale;
+			arch_scale_set_curr_freq(cpu, cur);
+		}
 	}
 
 #else
 	for_each_cpu(cpu, policy->cpus) {
-		/* move to cpufreq.c if sched-asisted */
-		#ifndef CONFIG_MTK_TINYSYS_SSPM_SUPPORT
-		per_cpu(freq_scale, cpu) = scale;
-		arch_scale_set_curr_freq(cpu, cur);
-		#endif
 		arch_scale_set_max_freq(cpu, policy->max);
 		arch_scale_set_min_freq(cpu, policy->min);
+
+		if (!sched_assist()) {
+			/* update current freqnecy */
+			per_cpu(freq_scale, cpu) = scale;
+			arch_scale_set_curr_freq(cpu, cur);
+		}
 	}
 
 	if (freqs)
@@ -476,6 +503,7 @@ static void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 		pr_debug("FREQ: %lu - CPU: %lu\n",
 			 (unsigned long)freqs->new, (unsigned long)freqs->cpu);
 		trace_cpu_frequency(freqs->new, freqs->cpu);
+		cpufreq_times_record_transition(freqs);
 		srcu_notifier_call_chain(&cpufreq_transition_notifier_list,
 				CPUFREQ_POSTCHANGE, freqs);
 		if (likely(policy) && likely(policy->cpu == freqs->cpu))
@@ -729,6 +757,8 @@ static ssize_t store_##file_name					\
 	struct cpufreq_policy new_policy;				\
 									\
 	memcpy(&new_policy, policy, sizeof(*policy));			\
+	new_policy.min = policy->user_policy.min;			\
+	new_policy.max = policy->user_policy.max;			\
 									\
 	ret = sscanf(buf, "%u", &new_policy.object);			\
 	if (ret != 1)							\
@@ -1376,6 +1406,7 @@ static int cpufreq_online(unsigned int cpu)
 			goto out_exit_policy;
 		blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
 				CPUFREQ_CREATE_POLICY, policy);
+		cpufreq_times_create_policy(policy);
 
 		write_lock_irqsave(&cpufreq_driver_lock, flags);
 		list_add(&policy->policy_list, &cpufreq_policy_list);

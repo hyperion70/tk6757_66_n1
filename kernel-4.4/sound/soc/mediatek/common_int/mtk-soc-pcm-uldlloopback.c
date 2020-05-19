@@ -207,7 +207,7 @@ static int mtk_uldlloopback_open(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int ret = 0;
 
-	pr_debug("%s, stream = %s\n",
+	pr_aud("%s, stream = %s\n",
 		 __func__,
 		 substream->stream == SNDRV_PCM_STREAM_PLAYBACK ?
 		 "SNDRV_PCM_STREAM_PLAYBACK" : "SNDRV_PCM_STREAM_CAPTURE");
@@ -223,11 +223,18 @@ static int mtk_uldlloopback_open(struct snd_pcm_substream *substream)
 	ret = snd_pcm_hw_constraint_integer(runtime, SNDRV_PCM_HW_PARAM_PERIODS);
 
 	if (ret < 0)
-		pr_warn("snd_pcm_hw_constraint_integer failed\n");
+		pr_warn("%s, stream = %s, snd_pcm_hw_constraint_integer failed\n",
+				__func__,
+				substream->stream == SNDRV_PCM_STREAM_PLAYBACK ?
+						"SNDRV_PCM_STREAM_PLAYBACK" : "SNDRV_PCM_STREAM_CAPTURE");
 
 	/* print for hw pcm information */
-	pr_warn("mtk_uldlloopback_open runtime rate = %d channels = %d\n",
+	pr_debug("%s, stream = %s, runtime rate = %d, channels = %d\n",
+			__func__,
+			substream->stream == SNDRV_PCM_STREAM_PLAYBACK ?
+					"SNDRV_PCM_STREAM_PLAYBACK" : "SNDRV_PCM_STREAM_CAPTURE",
 	       runtime->rate, runtime->channels);
+
 	runtime->hw.info |= SNDRV_PCM_INFO_INTERLEAVED;
 	runtime->hw.info |= SNDRV_PCM_INFO_NONINTERLEAVED;
 
@@ -242,12 +249,13 @@ static int mtk_uldlloopback_open(struct snd_pcm_substream *substream)
 
 static int mtk_uldlloopbackpcm_close(struct snd_pcm_substream *substream)
 {
-	pr_warn("%s\n", __func__);
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 		pr_err("%s  with SNDRV_PCM_STREAM_CAPTURE\n", __func__);
 		AudDrv_Clk_Off();
 		return 0;
 	}
+
+	pr_debug("%s\n", __func__);
 
 	/* interconnection setting */
 	SetIntfConnection(Soc_Aud_InterCon_DisConnect,

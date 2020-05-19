@@ -16,6 +16,7 @@
 
 #include <linux/types.h>
 #include "mmprofile.h"
+#include "mmprofile_function.h"
 #include "disp_event.h"
 #include "ddp_info.h"
 

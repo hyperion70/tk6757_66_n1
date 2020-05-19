@@ -114,7 +114,8 @@ static snd_pcm_uframes_t snd_usb_pcm_pointer(struct snd_pcm_substream *substream
 			avail = snd_pcm_capture_avail(runtime);
 
 		if (avail >= runtime->buffer_size)
-			MTK_SND_USB_DBG_LIMIT(40, "avail<%ld>, stop_threshold<%ld>, buf_sz<%ld>, bound<%ld>",
+			MTK_SND_USB_DBG_LIMIT(3, "dir<%s>,avail<%ld>,thld<%ld>,sz<%ld>,bound<%ld>",
+					substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? "out":"in",
 					avail,
 					runtime->stop_threshold,
 					runtime->buffer_size,
@@ -378,6 +379,15 @@ static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 	case USB_ID(0x0763, 0x2081):
 		ep = 0x81;
 		iface = usb_ifnum_to_if(dev, 2);
+
+		if (!iface || iface->num_altsetting == 0)
+			return -EINVAL;
+
+		alts = &iface->altsetting[1];
+		goto add_sync_ep;
+	case USB_ID(0x1397, 0x0002):
+		ep = 0x81;
+		iface = usb_ifnum_to_if(dev, 1);
 
 		if (!iface || iface->num_altsetting == 0)
 			return -EINVAL;
@@ -1338,7 +1348,7 @@ static void retire_capture_urb(struct snd_usb_substream *subs,
 		if (bytes % (runtime->sample_bits >> 3) != 0) {
 			int oldbytes = bytes;
 			bytes = frames * stride;
-			dev_warn(&subs->dev->dev,
+			dev_warn_ratelimited(&subs->dev->dev,
 				 "Corrected urb data len. %d->%d\n",
 							oldbytes, bytes);
 		}

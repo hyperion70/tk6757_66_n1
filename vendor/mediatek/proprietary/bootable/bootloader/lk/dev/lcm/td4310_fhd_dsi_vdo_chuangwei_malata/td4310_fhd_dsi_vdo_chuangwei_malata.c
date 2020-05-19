@@ -29,8 +29,10 @@
 #elif defined(BUILD_UBOOT)
 #include <asm/arch/mt_gpio.h>
 #else
-#include "disp_dts_gpio.h"
+#include <mach/mt_pm_ldo.h>
+#include <mach/mt_gpio.h>
 #endif
+#include <cust_gpio_usage.h>
 
 #ifdef BUILD_LK
 #define LCM_LOGI(string, args...)  dprintf(0, "[LK/"LOG_TAG"]"string, ##args)
@@ -49,8 +51,6 @@ static LCM_UTIL_FUNCS lcm_util;
 #define MDELAY(n)		(lcm_util.mdelay(n))
 #define UDELAY(n)		(lcm_util.udelay(n))
 
-#define dsi_set_cmdq_V22(cmdq, cmd, count, ppara, force_update) \
-	lcm_util.dsi_set_cmdq_V22(cmdq, cmd, count, ppara, force_update)
 #define dsi_set_cmdq_V2(cmd, count, ppara, force_update) \
 	lcm_util.dsi_set_cmdq_V2(cmd, count, ppara, force_update)
 #define dsi_set_cmdq(pdata, queue_size, force_update) \
@@ -72,8 +72,6 @@ static LCM_UTIL_FUNCS lcm_util;
 #include <linux/list.h>
 #include <linux/i2c.h>
 #include <linux/irq.h>
-/* #include <linux/jiffies.h> */
-/* #include <linux/delay.h> */
 #include <linux/uaccess.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -83,12 +81,9 @@ static LCM_UTIL_FUNCS lcm_util;
 #define LCM_DSI_CMD_MODE									0
 #define FRAME_WIDTH										(1080)
 #define FRAME_HEIGHT									(1920)
-
 #define REGFLAG_DELAY		0xFFFC
 #define REGFLAG_UDELAY	0xFFFB
 #define REGFLAG_END_OF_TABLE	0xFFFD
-#define REGFLAG_RESET_LOW	0xFFFE
-#define REGFLAG_RESET_HIGH	0xFFFF
 
 static LCM_DSI_MODE_SWITCH_CMD lcm_switch_mode_cmd;
 
@@ -98,15 +93,6 @@ struct LCM_setting_table {
 	unsigned char para_list[64];
 };
 
-static struct LCM_setting_table lcm_initialization_setting[] =
-{
-    { 0x11, 0x01, {0x00}},
-    { REGFLAG_DELAY, 150, {0x00}},
-    { 0x29, 0x01, {0x00}},
-    { REGFLAG_DELAY, 20, {0x00}},
-    { REGFLAG_END_OF_TABLE, 0x00, {0x00}}
-};
-
 static struct LCM_setting_table lcm_suspend_setting[] = {
 	{0x28, 0, {} },
 	{REGFLAG_DELAY, 20, {} },
@@ -114,18 +100,25 @@ static struct LCM_setting_table lcm_suspend_setting[] = {
 	{REGFLAG_DELAY, 120, {} }
 };
 
+static struct LCM_setting_table init_setting[] = {
+	{ 0x11, 0x01, {0x00}},
+	{ REGFLAG_DELAY, 150, {0x00}},
+	{ 0x29, 0x01, {0x00}},
+	{ REGFLAG_DELAY, 20, {0x00}},
+	{ REGFLAG_END_OF_TABLE, 0x00, {0x00}}
+};
+
 static struct LCM_setting_table bl_level[] = {
 	{0x51, 1, {0xFF} },
 	{REGFLAG_END_OF_TABLE, 0x00, {} }
 };
 
-static void push_table(void *cmdq, struct LCM_setting_table *table,
-	unsigned int count, unsigned char force_update)
+static void push_table(struct LCM_setting_table *table, unsigned int count, unsigned char force_update)
 {
 	unsigned int i;
-	unsigned cmd;
 
 	for (i = 0; i < count; i++) {
+		unsigned cmd;
 		cmd = table[i].cmd;
 
 		switch (cmd) {
@@ -145,7 +138,7 @@ static void push_table(void *cmdq, struct LCM_setting_table *table,
 			break;
 
 		default:
-			dsi_set_cmdq_V22(cmdq, cmd, table[i].count, table[i].para_list, force_update);
+			dsi_set_cmdq_V2(cmd, table[i].count, table[i].para_list, force_update);
 		}
 	}
 }
@@ -186,48 +179,82 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->dsi.customization_esd_check_enable = 1;
     params->dsi.lcm_esd_check_table[0].count = 1;
     params->dsi.lcm_esd_check_table[0].para_list[0] = 28;
-}
-
-static void lcm_init_power(void)
-{
-/* #ifndef CONFIG_FPGA_EARLY_PORTING
-	 display bias is likely inited in lk !!
-	 * for kernel regulator system, we need to enable it first before disable!
-	 * so here, if bias is not enabled, we enable it first
-
-	display_bias_enable();
-#endif
-	 */
-}
-
-static void lcm_suspend_power(void)
-{
-/* #ifndef CONFIG_FPGA_EARLY_PORTING
-	display_bias_disable();
-#endif */
-}
-
-static void lcm_resume_power(void)
-{
-/* #ifndef CONFIG_FPGA_EARLY_PORTING
-	SET_RESET_PIN(0);
-	display_bias_enable();
-#endif */
 
 }
 
 static void lcm_init(void)
 {
-    SET_RESET_PIN(1);
-    MDELAY(20);
-    
-    push_table(NULL, lcm_initialization_setting, sizeof(lcm_initialization_setting) / sizeof(struct LCM_setting_table), 1);
+	int ret = 0;
+
+	SET_RESET_PIN(0);
+
+#ifdef BUILD_LK
+	/*config rt5081 register 0xB2[7:6]=0x3, that is set db_delay=4ms.*/
+	ret = PMU_REG_MASK(0xB2, (0x3 << 6), (0x3 << 6));
+
+	/* set AVDD 5.4v, (4v+28*0.05v) */
+	/*ret = RT5081_write_byte(0xB3, (1 << 6) | 28);*/
+	ret = PMU_REG_MASK(0xB3, 28, (0x3F << 0));
+	if (ret < 0)
+		LCM_LOGI("td4310----tps6132----cmd=%0x--i2c write error----\n", 0xB3);
+	else
+		LCM_LOGI("td4310----tps6132----cmd=%0x--i2c write success----\n", 0xB3);
+
+	/* set AVEE */
+	/*ret = RT5081_write_byte(0xB4, (1 << 6) | 28);*/
+	ret = PMU_REG_MASK(0xB4, 28, (0x3F << 0));
+	if (ret < 0)
+		LCM_LOGI("td4310----tps6132----cmd=%0x--i2c write error----\n", 0xB4);
+	else
+		LCM_LOGI("td4310----tps6132----cmd=%0x--i2c write success----\n", 0xB4);
+
+	/* enable AVDD & AVEE */
+	/* 0x12--default value; bit3--Vneg; bit6--Vpos; */
+	/*ret = RT5081_write_byte(0xB1, 0x12 | (1<<3) | (1<<6));*/
+	ret = PMU_REG_MASK(0xB1, (1<<3) | (1<<6), (1<<3) | (1<<6));
+	if (ret < 0)
+		LCM_LOGI("td4310----tps6132----cmd=%0x--i2c write error----\n", 0xB1);
+	else
+		LCM_LOGI("td4310----tps6132----cmd=%0x--i2c write success----\n", 0xB1);
+
+	MDELAY(12);
+#endif
+
+	SET_RESET_PIN(1);
+	MDELAY(12);
+	SET_RESET_PIN(0);
+	MDELAY(7);
+
+	SET_RESET_PIN(1);
+	MDELAY(12);
+
+	push_table(init_setting, sizeof(init_setting) / sizeof(struct LCM_setting_table), 1);
+
 }
 
 static void lcm_suspend(void)
 {
-	push_table(NULL, lcm_suspend_setting, sizeof(lcm_suspend_setting) / sizeof(struct LCM_setting_table), 1);
+
+	push_table(lcm_suspend_setting, sizeof(lcm_suspend_setting) / sizeof(struct LCM_setting_table), 1);
+
+#ifdef BUILD_LK	
+	int ret;
+
+	/* enable AVDD & AVEE */
+	/* 0x12--default value; bit3--Vneg; bit6--Vpos; */
+	/*ret = RT5081_write_byte(0xB1, 0x12);*/
+	ret = PMU_REG_MASK(0xB1, (0<<3) | (0<<6), (1<<3) | (1<<6));
+	if (ret < 0)
+		LCM_LOGI("td4310----tps6132----cmd=%0x--i2c write error----\n", 0xB1);
+	else
+		LCM_LOGI("td4310----tps6132----cmd=%0x--i2c write success----\n", 0xB1);
+
+	MDELAY(5);
+#endif
+
 	SET_RESET_PIN(0);
+	MDELAY(10);
+	SET_RESET_PIN(1);
 }
 
 static void lcm_resume(void)
@@ -247,13 +274,21 @@ static void lcm_setbacklight_cmdq(void *handle, unsigned int level)
 
 	bl_level[0].para_list[0] = level;
 
-	push_table(handle, bl_level, sizeof(bl_level) / sizeof(struct LCM_setting_table), 1);
+	push_table(bl_level, sizeof(bl_level) / sizeof(struct LCM_setting_table), 1);
+}
+
+static void lcm_setbacklight(unsigned int level)
+{
+	LCM_LOGI("%s,td4310 backlight: level = %d\n", __func__, level);
+
+	bl_level[0].para_list[0] = level;
+
+	push_table(bl_level, sizeof(bl_level) / sizeof(struct LCM_setting_table), 1);
 }
 
 static void *lcm_switch_mode(int mode)
 {
 #ifndef BUILD_LK
-/* customization: 1. V2C config 2 values, C2V config 1 value; 2. config mode control register */
 	if (mode == 0) {	/* V2C */
 		lcm_switch_mode_cmd.mode = CMD_MODE;
 		lcm_switch_mode_cmd.addr = 0xBB;	/* mode control addr */
@@ -271,7 +306,6 @@ static void *lcm_switch_mode(int mode)
 }
 
 
-
 LCM_DRIVER td4310_fhd_dsi_vdo_chuangwei_malata_lcm_drv = {
 	.name = "td4310_fhd_dsi_vdo_chuangwei_malata",
 	.set_util_funcs = lcm_set_util_funcs,
@@ -280,10 +314,6 @@ LCM_DRIVER td4310_fhd_dsi_vdo_chuangwei_malata_lcm_drv = {
 	.suspend = lcm_suspend,
 	.resume = lcm_resume,
 	.compare_id = lcm_compare_id,
-	.init_power = lcm_init_power,
-	.resume_power = lcm_resume_power,
-	.suspend_power = lcm_suspend_power,
-	.set_backlight_cmdq = lcm_setbacklight_cmdq,
+	.set_backlight = lcm_setbacklight,
 	.switch_mode = lcm_switch_mode,
-
 };

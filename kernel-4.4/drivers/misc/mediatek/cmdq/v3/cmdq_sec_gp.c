@@ -19,7 +19,7 @@
 void cmdq_sec_setup_tee_context(struct cmdq_sec_tee_context *tee)
 {
 	/* 09010000 0000 0000 0000000000000000 */
-#if defined(CONFIG_TRUSTONIC_TEE_SUPPORT)
+#if defined(CONFIG_TRUSTONIC_TEE_SUPPORT) || defined(CONFIG_MICROTRUST_TEE_SUPPORT)
 	tee->uuid = (struct TEEC_UUID) { 0x09010000, 0x0, 0x0,
 		{ 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 } };
 #else
@@ -34,13 +34,18 @@ s32 cmdq_sec_init_context(struct cmdq_sec_tee_context *tee)
 
 #if defined(CONFIG_MICROTRUST_TEE_SUPPORT)
 	while (!is_teei_ready()) {
-		CMDQ_MSG("[SEC]TEE is not ready, wait...\n");
+		CMDQ_MSG("[SEC] Microtrust TEE is not ready, wait...\n");
 		msleep(1000);
 	}
-	CMDQ_LOG("[SEC]TEE is ready\n");
+#elif defined(CONFIG_TRUSTONIC_TEE_SUPPORT)
+	while (!is_mobicore_ready()) {
+		CMDQ_MSG("[SEC] Trustonic TEE is not ready, wait...\n");
+		msleep(1000);
+	}
 #endif
+	CMDQ_LOG("[SEC]TEE is ready\n");
 
-	status = TEEC_InitializeContext(UUID_STR, &tee->gp_context);
+	status = TEEC_InitializeContext(NULL, &tee->gp_context);
 	if (status != TEEC_SUCCESS)
 		CMDQ_ERR("[SEC]init_context fail: status:0x%x\n", status);
 	else
@@ -63,14 +68,15 @@ s32 cmdq_sec_allocate_wsm(struct cmdq_sec_tee_context *tee,
 		return -EINVAL;
 
 	tee->shared_mem.size = size;
-	tee->shared_mem.flags = TEEC_MEM_INPUT;
+	tee->shared_mem.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
 	status = TEEC_AllocateSharedMemory(&tee->gp_context,
 		&tee->shared_mem);
 	if (status != TEEC_SUCCESS) {
-		CMDQ_ERR("[SEC]allocate_wsm: err:0x%x\n", status);
+		CMDQ_LOG("[WARN][SEC]allocate_wsm: err:0x%x size:%u\n",
+			status, size);
 	} else {
-		CMDQ_MSG("[SEC]allocate_wsm: status:0x%x pWsm:0x%p\n",
-			status, tee->shared_mem.buffer);
+		CMDQ_LOG("[SEC]allocate_wsm: status:0x%x wsm:0x%p size:%u\n",
+			status, tee->shared_mem.buffer, size);
 		*wsm_buffer = (void *)tee->shared_mem.buffer;
 	}
 
@@ -91,7 +97,7 @@ s32 cmdq_sec_free_wsm(struct cmdq_sec_tee_context *tee,
 s32 cmdq_sec_open_session(struct cmdq_sec_tee_context *tee,
 	void *wsm_buffer)
 {
-	s32 status;
+	s32 status, ret_origin;
 
 	if (!wsm_buffer) {
 		CMDQ_ERR("[SEC]open_session: invalid param wsm buffer:0x%p\n",
@@ -101,12 +107,13 @@ s32 cmdq_sec_open_session(struct cmdq_sec_tee_context *tee,
 
 	status = TEEC_OpenSession(&tee->gp_context,
 		&tee->session, &tee->uuid,
-		TEEC_LOGIN_PUBLIC, NULL, NULL, NULL);
+		TEEC_LOGIN_PUBLIC, NULL, NULL, &ret_origin);
 
 	if (status != TEEC_SUCCESS) {
 		/* print error message */
-		CMDQ_ERR("[SEC]open_session fail: status:0x%x\n",
-			status);
+		CMDQ_ERR(
+			"[SEC]open_session fail: status:0x%x ret origin:0x%08x\n",
+			status, ret_origin);
 	} else {
 		CMDQ_MSG("[SEC]open_session: status:0x%x\n", status);
 	}
@@ -128,10 +135,10 @@ s32 cmdq_sec_execute_session(struct cmdq_sec_tee_context *tee,
 
 	memset(&operation, 0, sizeof(struct TEEC_Operation));
 #if defined(CONFIG_TRUSTONIC_TEE_SUPPORT)
-	operation.param_types = TEEC_PARAM_TYPES(TEEC_MEMREF_PARTIAL_INPUT,
+	operation.param_types = TEEC_PARAM_TYPES(TEEC_MEMREF_PARTIAL_INOUT,
 		TEEC_NONE, TEEC_NONE, TEEC_NONE);
 #else
-	operation.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_PARTIAL_INPUT,
+	operation.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_PARTIAL_INOUT,
 		TEEC_NONE, TEEC_NONE, TEEC_NONE);
 #endif
 	operation.params[0].memref.parent = &tee->shared_mem;

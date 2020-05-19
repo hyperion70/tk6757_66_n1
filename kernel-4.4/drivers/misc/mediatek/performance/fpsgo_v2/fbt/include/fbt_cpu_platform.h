@@ -19,17 +19,15 @@
 
 #include "fbt_cpu.h"
 
-enum fbt_cpu_freq_bound_type {
-	FBT_CPU_FREQ_BOUND,
-	FBT_CPU_RESCUE_BOUND,
-};
+extern int capacity_min_write_for_perf_idx(int idx, int capacity_min);
+extern void cm_mgr_perf_set_status(int enable);
 
-void fbt_set_boost_value(int cluster, unsigned int base_blc);
-void fbt_init_cpuset_freq_bound_table(void);
+
+void fbt_set_boost_value(unsigned int base_blc);
+void fbt_clear_boost_value(void);
 int fbt_is_mips_different(void);
+int fbt_get_L_min_ceiling(void);
+int fbt_get_L_cluster_num(void);
+void fbt_notify_CM_limit(int reach_limit);
 
-
-extern int cluster_num;
-extern int cluster_freq_bound[MAX_FREQ_BOUND_NUM];
-extern int cluster_rescue_bound[MAX_FREQ_BOUND_NUM];
 #endif

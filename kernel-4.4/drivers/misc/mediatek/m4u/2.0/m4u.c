@@ -685,8 +685,15 @@ int m4u_alloc_mva(m4u_client_t *client, M4U_PORT_ID port,
 		mva = m4u_do_mva_alloc(va, size, pMvaInfo);
 
 	if (mva == 0) {
-		m4u_aee_print("alloc mva fail: larb=%d,module=%s,size=%d\n",
-				m4u_port_2_larb_id(port), m4u_get_port_name(port), size);
+		if (flags & M4U_FLAGS_FIX_MVA)
+			M4UMSG("%s, fix err: p(%d,%d),m:%s,s:%d\n",
+			       __func__, m4u_port_2_larb_id(port),
+			       port, m4u_get_port_name(port), size);
+		else
+			m4u_aee_print("%s,%d err: p(%d,%d),m:%s,s:%d\n",
+					__func__, __LINE__,
+					m4u_port_2_larb_id(port),
+					port, m4u_get_port_name(port), size);
 		m4u_dump_buf_info(NULL);
 		ret = -EINVAL;
 		goto err1;
@@ -998,7 +1005,7 @@ static struct page *m4u_cache_get_page(unsigned long va)
 
 	start = va & (~M4U_PAGE_MASK);
 	pa = m4u_user_v2p(start);
-	if ((pa == 0)) {
+	if (pa == 0) {
 		M4UMSG("error m4u_get_phys user_v2p return 0 on va=0x%lx\n", start);
 		/* dump_page(page); */
 		m4u_dump_mmaps(start);
@@ -2295,7 +2302,9 @@ static long MTK_M4U_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 	int MVA_MAX_BLOCK_NR = 4095;
 	int MVA_BLOCK_SIZE_ORDER = 20;
 	struct M4U_MOUDLE m4u_module;
+#ifdef M4U_FPGAPORTING
 	M4U_PORT_STRUCT m4u_port;
+#endif
 	M4U_PORT_ID ModuleID;
 	struct M4U_CACHE m4u_cache_data;
 	struct M4U_DMA m4u_dma_data;
@@ -2427,7 +2436,7 @@ static long MTK_M4U_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 				m4u_dma_data.size, m4u_dma_data.mva,
 				m4u_dma_data.eDMAType, m4u_dma_data.eDMADir);
 		break;
-
+#ifdef M4U_FPGAPORTING
 	case MTK_M4U_T_CONFIG_PORT:
 		ret = copy_from_user(&m4u_port, (void *)arg, sizeof(M4U_PORT_STRUCT));
 		if (ret) {
@@ -2446,6 +2455,7 @@ static long MTK_M4U_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 		mutex_unlock(&gM4u_sec_init);
 #endif
 		break;
+#endif
 	case MTK_M4U_T_CACHE_FLUSH_ALL:
 		m4u_dma_cache_flush_all();
 		break;

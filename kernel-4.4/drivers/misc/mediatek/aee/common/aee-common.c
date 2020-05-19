@@ -32,6 +32,7 @@
 #include <linux/uaccess.h>
 #include <linux/fs.h>
 #include <linux/vmalloc.h>
+#include <mt-plat/mrdump.h>
 #include <mrdump_private.h>
 
 static struct aee_kernel_api *g_aee_api;
@@ -201,7 +202,7 @@ void aee_kernel_warning_api(const char *file, const int line, const int db_opt, 
 	offset += snprintf(msgbuf, KERNEL_REPORT_LENGTH, "<%s:%d> ", file, line);
 	offset += vsnprintf(msgbuf + offset, KERNEL_REPORT_LENGTH - offset, msg, args);
 	if (g_aee_api && g_aee_api->kernel_reportAPI) {
-		if (strstr(module, "maybe have other hang_detect KE DB"))
+		if (module && strstr(module, "maybe have other hang_detect KE DB"))
 			g_aee_api->kernel_reportAPI(AE_DEFECT_FATAL, db_opt, module, msgbuf);
 		else
 			g_aee_api->kernel_reportAPI(AE_DEFECT_WARNING, db_opt, module, msgbuf);
@@ -310,6 +311,27 @@ void aed_combo_exception_api(const int *log, int log_size, const int *phy, int p
 #endif
 }
 EXPORT_SYMBOL(aed_combo_exception_api);
+
+void aed_common_exception_api(const char *assert_type, const int *log, int log_size,
+			const int *phy, int phy_size, const char *detail, const int db_opt)
+{
+#ifdef CONFIG_MTK_AEE_AED
+	pr_debug("%s\n", __func__);
+	if (g_aee_api) {
+		if (g_aee_api->common_exception) {
+			g_aee_api->common_exception(assert_type, log, log_size, phy, phy_size,
+						detail, db_opt);
+		} else {
+			pr_debug("g_aee_api->common_exception = 0x%p\n",
+					g_aee_api->common_exception);
+		}
+	} else {
+		pr_debug("g_aee_api is null\n");
+	}
+	pr_debug("%s out\n", __func__);
+#endif
+}
+EXPORT_SYMBOL(aed_common_exception_api);
 
 char sram_printk_buf[256];
 

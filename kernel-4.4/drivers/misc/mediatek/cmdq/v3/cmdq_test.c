@@ -116,7 +116,7 @@ if (1) {	\
 }			\
 }
 
-static int32_t _test_submit_async_internal(struct cmdqRecStruct *handle, struct TaskStruct **ppTask,
+int32_t _test_submit_async_internal(struct cmdqRecStruct *handle, struct TaskStruct **ppTask,
 	bool internal, bool ignore_timeout)
 
 {
@@ -149,7 +149,7 @@ static int32_t _test_submit_async(struct cmdqRecStruct *handle, struct TaskStruc
 	return _test_submit_async_internal(handle, ppTask, false, false);
 }
 
-static s32 _test_submit_sync(struct cmdqRecStruct *handle, bool ignore_timeout)
+s32 _test_submit_sync(struct cmdqRecStruct *handle, bool ignore_timeout)
 {
 	struct cmdqCommandStruct desc = { 0 };
 	struct TaskPrivateStruct private = {
@@ -241,6 +241,7 @@ static void testcase_scenario(void)
 }
 
 static struct timer_list timer;
+static bool timer_stop;
 
 static void _testcase_sync_token_timer_func(unsigned long data)
 {
@@ -258,6 +259,11 @@ static void _testcase_sync_token_timer_loop_func(unsigned long data)
 	/* trigger sync event */
 	CMDQ_MSG("trigger event=0x%08lx\n", (1L << 16) | data);
 	CMDQ_REG_SET32(CMDQ_SYNC_TOKEN_UPD, (1L << 16) | data);
+
+	if (timer_stop) {
+		del_timer(&timer);
+		return;
+	}
 
 	/* repeate timeout until user delete it */
 	mod_timer(&timer, jiffies + msecs_to_jiffies(10));
@@ -550,6 +556,7 @@ static void testcase_multiple_async_request(void)
 
 	CMDQ_LOG("%s\n", __func__);
 
+	timer_stop = false;
 	setup_timer(&timer, &_testcase_sync_token_timer_loop_func, CMDQ_SYNC_TOKEN_USER_0);
 	mod_timer(&timer, jiffies + msecs_to_jiffies(10));
 
@@ -599,6 +606,7 @@ static void testcase_multiple_async_request(void)
 	/* clear token */
 	CMDQ_REG_SET32(CMDQ_SYNC_TOKEN_UPD, CMDQ_SYNC_TOKEN_USER_0);
 
+	timer_stop = true;
 	del_timer(&timer);
 
 	CMDQ_LOG("%s END\n", __func__);
@@ -1318,7 +1326,7 @@ static void testcase_write_address(void)
 
 	CMDQ_LOG("%s\n", __func__);
 
-	cmdqCoreAllocWriteAddress(3, &pa);
+	cmdqCoreAllocWriteAddress(3, &pa, NULL);
 	CMDQ_LOG("ALLOC: 0x%pa\n", &pa);
 	value = cmdqCoreReadWriteAddress(pa);
 	CMDQ_LOG("value 0: 0x%08x\n", value);
@@ -2671,7 +2679,7 @@ static void testcase_trigger_engine_dispatch_check(void)
 	CMDQ_LOG("%s END\n", __func__);
 }
 
-static void testcase_complicated_engine_thread(void)
+void testcase_complicated_engine_thread(void)
 {
 #define TASK_COUNT 6
 	struct cmdqRecStruct *handle[TASK_COUNT] = { 0 };
@@ -2803,6 +2811,7 @@ static void testcase_manual_suspend_resume_test(void)
 	CMDQ_LOG("%s END\n", __func__);
 }
 
+#ifdef CMDQ_TIMER_ENABLE
 static void testcase_delay_for_suspend_resume_test(void)
 {
 	struct cmdqRecStruct *handle = NULL;
@@ -2834,6 +2843,7 @@ static void testcase_delay_for_suspend_resume_test(void)
 
 	CMDQ_LOG("%s END\n", __func__);
 }
+#endif
 
 static void testcase_timeout_wait_early_test(void)
 {
@@ -2887,7 +2897,7 @@ static void testcase_timeout_reorder_test(void)
 	CMDQ_LOG("%s END\n", __func__);
 }
 
-static void testcase_error_irq(void)
+void testcase_error_irq(void)
 {
 	struct cmdqRecStruct *handle = NULL;
 	const uint32_t PATTERN = (1 << 0) | (1 << 2) | (1 << 16);
@@ -3328,6 +3338,9 @@ static void testcase_notify_and_delay_submit(uint32_t delayTimeMS)
 
 	cmdq_task_flush_async(handle);
 	cmdq_task_destroy(handle);
+
+	/* reset cb after use */
+	cmdqCoreSetResourceCallback(resourceEvent, NULL, NULL);
 
 	/* value check */
 	value = CMDQ_REG_GET32(CMDQ_TEST_GCE_DUMMY_VA);
@@ -4189,6 +4202,7 @@ static void testcase_long_jump_c(void)
 	CMDQ_LOG("%s END\n", __func__);
 }
 
+#ifdef CMDQ_TIMER_ENABLE
 static void testcase_basic_delay(u32 delay_time_us)
 {
 #define CMDQ_DELAY_TOLERANCE_US (100)
@@ -4247,6 +4261,7 @@ static void testcase_basic_delay(u32 delay_time_us)
 
 	CMDQ_LOG("%s END\n", __func__);
 }
+#endif
 
 static void testcase_move_data_between_SRAM(void)
 {
@@ -4378,6 +4393,7 @@ static void testcase_run_command_on_SRAM(void)
  *     Can execute after timeout (return 0)
  *     Make sure multiple wait_event_timeout can also work
  */
+#ifdef CMDQ_TIMER_ENABLE
 static void testcase_wait_event_timeout(u32 max_round)
 {
 	struct cmdqRecStruct *handle;
@@ -4433,6 +4449,7 @@ static void testcase_wait_event_timeout(u32 max_round)
 
 	CMDQ_LOG("%s END\n", __func__);
 }
+#endif
 
 /* Simulate DISP use case */
 static void testcase_disp_simulate(void)
@@ -6618,11 +6635,8 @@ enum CMDQ_TESTCASE_ENUM {
 	CMDQ_TESTCASE_END,	/* always at the end */
 };
 
-static void testcase_general_handling(int32_t testID)
+void testcase_general_handling_stress(s32 testID)
 {
-	u32 i = 0;
-	/* Turn on GCE clock to make sure GPR is always alive */
-	cmdq_dev_enable_gce_clock(true);
 	switch (testID) {
 	case 304:
 		testcase_stress_reorder();
@@ -6639,6 +6653,19 @@ static void testcase_general_handling(int32_t testID)
 	case 300:
 		testcase_stress_basic();
 		break;
+	default:
+		CMDQ_LOG(
+			"[TESTCASE]CONFIG Not Found: gCmdqTestSecure:%d testType:%lld\n",
+			 gCmdqTestSecure, gCmdqTestConfig[0]);
+		break;
+	}
+}
+
+void testcase_general_handling_advance(s32 testID)
+{
+	u32 i = 0;
+
+	switch (testID) {
 	case 157:
 		testcase_resource_dump();
 		break;
@@ -6654,9 +6681,11 @@ static void testcase_general_handling(int32_t testID)
 		for (i = 0; i < 500; i++)
 			testcase_end_behavior(false, get_random_int() % 50 + 1);
 		break;
+#ifdef CMDQ_TIMER_ENABLE
 	case 153:
 		testcase_delay_for_suspend_resume_test();
 		break;
+#endif
 	case 152:
 		testcase_end_addr_conflict();
 		break;
@@ -6678,12 +6707,14 @@ static void testcase_general_handling(int32_t testID)
 	case 146:
 		testcase_disp_simulate();
 		break;
+#ifdef CMDQ_TIMER_ENABLE
 	case 145:
 		testcase_wait_event_timeout(20);
 		break;
 	case 144:
 		testcase_wait_event_timeout(1);
 		break;
+#endif
 	case 143:
 		testcase_run_command_on_SRAM();
 		break;
@@ -6712,18 +6743,14 @@ static void testcase_general_handling(int32_t testID)
 	case 128:
 		testcase_boundary_mem_param();
 		break;
+#ifdef CMDQ_TIMER_ENABLE
 	case 126:
 		testcase_basic_delay(100);
-		testcase_basic_delay(200);
-		testcase_basic_delay(100);
-		testcase_basic_delay(200);
-		testcase_basic_delay(100);
-		testcase_basic_delay(200);
-		testcase_basic_delay(100);
-		testcase_basic_delay(200);
-		testcase_basic_delay(100);
-		testcase_basic_delay(200);
+		testcase_basic_delay(1000);
+		testcase_basic_delay(10000);
+		testcase_basic_delay(100000);
 		break;
+#endif
 	case 125:
 		testcase_do_while_continue();
 		testcase_basic_jump_c();
@@ -6745,6 +6772,17 @@ static void testcase_general_handling(int32_t testID)
 	case 120:
 		testcase_notify_and_delay_submit(16);
 		break;
+	default:
+		CMDQ_LOG(
+			"[TESTCASE]CONFIG Not Found: gCmdqTestSecure:%d testType:%lld\n",
+			 gCmdqTestSecure, gCmdqTestConfig[0]);
+		break;
+	}
+}
+
+void testcase_general_handling_advance2(s32 testID)
+{
+	switch (testID) {
 	case 119:
 		testcase_check_dts_correctness();
 		break;
@@ -6805,6 +6843,17 @@ static void testcase_general_handling(int32_t testID)
 	case 100:
 		testcase_secure_basic();
 		break;
+	default:
+		CMDQ_LOG(
+			"[TESTCASE]CONFIG Not Found: gCmdqTestSecure:%d testType:%lld\n",
+			 gCmdqTestSecure, gCmdqTestConfig[0]);
+		break;
+	}
+}
+
+static void testcase_general_handling_basic(s32 testID)
+{
+	switch (testID) {
 	case 99:
 		testcase_write();
 		testcase_write_with_mask();
@@ -6895,6 +6944,37 @@ static void testcase_general_handling(int32_t testID)
 	case 70:
 		testcase_write_reg_from_slot();
 		break;
+	default:
+		CMDQ_LOG(
+			"[TESTCASE]CONFIG Not Found: gCmdqTestSecure:%d testType:%lld\n",
+			 gCmdqTestSecure, gCmdqTestConfig[0]);
+		break;
+	}
+}
+
+void testcase_general_handling(s32 testID)
+{
+	if (testID >= 300) {
+		testcase_general_handling_stress(testID);
+		return;
+	}
+
+	if (testID >= 120) {
+		testcase_general_handling_advance(testID);
+		return;
+	}
+
+	if (testID >= 100) {
+		testcase_general_handling_advance2(testID);
+		return;
+	}
+
+	if (testID >= CMDQ_TESTCASE_END) {
+		testcase_general_handling_basic(testID);
+		return;
+	}
+
+	switch (testID) {
 	case CMDQ_TESTCASE_FPGA:
 		CMDQ_LOG("FPGA Verify Start!\n");
 		testcase_write();
@@ -6965,8 +7045,6 @@ static void testcase_general_handling(int32_t testID)
 			 gCmdqTestSecure, gCmdqTestConfig[0]);
 		break;
 	}
-	/* Turn off GCE clock */
-	cmdq_dev_enable_gce_clock(false);
 }
 
 ssize_t cmdq_test_proc(struct file *fp, char __user *u, size_t s, loff_t *l)
@@ -6994,7 +7072,11 @@ ssize_t cmdq_test_proc(struct file *fp, char __user *u, size_t s, loff_t *l)
 	switch (testParameter[0]) {
 	case CMDQ_TEST_TYPE_NORMAL:
 	case CMDQ_TEST_TYPE_SECURE:
+		/* Turn on GCE clock to make sure GPR is always alive */
+		cmdq_dev_enable_gce_clock(true);
 		testcase_general_handling((int32_t)testParameter[1]);
+		/* Turn off GCE clock */
+		cmdq_dev_enable_gce_clock(false);
 		break;
 	case CMDQ_TEST_TYPE_MONITOR_EVENT:
 		/* (wait type, event ID or back register) */

@@ -2369,7 +2369,15 @@ static int autok_adjust_param(struct msdc_host *host,
 			     __func__, *value);
 			return -1;
 		}
-		if (host->base_top) {
+		if (((host->hw->host_function == MSDC_EMMC)
+		&& (platform_top_ctrl.msdc0_rx_enhance_top == 1)
+		&& host->base_top)
+		|| ((host->hw->host_function == MSDC_SD)
+		&& (platform_top_ctrl.msdc1_rx_enhance_top == 1)
+		&& host->base_top)
+		|| ((host->hw->host_function == MSDC_SDIO)
+		&& (platform_top_ctrl.msdc2_rx_enhance_top == 1)
+		&& host->base_top)) {
 #if !defined(FPGA_PLATFORM)
 			reg = (u32 *) EMMC_TOP_CONTROL;
 			field = (u32) (AUTOK_TOP_SDC_RX_ENHANCE_EN);
@@ -3558,13 +3566,18 @@ int execute_online_tuning_hs400(struct msdc_host *host, u8 *res)
 		AUTOK_RAWPRINT("[AUTOK]device status 0x%08x\r\n", response);
 	} else
 		AUTOK_RAWPRINT("[AUTOK]CMD err while check device status\r\n");
-	/* check QSR status */
-	ret = autok_send_tune_cmd(host, CHECK_QSR, TUNE_CMD, &autok_host_para);
-	if (ret == E_RES_PASS) {
-		response = MSDC_READ32(SDC_RESP0);
-		AUTOK_RAWPRINT("[AUTOK]current QSR 0x%08x\r\n", response);
+#ifdef CONFIG_MTK_EMMC_CQ_SUPPORT
+	/* check QSR status when CQ on */
+	if (host->mmc->card && host->mmc->card->ext_csd.cmdq_mode_en) {
+		ret = autok_send_tune_cmd(host, CHECK_QSR, TUNE_CMD, &autok_host_para);
+		if (ret == E_RES_PASS) {
+			response = MSDC_READ32(SDC_RESP0);
+			AUTOK_RAWPRINT("[AUTOK]current QSR 0x%08x\r\n", response);
+		} else
+			AUTOK_RAWPRINT("[AUTOK]CMD error while check QSR\r\n");
 	} else
-		AUTOK_RAWPRINT("[AUTOK]CMD error while check QSR\r\n");
+		AUTOK_RAWPRINT("[AUTOK]CQ not enabled\r\n");
+#endif
 	/* tune data pad delay , find data pad boundary */
 	for (j = 0; j < 32; j++) {
 		autok_adjust_paddly(host, &j, DAT_PAD_RDLY);
@@ -3742,8 +3755,7 @@ int execute_cmd_online_tuning(struct msdc_host *host, u8 *res)
 			sizeof(p_autok_tune_res) / sizeof(u8));
 	}
 
-	/* must return ret for emmc reset when error happen */
-	return ret;
+	return 0;
 }
 
 /* online tuning for latch ck */
@@ -4197,7 +4209,7 @@ int execute_online_tuning_sdio30_plus(struct msdc_host *host, u8 *res)
 	/* tune data pad delay , find cmd/data pad boundary */
 	for (j = 0; j < 32; j++) {
 		if (cmd_bd_find == 0)
-			msdc_autok_adjust_paddly(host, &j, CMD_PAD_RDLY);
+			autok_adjust_paddly(host, &j, CMD_PAD_RDLY);
 		if (dat_bd_find == 0)
 			autok_adjust_paddly(host, &j, DAT_PAD_RDLY);
 		for (k = 0; k < AUTOK_CMD_TIMES / 4; k++) {

@@ -626,8 +626,10 @@ void HDMITX_DevLoopProc(void)
 			}
 
 			/* bOutputColorMode = F_MODE_RGB444; */
-			if (hdmi_util.state_callback)
+			if (hdmi_util.state_callback) {
 				hdmi_util.state_callback(1);
+				hdmi_invoke_cable_callbacks(HDMI_STATE_ACTIVE);
+			}
 
 			HDMITX_DEBUG_PRINTF("HPD change HDMITX_SetOutput();\n");
 			/* HDMITX_SetOutput(); */
@@ -642,8 +644,10 @@ void HDMITX_DevLoopProc(void)
 			sink_support_resolution = 0;
 			/* switch_set_state(&hdmi_switch_data, HDMI_PLUG_NO_DEVICE); */
 			/* init_hdmi_disp_path(0); */
-			if (hdmi_util.state_callback)
+			if (hdmi_util.state_callback) {
 				hdmi_util.state_callback(0);
+				hdmi_invoke_cable_callbacks(HDMI_STATE_NO_DEVICE);
+			}
 			it66121_bChangeAudio = FALSE;
 		}
 	} else {
@@ -1323,7 +1327,7 @@ unsigned char ParseEDID(void)
 }
 void ite66121_AppGetEdidInfo(struct _HDMI_EDID_T *pv_get_info)
 {
-
+	sink_support_resolution |= SINK_480P | SINK_720P60 | SINK_1080P30;
 	pv_get_info->ui4_ntsc_resolution |= sink_support_resolution;
 	pv_get_info->ui4_pal_resolution |= sink_support_resolution;
 	pv_get_info->ui4_sink_dtd_ntsc_resolution |= sink_support_resolution;

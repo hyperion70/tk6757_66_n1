@@ -14,8 +14,8 @@
 	rt5081_pmu: rt5081_pmu_dts {
 		interrupt-controller;
 		#interrupt-cells = <1>;
-		rt,intr_gpio_num = <101>; /* direct defined GPIO num */
-		rt,intr_gpio = <&pio 101 0x0>; /* GPIO */
+		rt,intr_gpio_num = <3>; /* direct defined GPIO num */
+		rt,intr_gpio = <&pio 3 0x0>; /* GPIO */
 		core {
 			compatible = "richtek,rt5081_pmu_core";
 			interrupt-names = "otp", "vdda_ovp", "vdda_uv";
@@ -29,8 +29,7 @@
 		};
 		charger {
 			compatible = "richtek,rt5081_pmu_charger";
-			interrupt-names = "adc_donei", "chg_mivr",
-				"chg_aiclmeasi", "pumpx_donei", "attachi",
+			interrupt-names = "chg_mivr", "chg_aiclmeasi", "attachi",
 				"ovpctrl_uvp_d_evt", "chg_wdtmri", "chg_vbusov",
 				"chg_tmri", "chg_treg";
 			charger_name = "primary_chg";
@@ -38,7 +37,7 @@
 			ichg = <2000000>;	/* uA */
 			aicr = <500000>;	/* uA */
 			mivr = <4400000>;	/* uV */
-			cv = <4400000>;		/* uA */	/* [lidebiao] Modify battery charging CV */
+			cv = <4350000>;		/* uA */
 			ieoc = <150000>;	/* uA */
 			safety_timer = <12>;	/* hour */
 			dc_wdt = <4000000>;	/* us */
@@ -89,7 +88,8 @@
 					  "isink4_open", "isink3_open",
 					  "isink2_open", "isink1_open";
 			/* name cnt must be 4 */
-			rt,led_name = "red", "green", "rt5081_pmu_led3", "rt5081_pmu_led4";
+			rt,led_name = "red", "green",
+				      "rt5081_pmu_led3", "rt5081_pmu_led4";
 			/* trigger cnt must be 4, mode can be selected as */
 			/* cc_mode -> const current mode */
 			/* pwm_mode -> pwm dimming mode */
@@ -114,8 +114,8 @@
 			rt,bled_ramptime = <3>; /* 0, 500us, 750us, 1ms, 2ms, 5ms, 10ms, 20ms */
 						/* 50ms, 100ms, 250ms, 800ms, 1s, 2s, 4s, 8s */
 			rt,bled_flash_ramp = <1>; /* 0, 500us, 750us, 1ms, 2ms, 5ms */
-			rt,max_bled_brightness = <683>; /* we have 11 bit resolution, quantize in driver */
-							 /* maximum 2047 */ /* [liliwen] Change max_bled_brightness */
+			rt,max_bled_brightness = <512>; /* we have 11 bit resolution, quantize in driver */
+							 /* maximum 2047 */
 		};
 		dsv {
 			compatible = "richtek,rt5081_pmu_dsv";

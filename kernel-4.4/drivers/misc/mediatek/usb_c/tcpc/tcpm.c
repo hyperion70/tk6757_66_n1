@@ -580,8 +580,10 @@ bool tcpm_extract_power_cap_val(
 		cap->ma = info.ma;
 
 #ifdef CONFIG_USB_PD_REV30
-	if (info.type == DPM_PDO_TYPE_APDO)
+	if (info.type == DPM_PDO_TYPE_APDO) {
 		cap->apdo_type = info.apdo_type;
+		cap->pwr_limit = info.pwr_limit;
+	}
 #endif	/* CONFIG_USB_PD_REV30 */
 
 	return cap->type != TCPM_POWER_CAP_VAL_TYPE_UNKNOWN;
@@ -1898,7 +1900,7 @@ static void mtk_handle_tcp_event_result(
 		.event_id = TCP_DPM_EVT_HARD_RESET,
 	};
 
-	if (ret == TCPM_SUCCESS)
+	if (ret == TCPM_SUCCESS || ret == TCP_DPM_RET_NOT_SUPPORT)
 		return;
 
 	if (event->event_id == TCP_DPM_EVT_GET_STATUS
@@ -1924,10 +1926,8 @@ static int __tcpm_put_tcp_dpm_event_bk(
 #endif	/* CONFIG_USB_PD_TCPM_CB_2ND */
 
 	ret = tcpm_put_tcp_dpm_event(tcpc, event);
-	if (ret != TCPM_SUCCESS) {
-		mutex_unlock(&pd_port->tcpm_bk_lock);
+	if (ret != TCPM_SUCCESS)
 		return ret;
-	}
 
 	return tcpm_dpm_wait_bk_event(pd_port, tout_ms);
 }

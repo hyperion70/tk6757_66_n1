@@ -19,6 +19,9 @@
 
 #include <linux/types.h>
 
+/* for debug share sram clock */
+extern atomic_t g_mdp_wrot0_usage;
+
 /* runtime pm to probe MDP device */
 typedef s32 (*CmdqMDPProbe) (void);
 
@@ -83,6 +86,8 @@ typedef void (*CmdqMdpEnableCommonClock) (bool enable);
 /* meansure task bandwidth for pmqos */
 typedef u32(*CmdqMdpMeansureBandwidth) (u32 bandwidth);
 
+typedef u64(*CmdqMdpGetSecEngine) (u64 engine_flag);
+
 struct cmdqMDPFuncStruct {
 	CmdqMDPProbe mdp_probe;
 	CmdqDumpMMSYSConfig dumpMMSYSConfig;
@@ -116,6 +121,7 @@ struct cmdqMDPFuncStruct {
 	CmdqEndTaskCB endISPTask;
 	CmdqStartTaskCB_ATOMIC startTask_atomic;
 	CmdqFinishTaskCB_ATOMIC finishTask_atomic;
+	CmdqMdpGetSecEngine mdpGetSecEngine;
 };
 
 struct mdp_task {
@@ -143,6 +149,11 @@ struct mdp_pmqos_record {
 #define MDP_BUF_INFO_STR_LEN 8 /* each buf info length */
 #define MDP_DISPATCH_KEY_STR_LEN (TASK_COMM_LEN + 5) /* dispatch key format is MDP_(ThreadName) */
 #define MDP_TOTAL_THREAD 8
+#ifdef CMDQ_SECURE_PATH_SUPPORT
+#define MDP_THREAD_START (CMDQ_MIN_SECURE_THREAD_ID + 2)
+#else
+#define MDP_THREAD_START CMDQ_DYNAMIC_THREAD_ID_START
+#endif
 
 struct cmdqMDPTaskStruct {
 	char callerName[TASK_COMM_LEN];
@@ -185,6 +196,8 @@ extern "C" {
 
 	void cmdq_mdp_check_TF_address(unsigned int mva, char *module);
 	const char *cmdq_mdp_parse_error_module_by_hwflag(const struct TaskStruct *task);
+
+	s32 cmdq_mdp_dump_wrot0_usage(void);
 
 /**************************************************************************************/
 /*******************                    Platform dependent function                    ********************/

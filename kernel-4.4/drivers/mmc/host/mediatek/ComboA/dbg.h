@@ -44,9 +44,6 @@ enum {
 	SDIO_AUTOK_RESULT = 30,
 	MMC_CMDQ_STATUS = 31,
 	SD_TOOL_TOP_REG_ACCESS = 32,
-
-	/* for DB dump, do not change index */
-	MMC_HANG_DETECT_DUMP = 256,
 };
 
 /* Debug message event */
@@ -125,7 +122,7 @@ do { \
 		current->pid)
 
 #define INFO_MSG(fmt, args...) \
-	pr_debug(TAGMSDC"%d -> "fmt" <- %s() : L<%d> PID<%s><0x%x>\n", \
+	pr_info(TAGMSDC"%d -> "fmt" <- %s() : L<%d> PID<%s><0x%x>\n", \
 		host->id, ##args, __func__, __LINE__, current->comm, \
 		current->pid)
 
@@ -167,9 +164,11 @@ void msdc_error_tune_debug2(struct msdc_host *host,
 	struct mmc_command *stop, u32 *intsts);
 int multi_rw_compare(struct seq_file *m, int host_num,
 	uint address, int count, uint type, int multi_thread);
-void dbg_add_host_log(struct mmc_host *mmc, int type, int cmd, int arg);
+void mmc_cmd_log(struct mmc_host *mmc, int type, int cmd, int arg,
+	struct mmc_command *sbc);
 void mmc_cmd_dump(char **buff, unsigned long *size, struct seq_file *m,
 		struct mmc_host *mmc, u32 latest_cnt);
 void msdc_dump_host_state(char **buff, unsigned long *size,
 		struct seq_file *m, struct msdc_host *host);
+void msdc_proc_dump(struct seq_file *m, u32 id);
 #endif

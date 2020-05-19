@@ -62,9 +62,9 @@ else							\
 #define CMDQ_THREAD_SEC_MDP		(CMDQ_MIN_SECURE_THREAD_ID + 2)
 
 /* max count of regs */
-#define CMDQ_MAX_COMMAND_SIZE		(0x10000)
+#define CMDQ_MAX_COMMAND_SIZE		(0x80000000)
 #define CMDQ_MAX_DUMP_REG_COUNT		(2048)
-#define CMDQ_MAX_WRITE_ADDR_COUNT	(2*(PAGE_SIZE / sizeof(u32)))
+#define CMDQ_MAX_WRITE_ADDR_COUNT	(PAGE_SIZE / sizeof(u32))
 #define CMDQ_MAX_DBG_STR_LEN		1024
 
 #ifdef CMDQ_DUMP_FIRSTERROR
@@ -135,7 +135,7 @@ do {			\
 
 #define CMDQ_AEE(tag, string, args...) \
 { \
-	CMDQ_AEE_EX(DB_OPT_DUMP_DISPLAY, tag, string, ##args) \
+	CMDQ_AEE_EX(DB_OPT_DUMP_DISPLAY | DB_OPT_FTRACE, tag, string, ##args) \
 }
 
 #else
@@ -462,7 +462,7 @@ struct cmdq_controller {
 	void (*dump_err_buffer)(const struct TaskStruct *task, u32 *hwpc);
 	void (*dump_summary)(const struct TaskStruct *task, s32 thread,
 		const struct TaskStruct **ngtask_out,
-		struct NGTaskInfoStruct **nginfo_out);
+		struct NGTaskInfoStruct *nginfo_out);
 
 	bool change_jump;
 };
@@ -683,6 +683,7 @@ struct WriteAddrStruct {
 	void *va;
 	dma_addr_t pa;
 	pid_t user;
+	void *file_node;
 };
 
 /**
@@ -713,6 +714,7 @@ struct ResourceUnitStruct {
 	u64 engine_flag;		/* engine flag */
 	CmdqResourceAvailableCB availableCB;
 	CmdqResourceReleaseCB releaseCB;
+	atomic_t ref;
 	struct delayed_work delayCheckWork;	/* Delay Work item when delay check is used */
 };
 
@@ -1080,9 +1082,11 @@ extern "C" {
 
 	uint32_t cmdqCoreReadDataRegister(enum CMDQ_DATA_REGISTER_ENUM regID);
 
-	int cmdqCoreAllocWriteAddress(uint32_t count, dma_addr_t *paStart);
+	int cmdqCoreAllocWriteAddress(uint32_t count, dma_addr_t *paStart, void *node);
 	int cmdqCoreFreeWriteAddress(dma_addr_t paStart);
+	void cmdqCoreFreeWriteAddressNode(void *node);
 	uint32_t cmdqCoreReadWriteAddress(dma_addr_t pa);
+	void cmdqCoreReadWriteAddressBatch(u32 *addrs, u32 count, u32 *val_out);
 	uint32_t cmdqCoreWriteWriteAddress(dma_addr_t pa, uint32_t value);
 
 	int32_t cmdq_core_profile_enabled(void);
@@ -1164,6 +1168,8 @@ extern "C" {
 	void cmdqCoreSetResourceCallback(enum CMDQ_EVENT_ENUM resourceEvent,
 								CmdqResourceAvailableCB resourceAvailable,
 								CmdqResourceReleaseCB resourceRelease);
+	void cmdq_core_dump_resource_status(enum CMDQ_EVENT_ENUM resourceEvent,
+		const char *tag);
 
 	void cmdq_core_dump_dts_setting(void);
 	int32_t cmdq_core_get_running_task_by_engine_unlock(uint64_t engineFlag,
@@ -1206,6 +1212,11 @@ extern "C" {
 	void cmdq_core_set_cmdq_device(struct device *cmdq_dev);
 	int cmdq_core_runtime_suspend(struct device *dev);
 	int cmdq_core_runtime_resume(struct device *dev);
+	void cmdq_core_group_begin_task(struct TaskStruct *task,
+		struct TaskStruct *task_list[], u32 size);
+	s32 cmdq_core_get_pmqos_task_list(struct TaskStruct *pTask,
+		struct ThreadStruct *pThread, struct TaskStruct **task_list_out,
+		u32 *task_list_count_out, u32 task_list_max_size);
 #ifdef __cplusplus
 }
 #endif

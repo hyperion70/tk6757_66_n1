@@ -1457,7 +1457,7 @@ static int mtkfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg
 
 				for (i = 0; i < VIDEO_LAYER_COUNT; ++i) {
 					if (layerInfo[i].layer_id >= TOTAL_OVL_LAYER_NUM) {
-						disp_aee_print
+						DISPERR
 						    ("MTKFB_SET_VIDEO_LAYERS, layer_id invalid=%d\n",
 						     layerInfo[i].layer_id);
 						continue;

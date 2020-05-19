@@ -29,6 +29,10 @@
 #include <linux/platform_device.h>
 #include "legacy_controller.h"
 
+#ifdef CONFIG_MTK_CPU_CTRL_CFP
+#include "cpu_ctrl_cfp.h"
+#endif
+
 #ifdef CONFIG_TRACING
 #include <linux/kallsyms.h>
 #include <linux/trace_events.h>
@@ -37,6 +41,7 @@
 #define TAG "[boost_controller]"
 
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
 static struct mutex boost_freq;
 static struct mutex boost_core;
@@ -85,22 +90,20 @@ static inline void __mt_update_tracing_mark_write_addr(void)
 		tracing_mark_write_addr = kallsyms_lookup_name("tracing_mark_write");
 }
 
-static inline void lhd_kernel_trace_begin(char *name, int id, int min, int max)
+static inline void lhd_kernel_trace(char *name, int id, int min, int max)
 {
 	__mt_update_tracing_mark_write_addr();
 	preempt_disable();
-	event_trace_printk(tracing_mark_write_addr, "B|%d|%s|%d|%d|%d\n", current->tgid, name, id, min, max);
+	event_trace_printk(tracing_mark_write_addr,
+			"boost_controller: %d %s %d %d %d\n", current->tgid, name, id, min, max);
 	preempt_enable();
 }
 
-static inline void lhd_kernel_trace_end(void)
-{
-	__mt_update_tracing_mark_write_addr();
-	preempt_disable();
-	event_trace_printk(tracing_mark_write_addr, "E\n");
-	preempt_enable();
-}
+#endif
 
+#ifdef CONFIG_MTK_CPU_CTRL_CFP
+static int cfp_init_ret;
+int powerhal_tid;
 #endif
 
 /*************************************************************************************/
@@ -187,15 +190,12 @@ int update_userlimit_cpu_core(int kicker, int num_cluster, struct ppm_limit_data
 		legacy_debug(log_enable, TAG"cluster %d, current_core_min %d current_core_max %d\n",
 			 i, current_core[i].min, current_core[i].max);
 #ifdef CONFIG_TRACING
-		lhd_kernel_trace_begin("current_core", i, current_core[i].min, current_core[i].max);
+		lhd_kernel_trace("current_core", i, current_core[i].min, current_core[i].max);
 #endif
 	}
 
 	mt_ppm_userlimit_cpu_core(nr_ppm_clusters, final_core);
 
-#ifdef CONFIG_TRACING
-	lhd_kernel_trace_end();
-#endif
 
 ret_update:
 	kfree(final_core);
@@ -252,7 +252,15 @@ int update_userlimit_cpu_freq(int kicker, int num_cluster, struct ppm_limit_data
 	for (i = 0; i < PPM_MAX_KIR; i++) {
 		for (j = 0; j < nr_ppm_clusters; j++) {
 			final_freq[j].min = MAX(freq_set[i][j].min, final_freq[j].min);
+#ifdef CONFIG_MTK_CPU_CTRL_CFP
+			final_freq[j].max
+				= final_freq[j].max != -1 &&
+				freq_set[i][j].max != -1 ?
+				MIN(freq_set[i][j].max, final_freq[j].max) :
+				MAX(freq_set[i][j].max, final_freq[j].max);
+#else
 			final_freq[j].max = MAX(freq_set[i][j].max, final_freq[j].max);
+#endif
 			if (final_freq[j].min > final_freq[j].max && final_freq[j].max != -1)
 				final_freq[j].max = final_freq[j].min;
 		}
@@ -264,14 +272,17 @@ int update_userlimit_cpu_freq(int kicker, int num_cluster, struct ppm_limit_data
 		legacy_debug(log_enable, TAG"cluster %d, freq_min %d freq_max %d\n",
 				i, current_freq[i].min, current_freq[i].max);
 #ifdef CONFIG_TRACING
-		lhd_kernel_trace_begin("current_freq", i, current_freq[i].min, current_freq[i].max);
+		lhd_kernel_trace("current_freq", i, current_freq[i].min, current_freq[i].max);
 #endif
 	}
 
+#ifdef CONFIG_MTK_CPU_CTRL_CFP
+	if (!cfp_init_ret)
+		cpu_ctrl_cfp(final_freq);
+	else
+		mt_ppm_userlimit_cpu_freq(nr_ppm_clusters, final_freq);
+#else
 	mt_ppm_userlimit_cpu_freq(nr_ppm_clusters, final_freq);
-
-#ifdef CONFIG_TRACING
-	lhd_kernel_trace_end();
 #endif
 
 ret_update:
@@ -387,8 +398,12 @@ static ssize_t perfmgr_perfserv_freq_write(struct file *filp, const char __user 
 
 	if (i < arg_num)
 		pr_debug(TAG"@%s: number of arguments < %d!\n", __func__, arg_num);
-	else
+	else {
+#ifdef CONFIG_MTK_CPU_CTRL_CFP
+		powerhal_tid = current->pid;
+#endif
 		update_userlimit_cpu_freq(PPM_KIR_PERF, nr_ppm_clusters, freq_limit);
+	}
 
 out:
 	free_page((unsigned long)buf);
@@ -416,6 +431,74 @@ static int perfmgr_perfserv_freq_open(struct inode *inode, struct file *file)
 static const struct file_operations perfmgr_perfserv_freq_fops = {
 	.open = perfmgr_perfserv_freq_open,
 	.write = perfmgr_perfserv_freq_write,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+/*************************************************************************************/
+static ssize_t perfmgr_boot_freq_write(struct file *filp, const char __user *ubuf,
+		size_t cnt, loff_t *pos)
+{
+	int i = 0, data;
+	struct ppm_limit_data *freq_limit;
+	unsigned int arg_num = nr_ppm_clusters * 2; /* for min and max */
+	char *tok, *tmp;
+	char *buf = lbc_copy_from_user_for_proc(ubuf, cnt);
+
+	freq_limit = kcalloc(nr_ppm_clusters, sizeof(struct ppm_limit_data), GFP_KERNEL);
+	if (!freq_limit)
+		goto out;
+
+	tmp = buf;
+	while ((tok = strsep(&tmp, " ")) != NULL) {
+		if (i == arg_num) {
+			pr_debug(TAG"@%s: number of arguments > %d!\n", __func__, arg_num);
+			goto out;
+		}
+
+		if (kstrtoint(tok, 10, &data)) {
+			pr_debug(TAG"@%s: Invalid input: %s\n", __func__, tok);
+			goto out;
+		} else {
+			if (i % 2) /* max */
+				freq_limit[i/2].max = data == -1 ? -1 : mt_cpufreq_get_freq_by_idx(i / 2, data);
+			else /* min */
+				freq_limit[i/2].min = data == -1 ? -1 : mt_cpufreq_get_freq_by_idx(i / 2, data);
+			i++;
+		}
+	}
+
+	if (i < arg_num)
+		pr_debug(TAG"@%s: number of arguments < %d!\n", __func__, arg_num);
+	else
+		update_userlimit_cpu_freq(PPM_KIR_BOOT, nr_ppm_clusters, freq_limit);
+
+out:
+	free_page((unsigned long)buf);
+	kfree(freq_limit);
+	return cnt;
+
+}
+
+static int perfmgr_boot_freq_show(struct seq_file *m, void *v)
+{
+	int i;
+
+	for (i = 0; i < nr_ppm_clusters; i++)
+		seq_printf(m, "cluster %d min:%d max:%d\n",
+				i, freq_set[PPM_KIR_BOOT][i].min, freq_set[PPM_KIR_BOOT][i].max);
+
+	return 0;
+}
+
+static int perfmgr_boot_freq_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, perfmgr_boot_freq_show, inode->i_private);
+}
+
+static const struct file_operations perfmgr_boot_freq_fops = {
+	.open = perfmgr_boot_freq_open,
+	.write = perfmgr_boot_freq_write,
 	.read = seq_read,
 	.llseek = seq_lseek,
 	.release = single_release,
@@ -528,10 +611,15 @@ static int __init perfmgr_legacy_boost_init(void)
 	proc_create("perfserv_core", 0644, boost_dir, &perfmgr_perfserv_core_fops);
 	proc_create("current_core", 0644, boost_dir, &perfmgr_current_core_fops);
 	proc_create("perfserv_freq", 0644, boost_dir, &perfmgr_perfserv_freq_fops);
+	proc_create("boot_freq", 0644, boost_dir, &perfmgr_boot_freq_fops);
 	proc_create("current_freq", 0644, boost_dir, &perfmgr_current_freq_fops);
 	proc_create("perfmgr_log", 0644, boost_dir, &perfmgr_log_fops);
 
 	nr_ppm_clusters = arch_get_nr_clusters();
+
+#ifdef CONFIG_MTK_CPU_CTRL_CFP
+	cfp_init_ret = cpu_ctrl_cfp_init(boost_dir);
+#endif
 
 	current_core = kcalloc(nr_ppm_clusters, sizeof(struct ppm_limit_data), GFP_KERNEL);
 	current_freq = kcalloc(nr_ppm_clusters, sizeof(struct ppm_limit_data), GFP_KERNEL);
@@ -570,6 +658,11 @@ void perfmgr_legacy_boost_exit(void)
 		kfree(core_set[i]);
 		kfree(freq_set[i]);
 	}
+
+#ifdef CONFIG_MTK_CPU_CTRL_CFP
+	if (!cfp_init_ret)
+		cpu_ctrl_cfp_exit();
+#endif
 }
 
 MODULE_LICENSE("GPL");

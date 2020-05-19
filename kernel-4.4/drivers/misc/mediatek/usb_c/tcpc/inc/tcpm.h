@@ -31,13 +31,16 @@ enum typec_attach_type {
 	TYPEC_ATTACHED_SNK,
 	TYPEC_ATTACHED_SRC,
 	TYPEC_ATTACHED_AUDIO,
-	TYPEC_ATTACHED_DEBUG,		/* Rd, Rd */
+	TYPEC_ATTACHED_DEBUG,			/* Rd, Rd */
 
 /* CONFIG_TYPEC_CAP_DBGACC_SNK */
 	TYPEC_ATTACHED_DBGACC_SNK,		/* Rp, Rp */
 
 /* CONFIG_TYPEC_CAP_CUSTOM_SRC */
 	TYPEC_ATTACHED_CUSTOM_SRC,		/* Same Rp */
+
+/* CONFIG_TYPEC_CAP_NORP_SRC */
+	TYPEC_ATTACHED_NORP_SRC,		/* No Rp */
 };
 
 enum pd_connect_result {
@@ -477,9 +480,8 @@ enum tcpm_power_cap_apdo_type {
 
 struct tcpm_power_cap_val {
 	uint8_t type;
-#ifdef CONFIG_USB_PD_REV30
 	uint8_t apdo_type;
-#endif	/* CONFIG_USB_PD_REV30 */
+	uint8_t pwr_limit;
 
 	int max_mv;
 	int min_mv;

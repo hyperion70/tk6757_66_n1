@@ -25,6 +25,7 @@
 #include <linux/spinlock.h>
 #include <linux/watchdog.h>
 #include <linux/platform_device.h>
+#include <linux/threads.h>
 
 #include <linux/uaccess.h>
 #include <linux/types.h>
@@ -72,21 +73,7 @@ static const struct of_device_id rgu_of_match[] = {
  */
 #define AP_RGU_WDT_IRQ_ID       wdt_irq_id
 #define AP_RGU_SSPM_WDT_IRQ_ID  wdt_sspm_irq_id
-
-/**
- * Set the reset length: we will set a special magic key.
- * For Power off and power on reset, the INTERVAL default value is 0x7FF.
- * We set Interval[1:0] to different value to distinguish different stage.
- * Enter pre-loader, we will set it to 0x0
- * Enter u-boot, we will set it to 0x1
- * Enter kernel, we will set it to 0x2
- * And the default value is 0x3 which means reset from a power off and power on reset
- */
-#define POWER_OFF_ON_MAGIC	(0x3)
-#define PRE_LOADER_MAGIC	(0x0)
-#define U_BOOT_MAGIC		(0x1)
-#define KERNEL_MAGIC		(0x2)
-#define MAGIC_NUM_MASK		(0x3)
+#define MTK_WDT_KEEP_LAST_INFO  (NR_CPUS+2)
 
 #ifdef CONFIG_KICK_SPM_WDT
 #include <mach/mt_spm.h>
@@ -100,9 +87,35 @@ static int wdt_last_timeout_val;
 static int wdt_enable = 1;
 static bool wdt_intr_has_trigger; /* For test use */
 
+struct wdt_kick_info_t {
+	int cpu;
+	long long restart_time;
+	void *restart_caller;
+};
+static int wdt_kick_info_idx;
+static struct wdt_kick_info_t wdt_kick_info[MTK_WDT_KEEP_LAST_INFO];
+
 #ifndef CONFIG_KICK_SPM_WDT
 static unsigned int timeout;
 #endif
+
+static void mtk_wdt_mark_stage(unsigned int stage)
+{
+	unsigned int reg = __raw_readl(MTK_WDT_NONRST_REG2);
+
+	reg = (reg & ~(RGU_STAGE_MASK << MTK_WDT_NONRST2_STAGE_OFS))
+		| (stage << MTK_WDT_NONRST2_STAGE_OFS);
+
+	mt_reg_sync_writel(reg, MTK_WDT_NONRST_REG2);
+}
+
+static void mtk_wdt_update_last_restart(void *last, int cpu_id)
+{
+	wdt_kick_info[wdt_kick_info_idx].restart_time = sched_clock();
+	wdt_kick_info[wdt_kick_info_idx].restart_caller = last;
+	wdt_kick_info[wdt_kick_info_idx].cpu = cpu_id;
+	wdt_kick_info_idx = (wdt_kick_info_idx + 1) % MTK_WDT_KEEP_LAST_INFO;
+}
 
 /*
  *   this function set the timeout value.
@@ -191,7 +204,7 @@ void mtk_wdt_mode_config(bool dual_mode_en,
 
 	/* Bit 4: WDT_Auto_restart, this is a reserved bit, we use it as bypass powerkey flag. */
 	/* Because HW reboot always need reboot to kernel, we set it always. */
-	tmp |= MTK_WDT_MODE_AUTO_RESTART;
+	tmp |= MTK_WDT_MODE_AUTO_RESTART | MTK_WDT_MODE_IRQ_LEVEL_EN;
 
 	mt_reg_sync_writel(tmp, MTK_WDT_MODE);
 	/* dual_mode(1); //always dual mode */
@@ -256,7 +269,9 @@ int  mtk_wdt_confirm_hwreboot(void)
 
 void mtk_wdt_restart(enum wd_restart_type type)
 {
+	void *here = __builtin_return_address(0);
 	struct device_node *np_rgu;
+	int cpuid = 0;
 
 	if (!toprgu_base) {
 
@@ -276,13 +291,18 @@ void mtk_wdt_restart(enum wd_restart_type type)
 	#else
 		mt_reg_sync_writel(MTK_WDT_RESTART_KEY, MTK_WDT_RESTART);
 	#endif
+		cpuid = smp_processor_id();
 		spin_unlock(&rgu_reg_operation_spinlock);
+		mtk_wdt_update_last_restart(here, cpuid);
 	} else if (type == WD_TYPE_NOLOCK) {
 	#ifdef CONFIG_KICK_SPM_WDT
 		spm_wdt_restart_timer_nolock();
 	#else
 		mt_reg_sync_writel(MTK_WDT_RESTART_KEY, MTK_WDT_RESTART);
 	#endif
+		/* smp_processor_id can only call at preempt-safe way */
+		/* so skip cpu_id info in WD_TYPE_NOLOCK */
+		mtk_wdt_update_last_restart(here, -1);
 	} else
 		pr_debug("WDT:[mtk_wdt_restart] type=%d error pid =%d\n", type, current->pid);
 }
@@ -314,6 +334,7 @@ void mtk_wd_resume(void)
 
 void wdt_dump_reg(void)
 {
+	int i;
 	pr_info("****************dump wdt reg start*************\n");
 	pr_info("MTK_WDT_MODE:0x%x\n", __raw_readl(MTK_WDT_MODE));
 	pr_info("MTK_WDT_LENGTH:0x%x\n", __raw_readl(MTK_WDT_LENGTH));
@@ -330,6 +351,13 @@ void wdt_dump_reg(void)
 	pr_info("MTK_WDT_LATCH_CTL:0x%x\n", __raw_readl(MTK_WDT_LATCH_CTL));
 	pr_info("MTK_WDT_DEBUG_CTL2:0x%x\n", __raw_readl(MTK_WDT_DEBUG_CTL2));
 	pr_info("MTK_WDT_COUNTER:0x%x\n", __raw_readl(MTK_WDT_COUNTER));
+	pr_info("MTK_WDT_LAST_KICKED\n");
+	for (i = 0; i < MTK_WDT_KEEP_LAST_INFO; i++) {
+		if (wdt_kick_info[i].restart_caller)
+			pr_info("<%d>[%lld] %pF\n", wdt_kick_info[i].cpu,
+				wdt_kick_info[i].restart_time,
+				wdt_kick_info[i].restart_caller);
+	}
 	pr_info("****************dump wdt reg end*************\n");
 
 }
@@ -372,8 +400,6 @@ void wdt_arch_reset(char mode)
 
 		pr_debug("RGU base: 0x%p  RGU irq: %d\n", toprgu_base, wdt_irq_id);
 	}
-
-	spin_lock(&rgu_reg_operation_spinlock);
 
 	/* Watchdog Rest */
 	mt_reg_sync_writel(MTK_WDT_RESTART_KEY, MTK_WDT_RESTART);
@@ -430,12 +456,12 @@ void wdt_arch_reset(char mode)
 
 	udelay(100);
 
-	pr_debug("%s: sw reset happen!\n", __func__);
-
 	__inner_flush_dcache_all();
 
-	/* dump RGU registers */
+	/* dump RGU registers (before SW reset) */
 	wdt_dump_reg();
+
+	pr_info("%s: sw reset happen!\n", __func__);
 
 	/* delay awhile to make above dump as complete as possible */
 	udelay(100);
@@ -443,7 +469,8 @@ void wdt_arch_reset(char mode)
 	/* trigger SW reset */
 	mt_reg_sync_writel(MTK_WDT_SWRST_KEY, MTK_WDT_SWRST);
 
-	spin_unlock(&rgu_reg_operation_spinlock);
+	/* dump RGU registers (after SW reset) */
+	wdt_dump_reg();
 
 	while (1) {
 		/* check if system is alive for debugging */
@@ -972,7 +999,6 @@ int mtk_wdt_dfd_timeout(int value) {return 0; }
 static int mtk_wdt_probe(struct platform_device *dev)
 {
 	int ret = 0;
-	unsigned int interval_val;
 	struct device_node *node;
 	u32 ints[2] = { 0, 0 };
 
@@ -985,6 +1011,8 @@ static int mtk_wdt_probe(struct platform_device *dev)
 			return -ENODEV;
 		}
 	}
+
+	mtk_wdt_mark_stage(RGU_STAGE_KERNEL);
 
 	/* get irq for AP WDT */
 	if (!wdt_irq_id) {
@@ -1074,13 +1102,6 @@ static int mtk_wdt_probe(struct platform_device *dev)
 	mtk_wdt_mode_config(FALSE, FALSE, TRUE, FALSE, FALSE);
 	wdt_enable = 0;
 	#endif
-
-	/* Update interval register value and check reboot flag */
-	interval_val = __raw_readl(MTK_WDT_INTERVAL);
-	interval_val &= ~(MAGIC_NUM_MASK);
-	interval_val |= (KERNEL_MAGIC);
-	/* Write back INTERVAL REG */
-	mt_reg_sync_writel(interval_val, MTK_WDT_INTERVAL);
 
 	/* Reset External debug key */
 	mtk_wdt_request_en_set(MTK_WDT_REQ_MODE_SYSRST, WD_REQ_DIS);

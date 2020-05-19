@@ -223,6 +223,9 @@ static const char *const tcpc_timer_name[] = {
 	"TYPEC_TIMER_SRCDISCONNECT",
 	"TYPEC_TIMER_ERROR_RECOVERY",
 	"TYPEC_TIMER_DRP_SRC_TOGGLE",
+#ifdef CONFIG_TYPEC_CAP_NORP_SRC
+	"TYPEC_TIMER_NORP_SRC",
+#endif	/* CONFIG_TYPEC_CAP_NORP_SRC */
 };
 /* CONFIG_USB_PD_SAFE0V_DELAY */
 #ifdef CONFIG_TCPC_VSAFE0V_DETECT
@@ -355,6 +358,9 @@ DECL_TCPC_TIMEOUT_RANGE(TYPEC_TIMER_TRYCCDEBOUNCE, 10, 10),
 DECL_TCPC_TIMEOUT(TYPEC_TIMER_SRCDISCONNECT, 5),
 DECL_TCPC_TIMEOUT_RANGE(TYPEC_TIMER_ERROR_RECOVERY, 25, 25),
 DECL_TCPC_TIMEOUT(TYPEC_TIMER_DRP_SRC_TOGGLE, 60),
+#ifdef CONFIG_TYPEC_CAP_NORP_SRC
+DECL_TCPC_TIMEOUT(TYPEC_TIMER_NORP_SRC, 300),
+#endif	/* CONFIG_TYPEC_CAP_NORP_SRC */
 };
 
 typedef enum hrtimer_restart (*tcpc_hrtimer_call)(struct hrtimer *timer);
@@ -368,6 +374,8 @@ static inline void on_pe_timer_timeout(
 	pd_event.event_type = PD_EVT_TIMER_MSG;
 	pd_event.msg = timer_id;
 	pd_event.pd_msg = NULL;
+
+	tcpc_disable_timer(tcpc_dev, timer_id);
 
 	switch (timer_id) {
 	case PD_TIMER_VDM_MODE_ENTRY:
@@ -423,8 +431,6 @@ static inline void on_pe_timer_timeout(
 		pd_put_event(tcpc_dev, &pd_event, false);
 		break;
 	}
-
-	tcpc_disable_timer(tcpc_dev, timer_id);
 }
 #endif	/* CONFIG_USB_POWER_DELIVERY */
 
@@ -946,7 +952,6 @@ static enum hrtimer_restart tcpc_timer_rt_pe_idle(struct hrtimer *timer)
 	TCPC_TIMER_TRIGGER();
 	return HRTIMER_NORESTART;
 }
-
 #endif	/* CONFIG_USB_POWER_DELIVERY */
 
 /* TYPEC-TRY-TIMER */
@@ -1060,6 +1065,18 @@ static enum hrtimer_restart tcpc_timer_drp_src_toggle(struct hrtimer *timer)
 	return HRTIMER_NORESTART;
 }
 
+#ifdef CONFIG_TYPEC_CAP_NORP_SRC
+static enum hrtimer_restart tcpc_timer_norp_src(struct hrtimer *timer)
+{
+	int index = TYPEC_TIMER_NORP_SRC;
+	struct tcpc_device *tcpc_dev =
+		container_of(timer, struct tcpc_device, tcpc_timer[index]);
+
+	TCPC_TIMER_TRIGGER();
+	return HRTIMER_NORESTART;
+}
+#endif	/* CONFIG_TYPEC_CAP_NORP_SRC */
+
 static tcpc_hrtimer_call tcpc_timer_call[PD_TIMER_NR] = {
 #ifdef CONFIG_USB_POWER_DELIVERY
 	tcpc_timer_discover_id,
@@ -1144,6 +1161,9 @@ static tcpc_hrtimer_call tcpc_timer_call[PD_TIMER_NR] = {
 	tcpc_timer_srcdisconnect,
 	tcpc_timer_error_recovery,
 	tcpc_timer_drp_src_toggle,
+#ifdef CONFIG_TYPEC_CAP_NORP_SRC
+	tcpc_timer_norp_src,
+#endif
 };
 
 /*
@@ -1214,7 +1234,10 @@ void tcpc_enable_timer(struct tcpc_device *tcpc, uint32_t timer_id)
 	uint32_t r, mod, tout;
 
 	TCPC_TIMER_EN_DBG(tcpc, timer_id);
-	PD_BUG_ON(timer_id >= PD_TIMER_NR);
+	if (timer_id >= PD_TIMER_NR) {
+		PD_BUG_ON(1);
+		return;
+	}
 
 	mutex_lock(&tcpc->timer_lock);
 	if (timer_id >= TYPEC_TIMER_START_ID)
@@ -1244,7 +1267,10 @@ void tcpc_disable_timer(struct tcpc_device *tcpc_dev, uint32_t timer_id)
 
 	mask = tcpc_get_timer_enable_mask(tcpc_dev);
 
-	PD_BUG_ON(timer_id >= PD_TIMER_NR);
+	if (timer_id >= PD_TIMER_NR) {
+		PD_BUG_ON(1);
+		return;
+	}
 	if (mask & RT_MASK64(timer_id)) {
 		hrtimer_try_to_cancel(&tcpc_dev->tcpc_timer[timer_id]);
 		tcpc_clear_timer_enable_mask(tcpc_dev, timer_id);

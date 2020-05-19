@@ -89,7 +89,6 @@
 #include "disp_partial.h"
 #include "ddp_aal.h"
 #include "ddp_gamma.h"
-
 #define MMSYS_CLK_LOW (0)
 #define MMSYS_CLK_HIGH (1)
 
@@ -2480,8 +2479,9 @@ static int config_display_m4u_port(void)
 static struct disp_internal_buffer_info *allocat_decouple_buffer(int size)
 {
 	void *buffer_va = NULL;
-	unsigned int buffer_mva = 0;
+	ion_phys_addr_t buffer_mva = 0;
 	unsigned int mva_size = 0;
+	m4u_client_t *m4u_client;
 
 	struct ion_mm_data mm_data;
 
@@ -2511,6 +2511,7 @@ static struct disp_internal_buffer_info *allocat_decouple_buffer(int size)
 			kfree(buf_info);
 			return NULL;
 		}
+		mm_data.config_buffer_param.module_id = 0;
 		mm_data.config_buffer_param.kernel_handle = handle;
 		mm_data.mm_cmd = ION_MM_CONFIG_BUFFER;
 		if (ion_kernel_ioctl(client, ION_CMD_MULTIMEDIA, (unsigned long)&mm_data) < 0) {
@@ -2521,7 +2522,9 @@ static struct disp_internal_buffer_info *allocat_decouple_buffer(int size)
 			return NULL;
 		}
 
-		ion_phys(client, handle, (unsigned long int *)&buffer_mva, (size_t *)&mva_size);
+		m4u_client = m4u_create_client();
+		m4u_alloc_mva(m4u_client, 0, (unsigned long)buffer_va, 0, size,
+				M4U_PROT_READ | M4U_PROT_WRITE, 0, (unsigned int *)&buffer_mva);
 		if (buffer_mva == 0) {
 			DISPERR("Fatal Error, get mva failed\n");
 			ion_free(client, handle);
@@ -5751,7 +5754,6 @@ static int primary_frame_cfg_input(struct disp_frame_cfg_t *cfg)
 		primary_show_basic_debug_info(cfg);
 
 	_config_ovl_input(cfg, disp_handle, cmdq_handle);
-
 	/* set ccorr matrix */
 	if (m_ccorr_config.is_dirty) {
 		disp_ccorr_set_color_matrix(cmdq_handle,
@@ -5798,13 +5800,17 @@ int primary_display_config_input_multiple(struct disp_session_input_config *sess
 	if (frame_cfg == NULL)
 		return -ENOMEM;
 
-	frame_cfg->session_id = session_input->session_id;
+	frame_cfg->session_id = primary_session_id;
 	frame_cfg->setter = session_input->setter;
 	frame_cfg->input_layer_num = session_input->config_layer_num;
 	frame_cfg->overlap_layer_num = 4;
 	frame_cfg->ccorr_config = session_input->ccorr_config;
-
 	memcpy(frame_cfg->input_cfg, session_input->config, sizeof(frame_cfg->input_cfg));
+
+	if (disp_validate_ioctl_params(frame_cfg)) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	_primary_path_lock(__func__);
 
@@ -5814,6 +5820,7 @@ int primary_display_config_input_multiple(struct disp_session_input_config *sess
 
 	_primary_path_unlock(__func__);
 
+out:
 	kfree(frame_cfg);
 	return ret;
 }
@@ -7700,7 +7707,7 @@ int primary_display_resolution_test(void)
 
 		dpmgr_path_set_video_mode(pgc->dpmgr_handle, primary_display_is_video_mode());
 
-		dpmgr_path_config(pgc->dpmgr_handle, &data_config2, CMDQ_DISABLE);
+		dpmgr_path_config(pgc->dpmgr_handle, &data_config2, NULL);
 		data_config2.dst_dirty = 0;
 		data_config2.ovl_dirty = 0;
 
@@ -7741,7 +7748,7 @@ int primary_display_resolution_test(void)
 	data_config2.dst_dirty = 1;
 	dpmgr_path_set_video_mode(pgc->dpmgr_handle, primary_display_is_video_mode());
 	dpmgr_path_connect(pgc->dpmgr_handle, CMDQ_DISABLE);
-	dpmgr_path_config(pgc->dpmgr_handle, &data_config2, CMDQ_DISABLE);
+	dpmgr_path_config(pgc->dpmgr_handle, &data_config2, NULL);
 	data_config2.dst_dirty = 0;
 	DSI_ForceConfig(0);
 	return ret;

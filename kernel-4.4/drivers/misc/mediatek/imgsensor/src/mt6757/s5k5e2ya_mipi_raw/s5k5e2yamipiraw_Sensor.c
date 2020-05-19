@@ -65,7 +65,7 @@ static DEFINE_SPINLOCK(imgsensor_drv_lock);
 /*#define CAPTURE_24FPS*/
 
 
-static struct imgsensor_info_struct imgsensor_info = {
+static imgsensor_info_struct imgsensor_info = {
 	.sensor_id = S5K5E2YA_SENSOR_ID,
 
 	.checksum_value = 0xa48ebf5d,
@@ -310,7 +310,7 @@ static void write_shutter(kal_uint16 shutter)
 	}
 
 	/* Update Shutter */
-	/*write_cmos_sensor(0x0104, 0x01); */ /*group hold*/
+	/*write_cmos_sensor(0x0104, 0x01); /*group hold*/
 	write_cmos_sensor(0x0202, shutter >> 8);
 	write_cmos_sensor(0x0203, shutter & 0xFF);
 	/*write_cmos_sensor(0x0104, 0x00);*/ /*group hold*/
@@ -461,23 +461,24 @@ static void ihdr_write_shutter_gain(kal_uint16 le, kal_uint16 se, kal_uint16 gai
 {
 	LOG_INF("le:0x%x, se:0x%x, gain:0x%x\n", le, se, gain);
 	if (imgsensor.ihdr_en) {
+
 		spin_lock(&imgsensor_drv_lock);
-		if (le > imgsensor.min_frame_length - imgsensor_info.margin)
-			imgsensor.frame_length = le + imgsensor_info.margin;
-		else
-			imgsensor.frame_length = imgsensor.min_frame_length;
-		if (imgsensor.frame_length > imgsensor_info.max_frame_length)
-			imgsensor.frame_length = imgsensor_info.max_frame_length;
-		spin_unlock(&imgsensor_drv_lock);
+			if (le > imgsensor.min_frame_length - imgsensor_info.margin)
+				imgsensor.frame_length = le + imgsensor_info.margin;
+			else
+				imgsensor.frame_length = imgsensor.min_frame_length;
+			if (imgsensor.frame_length > imgsensor_info.max_frame_length)
+				imgsensor.frame_length = imgsensor_info.max_frame_length;
+			spin_unlock(&imgsensor_drv_lock);
+			if (le < imgsensor_info.min_shutter)
+				le = imgsensor_info.min_shutter;
+			if (se < imgsensor_info.min_shutter)
+				se = imgsensor_info.min_shutter;
 
-		if (le < imgsensor_info.min_shutter)
-			le = imgsensor_info.min_shutter;
-		if (se < imgsensor_info.min_shutter)
-			se = imgsensor_info.min_shutter;
 
-		/* Extend frame length first */
-		write_cmos_sensor(0x380e, imgsensor.frame_length >> 8);
-		write_cmos_sensor(0x380f, imgsensor.frame_length & 0xFF);
+				/* Extend frame length first */
+				write_cmos_sensor(0x380e, imgsensor.frame_length >> 8);
+				write_cmos_sensor(0x380f, imgsensor.frame_length & 0xFF);
 
 		write_cmos_sensor(0x3502, (le << 4) & 0xFF);
 		write_cmos_sensor(0x3501, (le >> 4) & 0xFF);
@@ -1058,7 +1059,7 @@ static void hs_video_setting(void)
 	write_cmos_sensor(0x0307, 0xCA); /*PLLM (def:CCh 204d --> B3h 179d)*/
 	write_cmos_sensor(0x3C1F, 0x00); /*PLLS*/
 
-	/*S30CCC0 dphy_band_ctrl*/
+	/*S30CCC0 /*dphy_band_ctrl*/
 
 	write_cmos_sensor(0x0820, 0x03); /* requested link bit rate mbps : (def:3D3h 979d --> 35Bh 859d)*/
 	write_cmos_sensor(0x0821, 0xC9);

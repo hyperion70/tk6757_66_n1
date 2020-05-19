@@ -17,6 +17,7 @@
 #include <SCP_sensorHub.h>
 #include <linux/notifier.h>
 #include "scp_helper.h"
+#include <linux/pm_wakeup.h>
 
 
 #define TILTDETHUB_TAG                  "[tiltdetecthub] "
@@ -25,13 +26,13 @@
 #define TILTDETHUB_LOG(fmt, args...)    pr_debug(TILTDETHUB_TAG fmt, ##args)
 
 static struct situation_init_info tiltdetecthub_init_info;
+static struct wakeup_source tilt_wake_lock;
 
 static int tilt_detect_get_data(int *probability, int *status)
 {
 	int err = 0;
 	struct data_unit_t data;
 	uint64_t time_stamp = 0;
-	uint64_t time_stamp_gpt = 0;
 
 	err = sensor_get_data_from_hub(ID_TILT_DETECTOR, &data);
 	if (err < 0) {
@@ -39,10 +40,9 @@ static int tilt_detect_get_data(int *probability, int *status)
 		return -1;
 	}
 	time_stamp		= data.time_stamp;
-	time_stamp_gpt	= data.time_stamp_gpt;
 	*probability	= data.gesture_data_t.probability;
-	TILTDETHUB_LOG("recv ipi: timestamp: %lld, timestamp_gpt: %lld, probability: %d!\n",
-		time_stamp, time_stamp_gpt, *probability);
+	TILTDETHUB_LOG("recv ipi: timestamp: %lld, probability: %d!\n",
+		time_stamp, *probability);
 	return 0;
 }
 static int tilt_detect_open_report_data(int open)
@@ -73,8 +73,10 @@ static int tilt_detect_recv_data(struct data_unit_t *event, void *reserved)
 {
 	if (event->flush_action == FLUSH_ACTION)
 		situation_flush_report(ID_TILT_DETECTOR);
-	else if (event->flush_action == DATA_ACTION)
-		situation_notify(ID_TILT_DETECTOR);
+	else if (event->flush_action == DATA_ACTION) {
+		__pm_wakeup_event(&tilt_wake_lock, msecs_to_jiffies(100));
+		situation_data_report(ID_TILT_DETECTOR, event->tilt_event.state);
+	}
 	return 0;
 }
 
@@ -106,6 +108,7 @@ static int tiltdetecthub_local_init(void)
 		TILTDETHUB_PR_ERR("SCP_sensorHub_data_registration fail!!\n");
 		goto exit;
 	}
+	wakeup_source_init(&tilt_wake_lock, "tilt_wake_lock");
 	return 0;
 exit:
 	return -1;

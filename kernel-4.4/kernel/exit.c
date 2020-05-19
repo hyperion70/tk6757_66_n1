@@ -753,7 +753,7 @@ void do_exit(long code)
 		disassociate_ctty(1);
 	exit_task_namespaces(tsk);
 	exit_task_work(tsk);
-	exit_thread();
+	exit_thread(tsk);
 
 	/*
 	 * Flush inherited counters to the parent - before the parent
@@ -1614,6 +1614,10 @@ SYSCALL_DEFINE4(wait4, pid_t, upid, int __user *, stat_addr,
 	if (options & ~(WNOHANG|WUNTRACED|WCONTINUED|
 			__WNOTHREAD|__WCLONE|__WALL))
 		return -EINVAL;
+
+	/* -INT_MIN is not defined */
+	if (upid == INT_MIN)
+		return -ESRCH;
 
 	if (upid == -1)
 		type = PIDTYPE_MAX;

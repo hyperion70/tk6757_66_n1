@@ -19,22 +19,23 @@ MAIN_DT_NAMES := $(subst $\",,$(CONFIG_BUILD_ARM_APPENDED_DTB_IMAGE_NAMES))
 endif
 
 ifeq ($(strip $(CONFIG_MTK_DTBO_FEATURE)), y)
-
 ifeq ($(strip $(CONFIG_ARM64)), y)
 PROJ_DT_NAMES := $(subst $\",,$(CONFIG_BUILD_ARM64_DTB_OVERLAY_IMAGE_NAMES))
 else
 PROJ_DT_NAMES := $(subst $\",,$(CONFIG_BUILD_ARM_DTB_OVERLAY_IMAGE_NAMES))
 endif
-
 else #DTBO is not enabled, there is only one dtb
-
 PROJ_DT_NAMES := $(MAIN_DT_NAMES)
-
 endif #CONFIG_MTK_DTBO_FEATURE
 
-MAIN_DTB_FILES := $(addsuffix .dtb,$(addprefix $(objtree)/arch/$(SRCARCH)/boot/dts/, $(MAIN_DT_NAMES)))
-PROJ_DTB_FILES := $(addsuffix .dtb,$(addprefix $(objtree)/arch/$(SRCARCH)/boot/dts/, $(PROJ_DT_NAMES)))
+
+MAIN_DTB_NAMES := $(addsuffix .dtb,$(MAIN_DT_NAMES))
+PROJ_DTB_NAMES := $(addsuffix .dtb,$(PROJ_DT_NAMES))
+MAIN_DTB_FILES := $(addprefix $(objtree)/arch/$(SRCARCH)/boot/dts/, $(MAIN_DTB_NAMES))
+PROJ_DTB_FILES := $(addprefix $(objtree)/arch/$(SRCARCH)/boot/dts/, $(PROJ_DTB_NAMES))
 PROJ_DTS_FILES := $(addsuffix .dts,$(addprefix $(srctree)/arch/$(SRCARCH)/boot/dts/, $(PROJ_DT_NAMES)))
+ABS_DTB_FILES := $(abspath $(addsuffix .dtb,$(addprefix $(objtree)/arch/$(SRCARCH)/boot/dts/,$(PROJ_DT_NAMES))))
+
 export PROJ_DTB_FILES
 export PROJ_DTS_FILES
 
@@ -59,7 +60,8 @@ DRVGEN_FIG := $(wildcard $(dir $(DRVGEN_TOOL))config/*.fig)
 drvgen: $(DRVGEN_FILE_LIST)
 $(DRVGEN_FILE_LIST): $(DRVGEN_TOOL) $(DWS_FILE) $(DRVGEN_FIG) $(PROJ_DTS_FILES)
 	for i in $(PROJ_DTS_FILES); do \
-		base_prj=`grep -m 1 "#include [<\"].*\/cust\.dtsi[>\"]" $$i | sed 's/#include [<"]//g' | sed 's/\/cust\.dtsi[>"]//g'`;\
+		base_prj=`grep -m 1 '#include [<\"].*\/cust\.dtsi[>\"]' $$i | sed 's/#include [<"]//g'\
+	       	| sed 's/\/cust\.dtsi[>"]//g' | sed 's/\/\*//g' | sed 's/\*\///g' | sed 's/ //g'`\
 		prj_path=$(DRVGEN_OUT)/$$base_prj ;\
 		dws_path=$(srctree)/$(DRVGEN_PATH)/$$base_prj.dws ;\
 		if [ -f $$dws_path ] ; then \
@@ -68,27 +70,26 @@ $(DRVGEN_FILE_LIST): $(DRVGEN_TOOL) $(DWS_FILE) $(DRVGEN_FIG) $(PROJ_DTS_FILES)
 		fi \
 	done
 
-ifeq ($(strip $(CONFIG_MTK_DTBO_FEATURE)), y)
-
-apply_dtbo: dtbs
+dtbo_check: $(MAIN_DTB_NAMES) $(PROJ_DTB_NAMES)
 	for i in $(PROJ_DTB_FILES); do \
 		$(srctree)/scripts/dtc/ufdt_apply_overlay $(MAIN_DTB_FILES) $$i $$i.merge;\
 	done
 
-DTB_OVERLAY_IMAGE_TAGERT := $(DRVGEN_OUT)/odmdtbo.img
-$(DTB_OVERLAY_IMAGE_TAGERT) : PRIVATE_DTB_OVERLAY_OBJ:=$(PROJ_DTB_FILES)
-$(DTB_OVERLAY_IMAGE_TAGERT) : PRIVATE_MULTIPLE_DTB_OVERLAY_OBJ:=$(DRVGEN_OUT)/$(MTK_PROJECT).mdtb
-$(DTB_OVERLAY_IMAGE_TAGERT) : PRIVATE_MULTIPLE_DTB_OVERLAY_IMG:=$(DRVGEN_OUT)/$(MTK_PROJECT).mimg
-$(DTB_OVERLAY_IMAGE_TAGERT) : PRIVATE_MULTIPLE_DTB_OVERLAY_HDR:=$(srctree)/scripts/multiple_dtbo.py
-$(DTB_OVERLAY_IMAGE_TAGERT) : PRIVATE_MKIMAGE_TOOL:=$(srctree)/scripts/mkimage
-$(DTB_OVERLAY_IMAGE_TAGERT) : PRIVATE_MKIMAGE_CFG:=$(srctree)/scripts/odmdtbo.cfg
-$(DTB_OVERLAY_IMAGE_TAGERT) : $(PRIVATE_MULTIPLE_DTB_OVERLAY_OBJ) dtbs apply_dtbo $(PRIVATE_MKIMAGE_TOOL) $(PRIVATE_MKIMAGE_CFG) $(PRIVATE_MULTIPLE_DTB_OVERLAY_HDR)
-	@echo Singing the generated overlay dtbo.
-	cat $(PRIVATE_DTB_OVERLAY_OBJ) > $(PRIVATE_MULTIPLE_DTB_OVERLAY_OBJ) || (rm -f $(PRIVATE_MULTIPLE_DTB_OVERLAY_OBJ); false)
-	python $(PRIVATE_MULTIPLE_DTB_OVERLAY_HDR) $(PRIVATE_MULTIPLE_DTB_OVERLAY_OBJ) $(PRIVATE_MULTIPLE_DTB_OVERLAY_IMG)
-	$(PRIVATE_MKIMAGE_TOOL) $(PRIVATE_MULTIPLE_DTB_OVERLAY_IMG) $(PRIVATE_MKIMAGE_CFG)  > $@
-.PHONY: odmdtboimage
-odmdtboimage : $(DTB_OVERLAY_IMAGE_TAGERT) dtbs
-endif
+my_dtbo_id := 0
+define mk_dtboimg_cfg
+echo $(1) >>$(2);\
+echo " id=$(my_dtbo_id)" >>$(2);\
+$(eval my_dtbo_id:=$(shell echo $$(($(my_dtbo_id)+1))))
+endef
+
+dtbs: $(objtree)/dtboimg.cfg
+$(objtree)/dtboimg.cfg: FORCE
+	rm -f $@.tmp
+	$(foreach f,$(ABS_DTB_FILES),$(call mk_dtboimg_cfg,$(f),$@.tmp))
+	if ! cmp -s $@.tmp $@; then \
+		mv $@.tmp $@; \
+	else \
+		rm $@.tmp; \
+	fi
 
 endif#MTK_PLATFORM

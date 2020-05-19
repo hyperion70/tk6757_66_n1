@@ -17,7 +17,6 @@
 #include <linux/kernel.h>
 #include <linux/sched.h>
 
-
 /*******************************************************************************
  * Clock Buffer Control
  *
@@ -42,6 +41,7 @@
 	defined(CONFIG_MACH_MT6758) || \
 	defined(CONFIG_MACH_MT6759) || \
 	defined(CONFIG_MACH_MT6771) || \
+	defined(CONFIG_MACH_MT6775) || \
 	defined(CONFIG_MACH_MT6763)
 #define CONNADP_HAS_CLOCK_BUF_CTRL
 #define KERNEL_clk_buf_ctrl connectivity_export_clk_buf_ctrl
@@ -127,8 +127,12 @@ void connectivity_export_mt6306_set_gpio_dir(unsigned long pin, unsigned long di
 #include "mtk_spm_resource_req.h"
 #endif
 
+#define KERNEL_slp_get_wake_reason connectivity_export_slp_get_wake_reason
+#define KERNEL_spm_get_last_wakeup_src connectivity_export_spm_get_last_wakeup_src
 #define KERNEL_show_stack connectivity_export_show_stack
 #define KERNEL_tracing_record_cmdline connectivity_export_tracing_record_cmdline
+#define KERNEL_dump_thread_state connectivity_export_dump_thread_state
+
 #ifdef CPU_BOOST
 #define KERNEL_mt_ppm_sysboost_freq connectivity_export_mt_ppm_sysboost_freq
 #define KERNEL_mt_ppm_sysboost_core connectivity_export_mt_ppm_sysboost_core
@@ -143,6 +147,8 @@ void connectivity_export_mt6306_set_gpio_dir(unsigned long pin, unsigned long di
 #define KERNEL_spm_resource_req
 #endif
 
+unsigned int connectivity_export_slp_get_wake_reason(void);
+unsigned int connectivity_export_spm_get_last_wakeup_src(void);
 extern void tracing_record_cmdline(struct task_struct *tsk);
 extern void show_stack(struct task_struct *tsk, unsigned long *sp);
 #ifdef CPU_BOOST
@@ -156,6 +162,7 @@ extern bool spm_resource_req(unsigned int user, unsigned int req_mask);
 #endif
 
 void connectivity_export_show_stack(struct task_struct *tsk, unsigned long *sp);
+void connectivity_export_dump_thread_state(const char *name);
 void connectivity_export_tracing_record_cmdline(struct task_struct *tsk);
 #ifdef CPU_BOOST
 void connectivity_export_mt_ppm_sysboost_freq(enum ppm_sysboost_user user, unsigned int freq);
@@ -190,3 +197,11 @@ do {                                                              \
 
 #endif /* CONNECTIVITY_BUILD_IN_ADAPTER_H */
 
+/******************************************************************************
+ * GPIO dump information
+ ******************************************************************************/
+#ifndef CONFIG_MTK_GPIO
+#define KERNEL_gpio_dump_regs_range connectivity_export_dump_gpio_info
+extern void gpio_dump_regs_range(int start, int end);
+void connectivity_export_dump_gpio_info(int start, int end);
+#endif

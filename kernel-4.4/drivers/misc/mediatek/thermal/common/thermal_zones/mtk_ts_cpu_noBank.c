@@ -31,6 +31,7 @@
 #include <linux/ktime.h>
 #include "mach/mtk_thermal.h"
 #include "mtk_thermal_timer.h"
+#include <mtk_ts_setting.h>
 
 #if defined(CONFIG_MTK_CLKMGR)
 #include <mach/mtk_clkmgr.h>
@@ -38,6 +39,7 @@
 #include <linux/clk.h>
 #endif
 
+#include <mtk_spm_vcore_dvfs.h>
 
 /* #include <mach/mt_wtd.h> */
 #include <mach/wd_api.h>
@@ -343,6 +345,27 @@ int tscpu_max_temperature(void)
 	return max;
 }
 
+int tscpu_min_temperature(void)
+{
+	int i, j, min = 0;
+
+	tscpu_dprintk("tscpu_get_temp(min) %s, %d\n", __func__, __LINE__);
+
+	for (i = 0; i < ARRAY_SIZE(tscpu_g_tc); i++) {
+		for (j = 0; j < tscpu_g_tc[i].ts_number; j++) {
+			if (i == 0 && j == 0) {
+				min = tscpu_ts_temp[tscpu_g_tc[i].ts[j]];
+			} else {
+				if (min > tscpu_ts_temp[tscpu_g_tc[i].ts[j]])
+					min = tscpu_ts_temp[
+							tscpu_g_tc[i].ts[j]];
+			}
+		}
+	}
+
+	return min;
+}
+
 void set_taklking_flag(bool flag)
 {
 	talking_flag = flag;
@@ -510,6 +533,9 @@ static int tscpu_get_temp(struct thermal_zone_device *thermal, int *t)
 	int temp_temp;
 	static int last_cpu_real_temp;
 #endif
+#ifdef THERMAL_LT_SET_OPP
+	int ts_temp;
+#endif
 
 #ifdef FAST_RESPONSE_ATM
 	curr_temp = tscpu_get_curr_max_ts_temp();
@@ -544,6 +570,11 @@ static int tscpu_get_temp(struct thermal_zone_device *thermal, int *t)
 
 	last_cpu_real_temp = curr_temp;
 	curr_temp = temp_temp;
+#endif
+
+#ifdef THERMAL_LT_SET_OPP
+		ts_temp = tscpu_min_temperature();
+		vcorefs_temp_opp_config(ts_temp);
 #endif
 
 	*t = (unsigned long)curr_temp;
@@ -779,21 +810,33 @@ static int tscpu_read_opp(struct seq_file *m, void *v)
 {
 	unsigned int cpu_power, gpu_power;
 	unsigned int gpu_loading = 0;
+#if defined(THERMAL_VPU_SUPPORT)
+	unsigned int vpu_power;
+#endif
 
 	cpu_power = apthermolmt_get_cpu_power_limit();
 	gpu_power = apthermolmt_get_gpu_power_limit();
+#if defined(THERMAL_VPU_SUPPORT)
+	vpu_power = apthermolmt_get_vpu_power_limit();
+#endif
 
 #if CPT_ADAPTIVE_AP_COOLER
 
 	if (!mtk_get_gpu_loading(&gpu_loading))
 		gpu_loading = 0;
 
-	seq_printf(m, "%d,%d,%d,%d,%d\n",
+	seq_printf(m, "%d,%d,%d,%d,%d",
 		   (int)((cpu_power != 0x7FFFFFFF) ? cpu_power : 0),
 		   (int)((gpu_power != 0x7FFFFFFF) ? gpu_power : 0),
 		   /* ((NULL == mtk_thermal_get_gpu_loading_fp) ? 0 : mtk_thermal_get_gpu_loading_fp()), */
 		   (int)gpu_loading, (int)mt_gpufreq_get_cur_freq(), get_target_tj());
 
+#if defined(THERMAL_VPU_SUPPORT)
+	seq_printf(m, ",%d",
+		   (int)((vpu_power != 0x7FFFFFFF) ? vpu_power : 0));
+#endif
+
+	seq_puts(m, "\n");
 #else
 	seq_printf(m, "%d,%d,0,%d\n",
 		   (int)((cpu_power != 0x7FFFFFFF) ? cpu_power : 0),
@@ -1679,8 +1722,8 @@ int tscpu_is_temp_valid(void)
 	temp_valid_lock(&flags);
 	if (g_is_temp_valid == 0) {
 		check_all_temp_valid();
-		if (g_is_temp_valid == 1)
-			tscpu_warn("Driver is ready to report valid temperatures\n");
+		if (g_is_temp_valid == 0)
+			tscpu_warn("Driver is NOT ready to report valid temperatures\n");
 	}
 
 	is_valid = g_is_temp_valid;

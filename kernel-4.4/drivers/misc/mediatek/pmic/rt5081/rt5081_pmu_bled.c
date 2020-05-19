@@ -451,7 +451,8 @@ static inline int rt_parse_dt(struct device *dev)
 		pdata->max_bled_brightness = 1024;
 	else
 		pdata->max_bled_brightness = tmp;
-	of_property_read_string(np, "rt,bled_name", &(pdata->bled_name));
+	if (of_property_read_string(np, "rt,bled_name", &(pdata->bled_name)) < 0)
+		pdata->bled_name = "rt5081_pmu_bled";
 	return 0;
 }
 

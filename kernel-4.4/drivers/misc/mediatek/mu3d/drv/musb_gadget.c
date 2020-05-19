@@ -598,6 +598,11 @@ static int is_db_ok(struct musb *musb, struct musb_ep *musb_ep)
 	int tmp;
 	int ret = 1;
 
+	if (c == NULL) {
+		os_printk(K_INFO, "cdev->config NULL!, UMS case?\n");
+		return 1;
+	}
+
 	for (tmp = 0; tmp < MAX_CONFIG_INTERFACES; tmp++) {
 		struct usb_function *f = c->interface[tmp];
 		struct usb_descriptor_header **descriptors;
@@ -1652,7 +1657,7 @@ static struct musb *mu3d_clk_off_musb;
 static void do_mu3d_clk_off_work(struct work_struct *work)
 {
 	os_printk(K_NOTICE, "do_mu3d_clk_off_work, issue connection work\n");
-	queue_delayed_work(mu3d_clk_off_musb->st_wq, &mu3d_clk_off_musb->connection_work, 0);
+	mt_usb_reconnect();
 }
 
 void set_usb_rdy(void)
@@ -2223,9 +2228,6 @@ void musb_g_reset(struct musb *musb) __releases(musb->lock) __acquires(musb->loc
 		/* os_writel(U3D_DEVICE_CONTROL, USB_DEVCTL_SESSION); */
 
 	}
-
-	/*clear setup end interrupt*/
-	os_writel(U3D_EPISR, SETUPENDISR);
 
 	musb_conifg_ep0(musb);
 	/* start in USB_STATE_DEFAULT */

@@ -1,0 +1,14 @@
+config FINGERPRINT_MTK_GFX1XM
+	bool "GF316/GF318 for Mediatek package"
+	default n
+	help
+	  Say Y here if you have GF316/GF318 fingerprint.
+
+	  If unsure, say N.
+
+	  To compile this dirver as a module, choose M here: the
+	  module will be called.
+	  
+config FINGERPRINT_MTK_KEY_HOMEPAGE
+	bool "SUNWAVECORP for Mediatek package"
+	default n	  

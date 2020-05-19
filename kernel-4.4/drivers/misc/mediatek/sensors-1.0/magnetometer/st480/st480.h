@@ -92,6 +92,7 @@
 #define MAX_FAILURE_COUNT 3
 #define ST480_DEFAULT_DELAY   27
 
+
 /*
  *  IC select
  */

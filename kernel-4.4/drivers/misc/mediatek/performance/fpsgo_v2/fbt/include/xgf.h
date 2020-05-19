@@ -19,6 +19,14 @@
 
 #include <linux/rbtree.h>
 
+enum XGF_ERROR {
+	XGF_NOTIFY_OK,
+	XGF_SLPTIME_OK,
+	XGF_DISABLE,
+	XGF_THREAD_NOT_FOUND,
+	XGF_PARAM_ERR
+};
+
 enum {
 	XGF_QUEUE_START = 0,
 	XGF_QUEUE_END,
@@ -51,21 +59,49 @@ struct xgf_proc {
 	struct xgf_tick deque;
 
 	unsigned long long slptime;
-	unsigned long long slptime_ged;
 	unsigned long long quetime;
 	unsigned long long deqtime;
+
+	struct rb_root deps_rec;
+	int render_thread_called_count;
+	int dep_timer_count;
 };
 
 struct xgf_timer {
 	struct hlist_node hlist;
 	struct rb_node rb_node;
-	const struct hrtimer *hrtimer;
+	const void *hrtimer;
 	struct xgf_tick fire;
 	struct xgf_tick expire;
 	union {
 		int expired;
 		int blacked;
 	};
+};
+
+struct xgf_deps {
+	struct rb_node rb_node;
+	pid_t tid;
+	int render_pre_count;
+	int render_count;
+	int render_dep;
+	int render_dep_deep;
+	int has_timer;
+
+	struct xgf_tick queue;
+	struct xgf_tick deque;
+
+	unsigned long long slptime;
+	unsigned long long quetime;
+	unsigned long long deqtime;
+	unsigned long long has_timer_renew_ts;
+};
+
+struct render_dep {
+	pid_t currentpid;
+	pid_t currenttgid;
+	pid_t becalledpid;
+	pid_t becalledtgid;
 };
 
 extern int (*xgf_est_slptime_fp)(struct xgf_proc *proc,
@@ -81,9 +117,13 @@ void xgf_reset_render(struct xgf_proc *proc);
 void *xgf_kzalloc(size_t size);
 void xgf_kfree(const void *block);
 
-int fpsgo_fbt2xgf_query_sleep_time(pid_t, unsigned long long*);
 void fpsgo_ctrl2xgf_switch_xgf(int val);
-void fpsgo_comp2xgf_qudeq_notify(int rpid, int cmd);
-void fpsgo_fstb2xgf_set_idle(void);
+int fpsgo_comp2xgf_qudeq_notify(int rpid, int cmd, unsigned long long *sleep_time);
+void fpsgo_fstb2xgf_do_recycle(int fstb_active);
+void fpsgo_create_render_dep(void);
+
+int has_xgf_dep(pid_t tid);
+
+int __init init_xgf(void);
 
 #endif

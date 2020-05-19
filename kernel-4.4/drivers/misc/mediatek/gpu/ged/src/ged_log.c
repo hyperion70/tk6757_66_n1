@@ -554,9 +554,9 @@ GED_LOG_BUF_HANDLE ged_log_buf_alloc(
 
 	GED_LOGI("ged_log_buf_alloc OK\n");
 
-	while (__ged_log_buf_check_get_early_list(psGEDLogBuf->ulHashNodeID, pszName)) {
-		continue;
-	};
+	if (pszName)
+		while (__ged_log_buf_check_get_early_list(psGEDLogBuf->ulHashNodeID, pszName))
+			;
 
 	return (GED_LOG_BUF_HANDLE)psGEDLogBuf->ulHashNodeID;
 }
@@ -696,61 +696,54 @@ GED_LOG_BUF_HANDLE ged_log_buf_get(const char* pszName)
 
 int ged_log_buf_get_early(const char* pszName, GED_LOG_BUF_HANDLE *callback_set_handle)
 {
-	int err = 0;
+	GED_LOG_LISTEN *psGEDLogListen;
+	struct list_head *psListEntry, *psListEntryTemp, *psList;
+	GED_LOG_BUF *psFound = NULL, *psLogBuf;
 
 	if (NULL == pszName)
-	{
 		return GED_ERROR_INVALID_PARAMS;
-	}
 
 	*callback_set_handle = ged_log_buf_get(pszName);
 
-	if (0 == *callback_set_handle)
-	{
-		GED_LOG_LISTEN *psGEDLogListen;
+	/* return if found */
+	if (*callback_set_handle)
+		return 0;
 
-		write_lock_bh(&gsGEDLogBufList.sLock);
+	/* add to listen list */
+	psGEDLogListen = (GED_LOG_LISTEN *) ged_alloc(sizeof(*psGEDLogListen));
+	if (!psGEDLogListen)
+		return GED_ERROR_OOM;
 
-		/* search again */
-		{
-			struct list_head *psListEntry, *psListEntryTemp, *psList;
-			GED_LOG_BUF *psFound = NULL, *psLogBuf;
+	write_lock_bh(&gsGEDLogBufList.sLock);
 
-			psList = &gsGEDLogBufList.sList_buf;
-			list_for_each_safe(psListEntry, psListEntryTemp, psList)
-			{
-				psLogBuf = list_entry(psListEntry, GED_LOG_BUF, sList);
-				if (0 == strcmp(psLogBuf->acName, pszName))
-				{
-					psFound = psLogBuf;
-					break;
-				}
-			}
-
-			if (psFound)
-			{
-				*callback_set_handle = (GED_LOG_BUF_HANDLE)psFound->ulHashNodeID;
-				goto exit_unlock;
-			}
+	/* search again with write_lock again */
+	psList = &gsGEDLogBufList.sList_buf;
+	list_for_each_safe(psListEntry, psListEntryTemp, psList) {
+		psLogBuf = list_entry(psListEntry, GED_LOG_BUF, sList);
+		if (strcmp(psLogBuf->acName, pszName) == 0) {
+			psFound = psLogBuf;
+			break;
 		}
-
-		/* add to listen list */
-		psGEDLogListen = (GED_LOG_LISTEN*)ged_alloc(sizeof(GED_LOG_LISTEN));
-		if (NULL == psGEDLogListen)
-		{
-			err = GED_ERROR_OOM;
-			goto exit_unlock;
-		}
-		psGEDLogListen->pCBHnd = callback_set_handle;
-		snprintf(psGEDLogListen->acName, GED_LOG_BUF_NAME_LENGTH, "%s", pszName);
-		INIT_LIST_HEAD(&psGEDLogListen->sList);
-		list_add(&psGEDLogListen->sList, &gsGEDLogBufList.sList_listen);
-
-exit_unlock:
-		write_unlock_bh(&gsGEDLogBufList.sLock);
 	}
 
-	return err;
+	/* return if found */
+	if (psFound) {
+		*callback_set_handle = (GED_LOG_BUF_HANDLE)psFound->ulHashNodeID;
+		ged_free(psGEDLogListen, sizeof(*psGEDLogListen));
+		goto exit_unlock;
+	}
+
+	/* add to listner list */
+	psGEDLogListen->pCBHnd = callback_set_handle;
+	snprintf(psGEDLogListen->acName, GED_LOG_BUF_NAME_LENGTH, "%s", pszName);
+
+	INIT_LIST_HEAD(&psGEDLogListen->sList);
+	list_add(&psGEDLogListen->sList, &gsGEDLogBufList.sList_listen);
+
+exit_unlock:
+	write_unlock_bh(&gsGEDLogBufList.sLock);
+
+	return 0;
 }
 
 //-----------------------------------------------------------------------------
@@ -1130,7 +1123,10 @@ void ged_log_perf_trace_counter(char *name, long long count, int pid, unsigned l
 	if (ged_log_perf_trace_enable) {
 		__mt_update_tracing_mark_write_addr();
 		preempt_disable();
-		event_trace_printk(tracing_mark_write_addr, "C|%d|%lu|%s|%lld\n", pid, frameID, name, count);
+		event_trace_printk(tracing_mark_write_addr,
+			"C|%d|%s|%lld|%lu\n", pid,
+			name, count, frameID);
+
 		preempt_enable();
 	}
 }

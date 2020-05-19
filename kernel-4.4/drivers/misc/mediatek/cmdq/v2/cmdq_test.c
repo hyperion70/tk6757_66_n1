@@ -169,7 +169,7 @@ void _test_free_backup_instructions(s32 **instructions_out)
 	*instructions_out = NULL;
 }
 
-static void testcase_scenario(void)
+void testcase_scenario(void)
 {
 	struct cmdqRecStruct *hRec;
 	int32_t ret;
@@ -249,7 +249,7 @@ static void _testcase_sync_token_timer_loop_func(unsigned long data)
 	mod_timer(&timer, jiffies + msecs_to_jiffies(10));
 }
 
-static void testcase_sync_token(void)
+void testcase_sync_token(void)
 {
 	struct cmdqRecStruct *hRec;
 	int32_t ret = 0;
@@ -304,7 +304,7 @@ static void testcase_sync_token(void)
 
 static struct timer_list timer_reqA;
 static struct timer_list timer_reqB;
-static void testcase_async_suspend_resume(void)
+void testcase_async_suspend_resume(void)
 {
 	struct cmdqRecStruct *hReqA;
 	struct TaskStruct *pTaskA;
@@ -349,7 +349,7 @@ static void testcase_async_suspend_resume(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_errors(void)
+void testcase_errors(void)
 {
 	struct cmdqRecStruct *hReq;
 	struct TaskStruct *pTask;
@@ -464,7 +464,7 @@ static void testcase_fire_and_forget(void)
 
 static struct timer_list timer_reqA;
 static struct timer_list timer_reqB;
-static void testcase_async_request(void)
+void testcase_async_request(void)
 {
 	struct cmdqRecStruct *hReqA, *hReqB;
 	struct TaskStruct *pTaskA, *pTaskB;
@@ -1238,7 +1238,7 @@ static void testcase_perisys_apb(void)
 #endif				/* CMDQ_GPR_SUPPORT */
 }
 
-static void testcase_write_address(void)
+void testcase_write_address(void)
 {
 	dma_addr_t pa = 0;
 	uint32_t value = 0;
@@ -1620,7 +1620,7 @@ static void testcase_poll(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_write_with_mask(void)
+void testcase_write_with_mask(void)
 {
 	struct cmdqRecStruct *handle = NULL;
 	const uint32_t PATTERN = (1 << 0) | (1 << 2) | (1 << 16);
@@ -1660,7 +1660,7 @@ static void testcase_write_with_mask(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_write(void)
+void testcase_write(void)
 {
 	struct cmdqRecStruct *handle = NULL;
 	const uint32_t PATTERN = (1 << 0) | (1 << 2) | (1 << 16);
@@ -2015,7 +2015,7 @@ static void testcase_module_full_dump(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_profile_marker(void)
+void testcase_profile_marker(void)
 {
 	struct cmdqRecStruct *handle = NULL;
 	/* const uint32_t PATTERN = (1 << 0) | (1 << 2) | (1 << 16); */
@@ -2044,7 +2044,7 @@ static void testcase_profile_marker(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_estimate_command_exec_time(void)
+void testcase_estimate_command_exec_time(void)
 {
 	struct cmdqRecStruct *handle = NULL;
 	cmdqBackupSlotHandle hSlot = 0;
@@ -2350,7 +2350,7 @@ static int _testcase_concurrency(void *data)
 }
 #endif
 
-static void testcase_concurrency_for_normal_path_and_secure_path(void)
+void testcase_concurrency_for_normal_path_and_secure_path(void)
 {
 #ifdef CMDQ_SECURE_PATH_SUPPORT
 	struct task_struct *pKThread1;
@@ -2430,7 +2430,7 @@ void testcase_async_write_stress_test(void)
 #endif
 }
 
-static void testcase_nonsuspend_irq(void)
+void testcase_nonsuspend_irq(void)
 {
 	struct cmdqRecStruct *handle, *handle2;
 	struct TaskStruct *pTask, *pTask2;
@@ -2516,7 +2516,7 @@ static void testcase_module_full_mdp_engine(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_trigger_engine_dispatch_check(void)
+void testcase_trigger_engine_dispatch_check(void)
 {
 	struct cmdqRecStruct *handle, *handle2, *hTrigger;
 	struct TaskStruct *pTask;
@@ -2574,7 +2574,7 @@ static void testcase_trigger_engine_dispatch_check(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_complicated_engine_thread(void)
+void testcase_complicated_engine_thread(void)
 {
 #define TASK_COUNT 6
 	struct cmdqRecStruct *handle[TASK_COUNT] = { 0 };
@@ -2617,7 +2617,7 @@ static void testcase_complicated_engine_thread(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_append_task_verify(void)
+void testcase_append_task_verify(void)
 {
 	struct cmdqRecStruct *handle, *handle2;
 	struct TaskStruct *pTask, *pTask2;
@@ -2677,7 +2677,7 @@ static void testcase_append_task_verify(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_manual_suspend_resume_test(void)
+void testcase_manual_suspend_resume_test(void)
 {
 	struct cmdqRecStruct *handle = NULL;
 	struct TaskStruct *pTask, *pTask2;
@@ -2708,7 +2708,7 @@ static void testcase_manual_suspend_resume_test(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_timeout_wait_early_test(void)
+void testcase_timeout_wait_early_test(void)
 {
 	struct cmdqRecStruct *handle = NULL;
 	struct TaskStruct *pTask;
@@ -2735,7 +2735,7 @@ static void testcase_timeout_wait_early_test(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_timeout_reorder_test(void)
+void testcase_timeout_reorder_test(void)
 {
 	struct cmdqRecStruct *handle = NULL;
 
@@ -2760,7 +2760,7 @@ static void testcase_timeout_reorder_test(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_error_irq(void)
+void testcase_error_irq(void)
 {
 	struct cmdqRecStruct *handle = NULL;
 	const uint32_t PATTERN = (1 << 0) | (1 << 2) | (1 << 16);
@@ -2845,7 +2845,7 @@ static void testcase_open_buffer_dump(int32_t scenario, int32_t bufferSize)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_check_dts_correctness(void)
+void testcase_check_dts_correctness(void)
 {
 	CMDQ_MSG("%s\n", __func__);
 
@@ -3144,7 +3144,7 @@ static int32_t testcase_res_available_cb(enum CMDQ_EVENT_ENUM resourceEvent)
 	return 0;
 }
 
-static void testcase_notify_and_delay_submit(uint32_t delayTimeMS)
+void testcase_notify_and_delay_submit(uint32_t delayTimeMS)
 {
 	struct cmdqRecStruct *handle = NULL;
 	const uint32_t PATTERN = (1 << 0) | (1 << 2) | (1 << 16);
@@ -3338,7 +3338,7 @@ void cmdq_track_task(const struct TaskStruct *pTask)
 	CMDQ_LOG("track_task: engine: 0x%08llx\n", pTask->engineFlag);
 }
 
-static void testcase_track_task_cb(void)
+void testcase_track_task_cb(void)
 {
 	struct cmdqRecStruct *handle = NULL;
 
@@ -4016,7 +4016,7 @@ void testcase_reorder_last(void)
 	CMDQ_LOG("%s END\n", __func__);
 }
 
-static void testcase_timeout_secure_dapc(void)
+void testcase_timeout_secure_dapc(void)
 {
 	struct cmdqRecStruct *handle = NULL;
 	struct TaskStruct *pTask;
@@ -4048,7 +4048,7 @@ static void testcase_timeout_secure_dapc(void)
 	CMDQ_MSG("%s END\n", __func__);
 }
 
-static void testcase_end_addr_conflict(void)
+void testcase_end_addr_conflict(void)
 {
 	struct cmdqRecStruct *loop_handle, *submit_handle;
 	u32 index;

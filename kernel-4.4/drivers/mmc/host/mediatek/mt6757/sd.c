@@ -153,8 +153,8 @@ int msdc_rsp[] = {
 		WARN_ON(dlen > 0xFFFFFFUL); \
 		((struct bd_t *)bd)->blkpad = blkpad; \
 		((struct bd_t *)bd)->dwpad = dwpad; \
-		((struct bd_t *)bd)->ptrh4 = (u32)((dptr >> 32) & 0xF); \
-		((struct bd_t *)bd)->ptr = (u32)(dptr & 0xFFFFFFFFUL); \
+		((struct bd_t *)bd)->ptrh4 = upper_32_bits(dptr) & 0xF; \
+		((struct bd_t *)bd)->ptr = lower_32_bits(dptr); \
 		((struct bd_t *)bd)->buflen = dlen; \
 	} while (0)
 
@@ -1124,6 +1124,19 @@ static void msdc_set_power_mode(struct msdc_host *host, u8 mode)
 			if (host->power_control)
 				host->power_control(host, 0);
 
+			if (host->hw->host_function == MSDC_SD) {
+				/* do not set same as mmc->ios.clock in
+				 * sdcard_reset_tuning() or else it will be
+				 * set as block_bad_card when power cycle
+				 */
+				if (host->mclk == HOST_MIN_MCLK) {
+					host->block_bad_card = 1;
+					pr_notice("[%s]: msdc%d power off at clk %dhz set block_bad_card = %d\n",
+						__func__, host->id, host->mclk,
+						host->block_bad_card);
+				}
+			}
+
 			msdc_pin_config(host, MSDC_PIN_PULL_DOWN);
 		}
 		mdelay(10);
@@ -1697,11 +1710,6 @@ static unsigned int msdc_command_start(struct msdc_host   *host,
 		while (sdc_is_busy()) {
 			if (time_after(jiffies, tmo)) {
 				str = "sdc_busy";
-				/* Something wrong, need check problem and BUG here */
-				ERR_MSG("XXX %s timeout: before CMD<%d>", str, opcode);
-				msdc_dump_register(host);
-				pr_info("BUG: failure at %s:%d/%s()!/n", __FILE__, __LINE__, __func__);
-				panic("BUG!");
 				goto err;
 			}
 		}
@@ -2966,8 +2974,8 @@ static int msdc_dma_config(struct msdc_host *host, struct msdc_dma *dma)
 			dma_len, (u64)dma_address);
 
 		MSDC_SET_FIELD(MSDC_DMA_SA_HIGH, MSDC_DMA_SURR_ADDR_HIGH4BIT,
-			(u32) ((dma_address >> 32) & 0xF));
-		MSDC_WRITE32(MSDC_DMA_SA, (u32) (dma_address & 0xFFFFFFFFUL));
+			upper_32_bits(dma_address) & 0xF);
+		MSDC_WRITE32(MSDC_DMA_SA, lower_32_bits(dma_address));
 
 		MSDC_SET_FIELD(MSDC_DMA_CTRL, MSDC_DMA_CTRL_LASTBUF, 1);
 		MSDC_WRITE32(MSDC_DMA_LEN, dma_len);
@@ -3045,8 +3053,8 @@ static int msdc_dma_config(struct msdc_host *host, struct msdc_dma *dma)
 		MSDC_SET_FIELD(MSDC_DMA_CTRL, MSDC_DMA_CTRL_MODE, 1);
 
 		MSDC_SET_FIELD(MSDC_DMA_SA_HIGH, MSDC_DMA_SURR_ADDR_HIGH4BIT,
-			(u32) ((dma->gpd_addr >> 32) & 0xF));
-		MSDC_WRITE32(MSDC_DMA_SA, (u32) (dma->gpd_addr & 0xFFFFFFFFUL));
+			upper_32_bits(dma->gpd_addr) & 0xF);
+		MSDC_WRITE32(MSDC_DMA_SA, lower_32_bits(dma->gpd_addr));
 		break;
 
 	default:
@@ -4080,21 +4088,6 @@ done:
 	if (host->error & REQ_CMD_EIO)
 		host->need_tune = TUNE_ASYNC_CMD;
 
-#ifdef MMC_K44_RETUNE
-	if (!is_card_sdio(host)) {
-		if ((mrq->cmd->opcode != MMC_SEND_TUNING_BLOCK &&
-		mrq->cmd->opcode != MMC_SEND_TUNING_BLOCK_HS200) &&
-		(mrq->cmd->error == -EILSEQ || (mrq->sbc && mrq->sbc->error == -EILSEQ) ||
-		(mrq->data && mrq->data->error == -EILSEQ) ||
-		(mrq->stop && mrq->stop->error == -EILSEQ) ||
-		(mrq->data && mrq->data->error == -ETIMEDOUT)))	{
-			ERR_MSG("CMD%d, ARG(%08x),ERR retune needed\n",
-				mrq->cmd->opcode, mrq->cmd->arg);
-			mmc_retune_needed(host->mmc);
-		}
-	}
-#endif
-
 #ifdef MTK_MSDC_USE_CACHE
 	msdc_update_cache_flush_status(host, mrq, data, 1);
 #endif
@@ -4286,13 +4279,6 @@ int msdc_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	struct msdc_host *host = mmc_priv(mmc);
 	int ret = 0;
 
-#ifdef MMC_K44_RETUNE
-	if (!(host->tuning_in_progress) && host->need_tune &&
-		!(host->need_tune & TUNE_AUTOK_PASS)) {
-		msdc_error_tuning(mmc, NULL);
-		return 0;
-	}
-#endif
 	msdc_ungate_clock(host);
 	msdc_init_tune_path(host, mmc->ios.timing);
 	host->tuning_in_progress = true;
@@ -4384,20 +4370,12 @@ int msdc_error_tuning(struct mmc_host *mmc,  struct mmc_request *mrq)
 	 * in RCV and DATA status.
 	 * Don't autok/switch edge here, or it will cause switch edge failed
 	 */
-#ifdef MMC_K44_RETUNE
-	if (mrq && ((mrq->cmd->opcode == MMC_SEND_STATUS &&
-		host->err_cmd != MMC_SEND_STATUS) ||
-		(mrq->cmd->opcode == MMC_STOP_TRANSMISSION &&
-		host->err_cmd != MMC_STOP_TRANSMISSION))) {
-		goto end;
-	}
-#else
 	if ((mrq->cmd->opcode == MMC_SEND_STATUS ||
 		mrq->cmd->opcode == MMC_STOP_TRANSMISSION) &&
 		host->err_cmd != mrq->cmd->opcode) {
 		goto end;
 	}
-#endif
+
 	pr_err("%s: host->need_tune : 0x%x CMD<%d>\n", __func__,
 		host->need_tune, mrq->cmd->opcode);
 
@@ -4411,15 +4389,7 @@ int msdc_error_tuning(struct mmc_host *mmc,  struct mmc_request *mrq)
 
 	if (host->hw->host_function == MSDC_EMMC ||
 		host->hw->host_function == MSDC_SD) {
-#ifdef MMC_K44_RETUNE
-		/*  need low level protect tuning phase fail in re-tuning arch */
-		if (mmc->doing_retune) {
-			if (autok_err_type == CMD_ERROR)
-				autok_low_speed_switch_edge(host, &mmc->ios,
-					autok_err_type);
-			goto end;
-		}
-#endif
+
 		msdc_pmic_force_vcore_pwm(true);
 		switch (mmc->ios.timing) {
 		case MMC_TIMING_UHS_SDR104:
@@ -4524,18 +4494,9 @@ static void msdc_ops_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	if (mrq->data)
 		host_cookie = mrq->data->host_cookie;
 
-#ifdef MMC_K44_RETUNE
-	/*  need low level check if switch phase fail in re-tuning arch */
-	if (host->hw->host_function == MSDC_EMMC ||
-		host->hw->host_function == MSDC_SD) {
-		if (mmc->doing_retune)
-			msdc_error_tuning(mmc, mrq);
-		}
-#else
 	if (!(host->tuning_in_progress) && host->need_tune &&
 		!(host->need_tune & TUNE_AUTOK_PASS))
 		msdc_error_tuning(mmc, mrq);
-#endif
 
 	/* Async only support  DMA and asyc CMD flow */
 	if (msdc_use_async_dma(host_cookie))
@@ -4627,17 +4588,13 @@ void msdc_ops_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	if (host->mclk != ios->clock) {
 		msdc_set_mclk(host, ios->timing, ios->clock);
-		if ((ios->timing == MMC_TIMING_MMC_HS400)
-#ifdef MMC_K44_RETUNE
-			&& (ios->clock == mmc->f_max)
-#endif
-		) {
+		if (ios->timing == MMC_TIMING_MMC_HS400) {
 			msdc_execute_tuning(host->mmc,
 				MMC_SEND_TUNING_BLOCK_HS200);
-#ifndef MMC_K44_RETUNE
+
 			pr_err("msdc%d:disable mmc retune\n", host->id);
 			mmc_retune_disable(host->mmc);
-#endif
+
 		}
 	}
 
@@ -5074,24 +5031,12 @@ static void msdc_irq_data_complete(struct msdc_host *host,
 #ifdef CONFIG_MTK_EMMC_CQ_SUPPORT
 skip:
 #endif
-#ifdef MMC_K44_RETUNE
-			if (!is_card_sdio(host)) {
-				if ((mrq->cmd->opcode != MMC_SEND_TUNING_BLOCK &&
-					mrq->cmd->opcode != MMC_SEND_TUNING_BLOCK_HS200) &&
-					(mrq->cmd->error == -EILSEQ ||
-					(mrq->sbc && mrq->sbc->error == -EILSEQ) ||
-					(mrq->data->error == -EILSEQ) ||
-					(mrq->data->error == -ETIMEDOUT) ||
-					(mrq->stop && mrq->stop->error == -EILSEQ))) {
-					mmc_retune_needed(host->mmc);
-				}
-			}
-#else
+
 			/* FIXME: return as cmd error for retry
 			 * if data CRC error
 			 */
 			mrq->cmd->error = (unsigned int)-EILSEQ;
-#endif
+
 		} else {
 			host->error &= ~REQ_DAT_ERR;
 			host->need_tune = TUNE_NONE;
@@ -5302,23 +5247,23 @@ static void msdc_init_gpd_bd(struct msdc_host *host, struct msdc_dma *dma)
 	/* init the 2 gpd */
 	memset(gpd, 0, sizeof(struct gpd_t) * 2);
 	dma_addr = dma->gpd_addr + sizeof(struct gpd_t);
-	gpd->nexth4 = (u32) ((dma_addr >> 32) & 0xF);
-	gpd->next = (u32) (dma_addr & 0xFFFFFFFFUL);
+	gpd->nexth4 = upper_32_bits(dma_addr) & 0xF;
+	gpd->next = lower_32_bits(dma_addr);
 
 	/* gpd->intr = 0; */
 	gpd->bdp = 1;           /* hwo, cs, bd pointer */
 	/* gpd->ptr  = (void*)virt_to_phys(bd); */
 	dma_addr = dma->bd_addr;
-	gpd->ptrh4 = (u32) ((dma_addr >> 32) & 0xF); /* physical address */
-	gpd->ptr = (u32) (dma_addr & 0xFFFFFFFFUL); /* physical address */
+	gpd->ptrh4 = upper_32_bits(dma_addr) & 0xF;
+	gpd->ptr = lower_32_bits(dma_addr); /* physical address */
 
 	memset(bd, 0, sizeof(struct bd_t) * bdlen);
 	ptr = bd + bdlen - 1;
 	while (ptr != bd) {
 		prev = ptr - 1;
 		dma_addr = dma->bd_addr + sizeof(struct bd_t) * (ptr - bd);
-		prev->nexth4 = (u32) ((dma_addr >> 32) & 0xF);
-		prev->next = (u32) (dma_addr & 0xFFFFFFFFUL);
+		prev->nexth4 = upper_32_bits(dma_addr) & 0xF;
+		prev->next = lower_32_bits(dma_addr);
 		ptr = prev;
 	}
 }

@@ -25,7 +25,7 @@
 #include <linux/string.h>
 #include <asm/div64.h>
 
-#if defined(CONFIG_MTK_FPSGO) && !defined(CONFIG_MTK_CM_MGR)
+#if defined(CONFIG_MTK_FPSGO) && defined(FPSGO_CPI)
 #include <fpsgo_common.h>
 #include <mtk_vcorefs_governor.h>
 #include <mtk_vcorefs_manager.h>
@@ -47,7 +47,7 @@ static int boost_value[NR_CGROUP][EAS_MAX_KIR];
 static int debug_boost_value[NR_CGROUP];
 static int debug;
 
-#if defined(CONFIG_MTK_FPSGO) && !defined(CONFIG_MTK_CM_MGR)
+#if defined(CONFIG_MTK_FPSGO) && defined(FPSGO_CPI)
 /* for CPI monitor */
 static int vcore_high;
 static int vcore;
@@ -79,13 +79,19 @@ static inline void reduce_stall_wrapper(int boost_value)
 static inline void reduce_stall_wrapper(int boost_value) { }
 #endif
 
+static int check_boost_value(int boost_value)
+{
+	return clamp(boost_value, -100, 5000);
+}
+
 /*************************************************************************************/
 #ifdef CONFIG_SCHED_TUNE
 int update_eas_boost_value(int kicker, int cgroup_idx, int value)
 {
 	int final_boost_value = 0, final_boost_value_1 = 0, final_boost_value_2 = -101;
+	int first_prio_boost_value = 0;
 	int boost_1[EAS_MAX_KIR], boost_2[EAS_MAX_KIR];
-	int has_set = 0;
+	int has_set = 0, first_prio_set = 0;
 	int i;
 
 	mutex_lock(&boost_eas);
@@ -99,29 +105,31 @@ int update_eas_boost_value(int kicker, int cgroup_idx, int value)
 	boost_value[cgroup_idx][kicker] = value;
 
 	for (i = 0; i < EAS_MAX_KIR; i++) {
+		if (boost_value[cgroup_idx][i] == 0)
+			continue;
+
+		if (boost_value[cgroup_idx][i] == 1100 ||
+			boost_value[cgroup_idx][i] == 100) { /* first priority */
+			first_prio_boost_value =
+				MAX(boost_value[cgroup_idx][i], first_prio_boost_value);
+			first_prio_set = 1;
+		}
+
 		boost_1[i] = boost_value[cgroup_idx][i] / 1000;
 		boost_2[i] = boost_value[cgroup_idx][i] % 1000;
+		final_boost_value_1 = MAX(boost_1[i], final_boost_value_1);
+		final_boost_value_2 = MAX(boost_2[i], final_boost_value_2);
+		has_set = 1;
 	}
 
-	for (i = 0; i < EAS_MAX_KIR; i++) {
-		if (boost_value[cgroup_idx][i] != 0) {
-			final_boost_value_1 = MAX(boost_1[i], final_boost_value_1);
-			final_boost_value_2 = MAX(boost_2[i], final_boost_value_2);
-			has_set = 1;
-		}
-	}
-
-	if (has_set)
+	if (first_prio_set)
+		final_boost_value = first_prio_boost_value;
+	else if (has_set)
 		final_boost_value = final_boost_value_1 * 1000 + final_boost_value_2;
 	else
 		final_boost_value = 0;
 
-	if (final_boost_value > 5000)
-		current_boost_value[cgroup_idx] = 5000;
-	else if (final_boost_value < -100)
-		current_boost_value[cgroup_idx] = -100;
-	else
-		current_boost_value[cgroup_idx] = final_boost_value;
+	current_boost_value[cgroup_idx] = check_boost_value(final_boost_value);
 
 	if (kicker == EAS_KIR_PERF)
 		pr_debug(TAG"kicker:%d, boost:%d, final:%d, current:%d",
@@ -130,10 +138,8 @@ int update_eas_boost_value(int kicker, int cgroup_idx, int value)
 
 
 	if (!debug) {
-		if (current_boost_value[cgroup_idx] >= -100 && current_boost_value[cgroup_idx] < 5000) {
-			boost_write_for_perf_idx(cgroup_idx, current_boost_value[cgroup_idx]);
-			reduce_stall_wrapper(current_boost_value[cgroup_idx]);
-		}
+		boost_write_for_perf_idx(cgroup_idx, current_boost_value[cgroup_idx]);
+		reduce_stall_wrapper(current_boost_value[cgroup_idx]);
 	}
 
 	mutex_unlock(&boost_eas);
@@ -164,10 +170,7 @@ static ssize_t perfmgr_perfserv_fg_boost_write(struct file *filp, const char *ub
 	if (kstrtoint(buf, 10, &data))
 		return -1;
 
-	if (data > 3000)
-		data = 3000;
-	else if (data < -100)
-		data = -100;
+	data = check_boost_value(data);
 
 	update_eas_boost_value(EAS_KIR_PERF, CGROUP_FG, data);
 
@@ -235,16 +238,11 @@ static ssize_t perfmgr_debug_fg_boost_write(struct file *filp, const char *ubuf,
 	if (kstrtoint(buf, 10, &data))
 		return -1;
 
-	if (data > 3000) {
-		debug_boost_value[CGROUP_FG] = 3000;
+	debug_boost_value[CGROUP_FG] = check_boost_value(data);
+	if (debug_boost_value[CGROUP_FG])
 		debug = 1;
-	} else if (data < -100) {
-		debug_boost_value[CGROUP_FG] = -100;
-		debug = 1;
-	} else {
-		debug_boost_value[CGROUP_FG] = data;
-		debug = 1;
-	}
+	else
+		debug = 0;
 
 #ifdef CONFIG_SCHED_TUNE
 	if (debug)
@@ -291,10 +289,7 @@ static ssize_t perfmgr_perfserv_bg_boost_write(struct file *filp, const char *ub
 	if (kstrtoint(buf, 10, &data))
 		return -1;
 
-	if (data > 3000)
-		data = 3000;
-	else if (data < -100)
-		data = -100;
+	data = check_boost_value(data);
 
 	update_eas_boost_value(EAS_KIR_PERF, CGROUP_BG, data);
 
@@ -362,16 +357,11 @@ static ssize_t perfmgr_debug_bg_boost_write(struct file *filp, const char *ubuf,
 	if (kstrtoint(buf, 10, &data))
 		return -1;
 
-	if (data > 3000) {
-		debug_boost_value[CGROUP_BG] = 3000;
+	debug_boost_value[CGROUP_BG] = check_boost_value(data);
+	if (debug_boost_value[CGROUP_BG])
 		debug = 1;
-	} else if (data < -100) {
-		debug_boost_value[CGROUP_BG] = -100;
-		debug = 1;
-	} else {
-		debug_boost_value[CGROUP_BG] = data;
-		debug = 1;
-	}
+	else
+		debug = 0;
 
 #ifdef CONFIG_SCHED_TUNE
 	if (debug)
@@ -419,10 +409,7 @@ static ssize_t perfmgr_perfserv_ta_boost_write(struct file *filp, const char *ub
 	if (kstrtoint(buf, 10, &data))
 		return -1;
 
-	if (data > 4000)
-		data = 4000;
-	else if (data < -100)
-		data = -100;
+	data = check_boost_value(data);
 
 	update_eas_boost_value(EAS_KIR_PERF, CGROUP_TA, data);
 
@@ -444,6 +431,54 @@ static int perfmgr_perfserv_ta_boost_open(struct inode *inode, struct file *file
 static const struct file_operations perfmgr_perfserv_ta_boost_fops = {
 	.open = perfmgr_perfserv_ta_boost_open,
 	.write = perfmgr_perfserv_ta_boost_write,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+/*************************************************************************************/
+static ssize_t perfmgr_boot_boost_write(struct file *filp, const char *ubuf,
+		size_t cnt, loff_t *pos)
+{
+	int cgroup, data;
+	char buf[128];
+
+	if (cnt >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, ubuf, cnt))
+		return -EFAULT;
+	buf[cnt] = 0;
+
+	if (sscanf(buf, "%d %d", &cgroup, &data) != 2)
+		return -1;
+
+	data = check_boost_value(data);
+
+	if (cgroup >= 0 && cgroup < NR_CGROUP)
+		update_eas_boost_value(EAS_KIR_BOOT, cgroup, data);
+
+	return cnt;
+}
+
+static int perfmgr_boot_boost_show(struct seq_file *m, void *v)
+{
+	int i;
+
+	for (i = 0; i < NR_CGROUP; i++)
+		seq_printf(m, "%d\n", boost_value[i][EAS_KIR_BOOT]);
+
+	return 0;
+}
+
+static int perfmgr_boot_boost_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, perfmgr_boot_boost_show, inode->i_private);
+}
+
+static const struct file_operations perfmgr_boot_boost_fops = {
+	.open = perfmgr_boot_boost_open,
+	.write = perfmgr_boot_boost_write,
 	.read = seq_read,
 	.llseek = seq_lseek,
 	.release = single_release,
@@ -490,16 +525,11 @@ static ssize_t perfmgr_debug_ta_boost_write(struct file *filp, const char *ubuf,
 	if (kstrtoint(buf, 10, &data))
 		return -1;
 
-	if (data > 3000) {
-		debug_boost_value[CGROUP_TA] = 3000;
+	debug_boost_value[CGROUP_TA] = check_boost_value(data);
+	if (debug_boost_value[CGROUP_TA])
 		debug = 1;
-	} else if (data < -100) {
-		debug_boost_value[CGROUP_TA] = -100;
-		debug = 1;
-	} else {
-		debug_boost_value[CGROUP_TA] = data;
-		debug = 1;
-	}
+	else
+		debug = 0;
 
 #ifdef CONFIG_SCHED_TUNE
 	if (debug)
@@ -579,8 +609,50 @@ static const struct file_operations perfmgr_perfserv_ext_launch_mon_fops = {
 	.release = single_release,
 };
 
+/* Add procfs to control sysctl_sched_migration_cost */
+static ssize_t perfmgr_m_sched_migrate_cost_n_write(struct file *filp, const char *ubuf,
+		size_t cnt, loff_t *pos)
+{
+	unsigned int data;
+	char buf[128];
+
+	if (cnt >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, ubuf, cnt))
+		return -EFAULT;
+	buf[cnt] = 0;
+
+	if (kstrtoint(buf, 10, &data))
+		return -1;
+
+	sysctl_sched_migration_cost = data;
+
+	return cnt;
+}
+
+static int perfmgr_m_sched_migrate_cost_n_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%d\n", sysctl_sched_migration_cost);
+
+	return 0;
+}
+
+static int perfmgr_m_sched_migrate_cost_n_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, perfmgr_m_sched_migrate_cost_n_show, inode->i_private);
+}
+
+static const struct file_operations perfmgr_m_sched_migrate_cost_n_fops = {
+	.open = perfmgr_m_sched_migrate_cost_n_open,
+	.write = perfmgr_m_sched_migrate_cost_n_write,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
 /*************************************************************************************/
-#if defined(CONFIG_MTK_FPSGO) && !defined(CONFIG_MTK_CM_MGR)
+#if defined(CONFIG_MTK_FPSGO) && defined(FPSGO_CPI)
 static ssize_t perfmgr_cpi_thres_write(struct file *filp, const char *ubuf,
 		size_t cnt, loff_t *pos)
 {
@@ -682,10 +754,15 @@ void perfmgr_eas_boost_init(void)
 	proc_create("perfserv_ta_boost", 0644, boost_dir, &perfmgr_perfserv_ta_boost_fops);
 	proc_create("current_ta_boost", 0644, boost_dir, &perfmgr_current_ta_boost_fops);
 	proc_create("debug_ta_boost", 0644, boost_dir, &perfmgr_debug_ta_boost_fops);
+
+	proc_create("boot_boost", 0644, boost_dir, &perfmgr_boot_boost_fops);
 	/*--ext_launch--*/
 	proc_create("perfserv_ext_launch_mon", 0644, boost_dir, &perfmgr_perfserv_ext_launch_mon_fops);
 
-#if defined(CONFIG_MTK_FPSGO) && !defined(CONFIG_MTK_CM_MGR)
+	/*--sched migrate cost n--*/
+	proc_create("m_sched_migrate_cost_n", 0644, boost_dir, &perfmgr_m_sched_migrate_cost_n_fops);
+
+#if defined(CONFIG_MTK_FPSGO) && defined(FPSGO_CPI)
 	proc_create("vcore_high", 0644, boost_dir, &perfmgr_vcore_high_fops);
 	proc_create("cpi_thres", 0644, boost_dir, &perfmgr_cpi_thres_fops);
 

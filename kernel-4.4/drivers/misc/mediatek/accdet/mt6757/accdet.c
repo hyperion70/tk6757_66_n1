@@ -718,7 +718,7 @@ int accdet_irq_handler(void)
 	u64 cur_time = 0;
 	cur_time = accdet_get_current_time();
 #ifdef CONFIG_ACCDET_EINT_IRQ
-	ACCDET_DEBUG("[accdet_irq_handler]eint_interrupt: ACCDET_IRQ_STS = 0x%x\n",
+	ACCDET_DEBUG("[Accdet accdet_irq_handler]clear_accdet_eint_interrupt: ACCDET_IRQ_STS = 0x%x\n",
 		     pmic_pwrap_read(ACCDET_IRQ_STS));
 	if ((pmic_pwrap_read(ACCDET_IRQ_STS) & IRQ_STATUS_BIT)
 	    && ((pmic_pwrap_read(ACCDET_IRQ_STS) & EINT_IRQ_STATUS_BIT) != EINT_IRQ_STATUS_BIT)) {
@@ -897,7 +897,7 @@ static inline void check_cable_type(void)
 		} else if (current_status == 3) {
 			ACCDET_DEBUG("[Accdet]PLUG_OUT state not change!\n");
 #ifdef CONFIG_ACCDET_EINT
-			/* ACCDET_DEBUG("[Accdet] do not send plug out event in plug out\n"); */
+			ACCDET_DEBUG("[Accdet] do not send plug out event in plug out\n");
 #else
 			mutex_lock(&accdet_eint_irq_sync_mutex);
 			if (eint_accdet_sync_flag == 1) {
@@ -1087,6 +1087,7 @@ static inline void check_cable_type(void)
 		pmic_pwrap_write(ACCDET_IRQ_STS, irq_temp);
 		mutex_unlock(&accdet_eint_irq_sync_mutex);
 		IRQ_CLR_FLAG = true;
+		ACCDET_DEBUG("[Accdet]check_cable_type:Clear interrupt:Done[0x%x]!\n", pmic_pwrap_read(ACCDET_IRQ_STS));
 	} else {
 		IRQ_CLR_FLAG = false;
 	}
@@ -1115,7 +1116,7 @@ static void accdet_work_callback(struct work_struct *work)
 	else
 		ACCDET_DEBUG("[Accdet] Headset has plugged out don't set accdet state\n");
 	mutex_unlock(&accdet_eint_irq_sync_mutex);
-	/* ACCDET_DEBUG(" [accdet] set state in cable_type  status\n"); */
+	ACCDET_DEBUG(" [accdet] set state in cable_type  status\n");
 	wake_unlock(&accdet_irq_lock);
 }
 
@@ -1819,25 +1820,21 @@ void mt_accdet_remove(void)
 
 void mt_accdet_suspend(void)/* only one suspend mode */
 {
-#if 0
 #if defined CONFIG_ACCDET_EINT || defined CONFIG_ACCDET_EINT_IRQ
 	ACCDET_DEBUG("[Accdet] in suspend1: ACCDET_IRQ_STS = 0x%x\n", pmic_pwrap_read(ACCDET_IRQ_STS));
 #else
 	ACCDET_DEBUG("[Accdet]accdet_suspend: ACCDET_CTRL=[0x%x], STATE=[0x%x]->[0x%x]\n",
 	       pmic_pwrap_read(ACCDET_CTRL), pre_state_swctrl, pmic_pwrap_read(ACCDET_STATE_SWCTRL));
 #endif
-#endif
 }
 
 void mt_accdet_resume(void)	/* wake up */
 {
-#if 0
 #if defined CONFIG_ACCDET_EINT || defined CONFIG_ACCDET_EINT_IRQ
 	ACCDET_DEBUG("[Accdet] in resume1: ACCDET_IRQ_STS = 0x%x\n", pmic_pwrap_read(ACCDET_IRQ_STS));
 #else
 	ACCDET_DEBUG("[Accdet]accdet_resume: ACCDET_CTRL=[0x%x], STATE_SWCTRL=[0x%x]\n",
 	       pmic_pwrap_read(ACCDET_CTRL), pmic_pwrap_read(ACCDET_STATE_SWCTRL));
-#endif
 #endif
 }
 

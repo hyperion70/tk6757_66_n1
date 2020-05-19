@@ -27,6 +27,11 @@
 
 #include "internal.h"
 
+#if defined(CONFIG_MTK_AEE_FEATURE) && \
+	defined(CONFIG_MTK_FD_LEAK_SPECIFIC_DEBUG)
+#include <mt-plat/aee.h>
+#endif
+
 /*
  * The max size that a non-root user is allowed to grow the pipe. Can
  * be set by root in /proc/sys/fs/pipe-max-size
@@ -616,6 +621,9 @@ struct pipe_inode_info *alloc_pipe_info(void)
 		unsigned long pipe_bufs = PIPE_DEF_BUFFERS;
 		struct user_struct *user = get_current_user();
 
+		if (pipe_bufs * PAGE_SIZE > pipe_max_size && !capable(CAP_SYS_RESOURCE))
+			pipe_bufs = pipe_max_size >> PAGE_SHIFT;
+
 		if (!too_many_pipe_buffers_hard(user)) {
 			if (too_many_pipe_buffers_soft(user))
 				pipe_bufs = 1;
@@ -767,6 +775,12 @@ static int __do_pipe_flags(int *fd, struct file **files, int flags)
 {
 	int error;
 	int fdw, fdr;
+#if defined(CONFIG_MTK_AEE_FEATURE) && \
+	defined(CONFIG_MTK_FD_LEAK_SPECIFIC_DEBUG)
+	int greaterFd;
+	char aee_msg[200];
+	struct task_struct *process;
+#endif
 
 	if (flags & ~(O_CLOEXEC | O_NONBLOCK | O_DIRECT))
 		return -EINVAL;
@@ -788,6 +802,36 @@ static int __do_pipe_flags(int *fd, struct file **files, int flags)
 	audit_fd_pair(fdr, fdw);
 	fd[0] = fdr;
 	fd[1] = fdw;
+
+#if defined(CONFIG_MTK_AEE_FEATURE) && \
+	defined(CONFIG_MTK_FD_LEAK_SPECIFIC_DEBUG)
+	/* sample and report warning */
+	greaterFd = (fdr > fdw) ? fdr : fdw;
+
+	if ((greaterFd >= 1000 && greaterFd < 1020) ||
+		(greaterFd >= 2000 && greaterFd < 2012) ||
+		(greaterFd >= 3000 && greaterFd < 3012)) {
+
+		process = current->group_leader;
+		snprintf(aee_msg, sizeof(aee_msg),
+			"[FDLEAK] pipe_fd[%d, %d], %s [tid:%d] [pid:%d],\n"
+			"Process: %s, %d, %d\n",
+			fdr, fdw, current->comm, current->pid, current->tgid,
+			process->comm, process->pid, process->tgid);
+		if (strstr(process->comm, "omx@1.0-service")) {
+			aee_kernel_warning_api("FDLEAK_DEBUG", 0, DB_OPT_DEFAULT |
+				DB_OPT_LOW_MEMORY_KILLER |
+				DB_OPT_PID_MEMORY_INFO | /* smaps and hprof*/
+				DB_OPT_NATIVE_BACKTRACE |
+				DB_OPT_DUMPSYS_ACTIVITY |
+				/* DB_OPT_PROCESS_COREDUMP | */
+				DB_OPT_DUMPSYS_SURFACEFLINGER |
+				DB_OPT_DUMPSYS_GFXINFO |
+				DB_OPT_DUMPSYS_PROCSTATS,
+				"show kernel & natvie backtace\n", aee_msg);
+		}
+	}
+#endif
 	return 0;
 
  err_fdr:
@@ -1001,6 +1045,9 @@ static long pipe_set_size(struct pipe_inode_info *pipe, unsigned long nr_pages)
 {
 	struct pipe_buffer *bufs;
 
+	if (!nr_pages)
+		return -EINVAL;
+
 	/*
 	 * We can shrink the pipe, if arg >= pipe->nrbufs. Since we don't
 	 * expect a lot of shrink+grow operations, just free and allocate
@@ -1045,13 +1092,19 @@ static long pipe_set_size(struct pipe_inode_info *pipe, unsigned long nr_pages)
 
 /*
  * Currently we rely on the pipe array holding a power-of-2 number
- * of pages.
+ * of pages. Returns 0 on error.
  */
 static inline unsigned int round_pipe_size(unsigned int size)
 {
 	unsigned long nr_pages;
 
+	if (size < pipe_min_size)
+		size = pipe_min_size;
+
 	nr_pages = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	if (nr_pages == 0)
+		return 0;
+
 	return roundup_pow_of_two(nr_pages) << PAGE_SHIFT;
 }
 
@@ -1062,13 +1115,18 @@ static inline unsigned int round_pipe_size(unsigned int size)
 int pipe_proc_fn(struct ctl_table *table, int write, void __user *buf,
 		 size_t *lenp, loff_t *ppos)
 {
+	unsigned int rounded_pipe_max_size;
 	int ret;
 
 	ret = proc_dointvec_minmax(table, write, buf, lenp, ppos);
 	if (ret < 0 || !write)
 		return ret;
 
-	pipe_max_size = round_pipe_size(pipe_max_size);
+	rounded_pipe_max_size = round_pipe_size(pipe_max_size);
+	if (rounded_pipe_max_size == 0)
+		return -EINVAL;
+
+	pipe_max_size = rounded_pipe_max_size;
 	return ret;
 }
 

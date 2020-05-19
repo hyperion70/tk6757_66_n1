@@ -119,6 +119,9 @@ static int c_show(struct seq_file *m, void *v)
 	/* a hint message to notify that some process reads /proc/cpuinfo */
 	pr_err("Dump cpuinfo\n");
 
+	seq_printf(m, "Processor\t: AArch64 Processor rev %d (%s)\n",
+			read_cpuid_id() & 15, ELF_PLATFORM);
+
 	for_each_online_cpu(i) {
 		struct cpuinfo_arm64 *cpuinfo = &per_cpu(cpu_data, i);
 		u32 midr = cpuinfo->reg_midr;
@@ -132,14 +135,6 @@ static int c_show(struct seq_file *m, void *v)
 		if (compat)
 			seq_printf(m, "model name\t: ARMv8 Processor rev %d (%s)\n",
 				   MIDR_REVISION(midr), COMPAT_ELF_PLATFORM);
-
-		/*
-		 * backward-compatibility for thrid-party applications:
-		 * Since the cpu_info->cpu_name is deprecated, print "AArch64 Processor" instead
-		 * (As the defined string in arch/arm64/kernel/cputable.c for legacy kernel)
-		 */
-		seq_printf(m, "Processor\t: AArch64 Processor rev %d (%s)\n", MIDR_REVISION(midr), ELF_PLATFORM);
-		seq_printf(m, "model name\t: AArch64 Processor rev %d (%s)\n", MIDR_REVISION(midr), ELF_PLATFORM);
 
 		seq_printf(m, "BogoMIPS\t: %lu.%02lu\n",
 			   loops_per_jiffy / (500000UL/HZ),
@@ -207,7 +202,7 @@ const struct seq_operations cpuinfo_op = {
 
 static void cpuinfo_detect_icache_policy(struct cpuinfo_arm64 *info)
 {
-	unsigned int cpu = smp_processor_id();
+	/* unsigned int cpu = smp_processor_id(); */
 	u32 l1ip = CTR_L1IP(info->reg_ctr);
 
 	if (l1ip != ICACHE_POLICY_PIPT) {
@@ -225,7 +220,7 @@ static void cpuinfo_detect_icache_policy(struct cpuinfo_arm64 *info)
 	if (l1ip == ICACHE_POLICY_AIVIVT)
 		set_bit(ICACHEF_AIVIVT, &__icache_flags);
 
-	/*pr_info("Detected %s I-cache on CPU%d\n", icache_policy_str[l1ip], cpu);*/
+	/* pr_info("Detected %s I-cache on CPU%d\n", icache_policy_str[l1ip], cpu); */
 }
 
 static void __cpuinfo_store_cpu(struct cpuinfo_arm64 *info)

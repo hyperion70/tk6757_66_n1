@@ -45,6 +45,7 @@
 #include "ged_fdvfs.h"
 
 #include "ged_ge.h"
+#include "ged_gpu_tuner.h"
 
 #define GED_DRIVER_DEVICE_NAME "ged"
 #ifndef GED_BUFFER_LOG_DISABLE
@@ -54,6 +55,7 @@ static GED_LOG_BUF_HANDLE ghLogBuf_GLES;
 GED_LOG_BUF_HANDLE ghLogBuf_GED;
 #endif
 
+static GED_LOG_BUF_HANDLE ghLogBuf_GPU;
 #define GED_LOG_BUF_COMMON_HWC "HWC"
 static GED_LOG_BUF_HANDLE ghLogBuf_HWC;
 #define GED_LOG_BUF_COMMON_HWC_ERR "HWC_err"
@@ -195,6 +197,10 @@ static long ged_dispatch(struct file *pFile, GED_BRIDGE_PACKAGE *psBridgePackage
 		case GED_BRIDGE_COMMAND_GPU_TIMESTAMP:
 			SET_FUNC_AND_CHECK(ged_bridge_gpu_timestamp, GPU_TIMESTAMP);
 			break;
+		case GED_BRIDGE_COMMAND_GPU_TUNER_STATUS:
+			SET_FUNC_AND_CHECK(ged_bridge_gpu_tuner_status,
+				GPU_TUNER_STATUS);
+			break;
 		default:
 			GED_LOGE("Unknown Bridge ID: %u\n", GED_GET_BRIDGE_ID(psBridgePackageKM->ui32FunctionID));
 			break;
@@ -319,6 +325,8 @@ static void ged_exit(void)
 	ged_log_buf_free(ghLogBuf_GLES);
 	ghLogBuf_GLES = 0;
 #endif
+	ged_log_buf_free(ghLogBuf_GPU);
+	ghLogBuf_GPU = 0;
 	ged_log_buf_free(ghLogBuf_FENCE);
 	ghLogBuf_FENCE = 0;
 	ged_log_buf_free(ghLogBuf_HWC);
@@ -348,6 +356,8 @@ static void ged_exit(void)
 	ged_debugFS_exit();
 
 	ged_ge_exit();
+
+	ged_gpu_tuner_exit();
 
 	remove_proc_entry(GED_DRIVER_DEVICE_NAME, NULL);
 
@@ -437,6 +447,8 @@ static int ged_init(void)
 	/* common gpu info buffer */
 	ged_log_buf_alloc(1024, 64 * 1024, GED_LOG_BUF_TYPE_RINGBUFFER, "gpuinfo", "gpuinfo");
 
+	ghLogBuf_GPU = ged_log_buf_alloc(512, 128 * 512, GED_LOG_BUF_TYPE_RINGBUFFER, "GPU_FENCE", NULL);
+
 #ifdef GED_DEBUG
 	ghLogBuf_GLES = ged_log_buf_alloc(160, 128 * 160, GED_LOG_BUF_TYPE_RINGBUFFER, GED_LOG_BUF_COMMON_GLES, NULL);
 	ghLogBuf_GED = ged_log_buf_alloc(32, 64 * 32, GED_LOG_BUF_TYPE_RINGBUFFER, "GED internal", NULL);
@@ -451,16 +463,17 @@ static int ged_init(void)
 	ghLogBuf_FWTrace = ged_log_buf_alloc(1024*32, 1024*1024, GED_LOG_BUF_TYPE_QUEUEBUFFER, "fw_trace", "fw_trace");
 
 #ifdef GED_DVFS_DEBUG_BUF
-#ifdef GED_LOG_SIZE_LIMITED
-	ghLogBuf_DVFS =  ged_log_buf_alloc(20*60, 20*60*100
-				, GED_LOG_BUF_TYPE_RINGBUFFER, "DVFS_Log", "ged_dvfs_debug_limited");
-#else
 	ghLogBuf_DVFS =  ged_log_buf_alloc(20*60*10, 20*60*10*100
 				, GED_LOG_BUF_TYPE_RINGBUFFER, "DVFS_Log", "ged_dvfs_debug");
-#endif
 	ghLogBuf_ged_srv =  ged_log_buf_alloc(32, 32*80, GED_LOG_BUF_TYPE_RINGBUFFER, "ged_srv_Log", "ged_srv_debug");
 #endif
 #endif
+
+	err = ged_gpu_tuner_init();
+	if (unlikely(err != GED_OK)) {
+		GED_LOGE("ged: failed to init GPU Tuner!\n");
+		goto ERROR;
+	}
 
 	return 0;
 

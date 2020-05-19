@@ -66,7 +66,9 @@ static struct vcorefs_profile vcorefs_ctrl = {
 	.init_opp_perf	= 0,
 	.autok_lock	= 0,
 	.kr_req_mask	= 0,
-	.kr_log_mask	= (1U << LAST_KICKER) | (1U << KIR_GPU),/* mask-off KIR_GPU, LAST_KICKER */
+	/* mask-off KIR_GPU, KIR_PERF, KIR_FBT, LAST_KICKER log */
+	.kr_log_mask	= (1U << LAST_KICKER) | (1U << KIR_GPU) |
+			(1U << KIR_PERF) | (1U << KIR_FBT),
 	.fix_hpm_req	= 0,
 };
 
@@ -255,6 +257,13 @@ int vcorefs_request_dvfs_opp(enum dvfs_kicker kicker, enum dvfs_opp opp)
 		return -1;
 	}
 
+	if (is_vcorefs_feature_enable() && !pwrctrl->init_done) {
+		vcorefs_crit_mask(log_mask(), kicker, "request before init done(kr:%d opp:%d)\n", kicker, opp);
+		if (vcorefs_request_init_opp(kicker, opp))
+			return 0;
+	}
+
+
 	if (!feature_en || !pwrctrl->init_done) {
 		vcorefs_crit_mask(log_mask(), kicker, "feature_en: %d, init_done: %d, kr: %d, opp: %d\n",
 							feature_en, pwrctrl->init_done, kicker, opp);
@@ -317,6 +326,7 @@ int vcorefs_request_dvfs_opp(enum dvfs_kicker kicker, enum dvfs_opp opp)
 void vcorefs_drv_init(bool plat_init_done, bool plat_feature_en, int plat_init_opp)
 {
 	struct vcorefs_profile *pwrctrl = &vcorefs_ctrl;
+	int init_opp = vcorefs_bootup_get_init_opp();
 
 	mutex_lock(&vcorefs_mutex);
 	if (!plat_feature_en)
@@ -328,6 +338,12 @@ void vcorefs_drv_init(bool plat_init_done, bool plat_feature_en, int plat_init_o
 	aee_rr_rec_vcore_dvfs_opp(0xffffffff);
 #endif
 
+	if (init_opp != OPPI_UNREQ) {
+		/* GPU kicker already request HPM in init */
+		kicker_table[KIR_BOOTUP] = init_opp;
+		record_kicker_opp_in_aee(KIR_BOOTUP, init_opp);
+	}
+
 	pwrctrl->plat_init_opp	= plat_init_opp;
 	pwrctrl->init_done	= plat_init_done;
 	mutex_unlock(&vcorefs_mutex);
@@ -336,6 +352,8 @@ void vcorefs_drv_init(bool plat_init_done, bool plat_feature_en, int plat_init_o
 
 	if (feature_en)
 		governor_autok_manager();
+
+	vcorefs_bootup_set_init_opp(OPPI_UNREQ);
 }
 
 /*

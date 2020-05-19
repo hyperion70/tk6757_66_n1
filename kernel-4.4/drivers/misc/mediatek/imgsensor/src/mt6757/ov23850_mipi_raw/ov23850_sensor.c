@@ -3777,7 +3777,8 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 	SENSOR_VC_INFO_STRUCT *pvcinfo;
 	SET_PD_BLOCK_INFO_T *PDAFinfo;
 
-	/*LOG_INF("feature_id = %d\n", feature_id);*/
+	if (!((feature_id == 3040) || (feature_id == 3058)))
+		LOG_INF("feature_id = %d\n", feature_id);
 
 	switch (feature_id) {
 	case SENSOR_FEATURE_GET_PERIOD:

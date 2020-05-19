@@ -37,6 +37,7 @@
 #ifndef CONFIG_USB_VBUS_GPIO
 #if CONFIG_MTK_GAUGE_VERSION == 30
 #include <mt-plat/mtk_battery.h>
+#include <mtk_gauge_time_service.h>
 #else
 #include <mt-plat/battery_meter.h>
 #endif
@@ -88,8 +89,14 @@ static void mtk_enable_otg_mode(void)
 #ifdef CONFIG_USB_VBUS_GPIO
 	struct pinctrl *pinctrl_drvvbus;
 	struct pinctrl_state *pinctrl_drvvbus_high;
+#endif
 
-	boost_on = true;
+	if (boost_on) {
+		mtk_xhci_mtk_printk(K_ALET, "vbus alredy on\n");
+		return;
+	}
+
+#ifdef CONFIG_USB_VBUS_GPIO
 	if (g_pdev == NULL) {
 		pr_notice("g_pdev is not ready\n");
 		return;
@@ -104,6 +111,7 @@ static void mtk_enable_otg_mode(void)
 		pr_notice("Cannot find usb pinctrl drvvbus_high\n");
 		return;
 	}
+	boost_on = true;
 	pinctrl_select_state(pinctrl_drvvbus, pinctrl_drvvbus_high);
 #else
 	boost_on = true;
@@ -124,7 +132,14 @@ static void mtk_disable_otg_mode(void)
 #ifdef CONFIG_USB_VBUS_GPIO
 	struct pinctrl *pinctrl_drvvbus;
 	struct pinctrl_state *pinctrl_drvvbus_low;
+#endif
 
+	if (!boost_on) {
+		mtk_xhci_mtk_printk(K_ALET, "vbus alredy off\n");
+		return;
+	}
+
+#ifdef CONFIG_USB_VBUS_GPIO
 	if (g_pdev == NULL) {
 		pr_notice("g_pdev is not ready\n");
 		return;
@@ -139,8 +154,10 @@ static void mtk_disable_otg_mode(void)
 		pr_notice("Cannot find usb pinctrl drvvbus_low\n");
 		return;
 	}
+	boost_on = false;
 	pinctrl_select_state(pinctrl_drvvbus, pinctrl_drvvbus_low);
 #else
+	boost_on = false;
 #if CONFIG_MTK_GAUGE_VERSION == 30
 	charger_dev_enable_otg(primary_charger, false);
 	enable_boost_polling(false);
@@ -148,7 +165,6 @@ static void mtk_disable_otg_mode(void)
 	set_chr_enable_otg(0x0);
 #endif
 #endif
-	boost_on = false;
 }
 
 static int mtk_xhci_hcd_init(void)
@@ -296,6 +312,45 @@ static void mtk_xhci_hcd_cleanup(void)
 {
 	xhci_mtk_unregister_plat();
 }
+
+static int option;
+static int set_option(const char *val, const struct kernel_param *kp)
+{
+	int local_option;
+	int rv;
+
+	/* update module parameter */
+	rv = param_set_int(val, kp);
+	if (rv)
+		return rv;
+
+	/* update local_option */
+	rv = kstrtoint(val, 10, &local_option);
+	if (rv != 0)
+		return rv;
+
+	pr_info("option:%d, local_option:%d\n", option, local_option);
+
+	switch (local_option) {
+	case 0:
+		pr_info("mtk_enable_otg_mode %d\n", local_option);
+		mtk_enable_otg_mode();
+		break;
+	case 1:
+		pr_info("mtk_disable_otg_mode %d\n", local_option);
+		mtk_disable_otg_mode();
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+static struct kernel_param_ops option_param_ops = {
+	.set = set_option,
+	.get = param_get_int,
+};
+module_param_cb(option, &option_param_ops, &option, 0644);
+
 static struct delayed_work host_plug_test_work;
 static int host_plug_test_enable; /* default disable */
 module_param(host_plug_test_enable, int, 0400);
@@ -381,6 +436,12 @@ static int _mtk_xhci_driver_load(bool vbus_on)
 {
 	int ret = 0;
 
+	if (mtk_dualrole_stat == DUALROLE_HOST) {
+		mtk_xhci_mtk_printk(K_ALET,
+				"current is DUALROLE_HOST\n");
+		return 0;
+	}
+
 	/* recover clock/power setting and deassert reset bit of mac */
 #ifdef CONFIG_PROJECT_PHY
 	usb_phy_recover(0);
@@ -420,6 +481,13 @@ _err:
 
 static void _mtk_xhci_driver_unload(bool vbus_off)
 {
+
+	if (mtk_dualrole_stat == DUALROLE_DEVICE) {
+		mtk_xhci_mtk_printk(K_ALET,
+				"current is DUALROLE_DEVICE\n");
+		return;
+	}
+
 	mtk_xhci_hcd_cleanup();
 
 	if (vbus_off)
@@ -446,6 +514,9 @@ int mtk_xhci_driver_load(bool vbus_on)
 	static int host_plug_test_work_inited;
 
 	host_req = 1;
+#ifdef CONFIG_DUAL_ROLE_USB_INTF
+	mt_usb_dual_role_to_host();
+#endif
 
 	if (!host_plug_test_work_inited) {
 		INIT_DELAYED_WORK(&host_plug_test_work, do_host_plug_test_work);
@@ -457,9 +528,13 @@ int mtk_xhci_driver_load(bool vbus_on)
 
 	return _mtk_xhci_driver_load(vbus_on);
 }
+
 void mtk_xhci_driver_unload(bool vbus_off)
 {
 	host_req = 0;
+#ifdef CONFIG_DUAL_ROLE_USB_INTF
+	mt_usb_dual_role_to_none();
+#endif
 
 	if (host_plug_test_triggered)
 		return;

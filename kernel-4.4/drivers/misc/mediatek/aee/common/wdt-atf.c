@@ -41,6 +41,7 @@
 #include <ext_wd_drv.h>
 #endif
 #include "aee-common.h"
+#include <ipanic.h>
 #include <mt-plat/mtk_secure_api.h>
 #ifdef CONFIG_MTK_EIC_HISTORY_DUMP
 #include <linux/irqchip/mtk-eic.h>
@@ -432,6 +433,8 @@ static void aee_save_reg_stack_sram(int cpu)
 	}
 
 	mrdump_mini_per_cpu_regs(cpu, &regs_buffer_bin[cpu].regs, regs_buffer_bin[cpu].tsk);
+
+	mrdump_save_per_cpu_reg(cpu, &regs_buffer_bin[cpu].regs);
 }
 
 void aee_wdt_irq_info(void)
@@ -538,6 +541,13 @@ void aee_wdt_atf_info(unsigned int cpu, struct pt_regs *regs)
 	/* add __per_cpu_offset */
 	mrdump_mini_add_entry((unsigned long)__per_cpu_offset, MRDUMP_MINI_SECTION_SIZE);
 
+#ifdef CONFIG_MTK_RAM_CONSOLE
+	/* add info for minidump */
+	if (aee_rr_curr_exp_type() == AEE_EXP_TYPE_HWT ||
+		aee_rr_curr_exp_type() == AEE_EXP_TYPE_SMART_RESET)
+		mrdump_mini_ke_cpu_regs(regs);
+#endif
+
 #ifdef CONFIG_MTK_SCHED_MONITOR
 #ifdef CONFIG_MTK_RAM_CONSOLE
 	aee_rr_rec_fiq_step(AEE_FIQ_STEP_WDT_IRQ_SCHED);
@@ -588,13 +598,17 @@ void notrace aee_wdt_atf_entry(void)
 			aee_sram_fiq_log("SMART RESET: FALSE\n");
 		}
 #endif
-		aee_rr_rec_exp_type(4);
+		aee_rr_rec_exp_type(AEE_EXP_TYPE_SMART_RESET);
 	} else
-		aee_rr_rec_exp_type(1);
+		aee_rr_rec_exp_type(AEE_EXP_TYPE_HWT);
 #else
-	aee_rr_rec_exp_type(1);
+	aee_rr_rec_exp_type(AEE_EXP_TYPE_HWT);
 #endif
 #endif
+
+	/* for per-cpu control registers */
+	mrdump_save_ctrlreg();
+
 	__disable_dcache__inner_flush_dcache_L1__inner_flush_dcache_L2();
 
 	if (atf_aee_debug_virt_addr) {

@@ -726,7 +726,8 @@ void soidle3_before_wfi(int cpu)
 		gpt_set_cmp(idle_gpt, 1); /* Trigger idle_gpt Timerout imediately */
 	else
 #ifdef FEATURE_ENABLE_F26MSLEEP
-		gpt_set_cmp(idle_gpt, div_u64(soidle3_timer_left2, 406.25));
+		/*gpt_set_cmp(idle_gpt, div_u64(soidle3_timer_left2, 406.25));*/
+		gpt_set_cmp(idle_gpt, div_u64(soidle3_timer_left2 * 4, 1625));
 #else
 		gpt_set_cmp(idle_gpt, soidle3_timer_left2);
 #endif
@@ -2661,7 +2662,7 @@ static ssize_t slidle_state_write(struct file *filp, const char __user *userbuf,
 
 	cmd_buf[count] = '\0';
 
-	if (sscanf(userbuf, "%127s %d", cmd, &param) == 2) {
+	if (sscanf(cmd_buf, "%127s %d", cmd, &param) == 2) {
 		if (!strcmp(cmd, "slidle"))
 			idle_switch[IDLE_TYPE_SL] = param;
 		else if (!strcmp(cmd, "enable"))
@@ -2670,7 +2671,7 @@ static ssize_t slidle_state_write(struct file *filp, const char __user *userbuf,
 			disable_slidle_by_bit(param);
 
 		return count;
-	} else if (!kstrtoint(userbuf, 10, &param)) {
+	} else if (!kstrtoint(cmd_buf, 10, &param)) {
 		idle_switch[IDLE_TYPE_SL] = param;
 		return count;
 	}

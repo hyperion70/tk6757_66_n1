@@ -188,10 +188,8 @@ static void get_flicker_para_by_Video2(FLICKER_CUST_PARA* para)
 
 typedef NSFeature::RAWSensorInfo<SENSOR_ID> SensorInfoSingleton_T;
 namespace NSFeature {
-template <>
-UINT32
-SensorInfoSingleton_T::
-impGetFlickerPara(MINT32 sensorMode, MVOID*const pDataBuf) const
+template <> UINT32 SensorInfoSingleton_T::
+impGetFlickerPara(MINT32 sensorMode, MINT32 binRatio, MVOID* const pDataBuf) const
 {
 	ALOGD("impGetFlickerPara+ mode=%d", sensorMode);
 	ALOGD("prv=%d, vdo=%d, cap=%d, zsd=%d",

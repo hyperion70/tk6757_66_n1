@@ -12,9 +12,9 @@
  */
 
 /**
-* @file    mt_hotplug_strategy_internal.h
-* @brief   hotplug strategy(hps) - internal header file
-*/
+ * @file    mt_hotplug_strategy_internal.h
+ * @brief   hotplug strategy(hps) - internal header file
+ */
 
 #ifndef __MT_HOTPLUG_STRATEGY_INTERNAL_H__
 #define __MT_HOTPLUG_STRATEGY_INTERNAL_H__
@@ -28,32 +28,26 @@ extern "C" {
 
 #include <mt_hotplug_strategy_platform.h>	/* platform defines */
 
-#define HP_HAVE_EARLYSUSPEND		0
-
-#if HP_HAVE_EARLYSUSPEND
-#include <linux/earlysuspend.h>		/* struct early_suspend */
-#endif
-
 /*
  * LOG
  */
-#define hps_err(fmt, args...)		pr_debug("[HPS] " fmt, ##args)
-#define hps_warn(fmt, args...)		pr_debug("[HPS] " fmt, ##args)
+#define hps_err(fmt, args...)		pr_notice("[HPS] " fmt, ##args)
+#define hps_warn(fmt, args...)		pr_notice("[HPS] " fmt, ##args)
 
 #if EN_LOG_NOTICE
-#define hps_notice(fmt, args...)	pr_debug("[HPS] " fmt, ##args)
+#define hps_notice(fmt, args...)	pr_notice("[HPS] " fmt, ##args)
 #else
 #define hps_notice(fmt, args...)	pr_debug("[HPS] " fmt, ##args)
 #endif
 
 #if EN_LOG_INFO
-#define hps_info(fmt, args...)		pr_debug("[HPS] " fmt, ##args)
+#define hps_info(fmt, args...)		pr_info("[HPS] " fmt, ##args)
 #else
 #define hps_info(fmt, args...)		pr_debug("[HPS] " fmt, ##args)
 #endif
 
 #if EN_LOG_DEBUG
-#define hps_debug(fmt, args...)		pr_debug("[HPS] " fmt, ##args)
+#define hps_debug(fmt, args...)		pr_info("[HPS] " fmt, ##args)
 #else
 #define hps_debug(fmt, args...)		pr_debug("[HPS] " fmt, ##args)
 #endif
@@ -63,19 +57,11 @@ enum hps_init_state_e {
 	INIT_STATE_DONE
 };
 
-enum hps_ctxt_state_e {
-	STATE_LATE_RESUME = 0,
-	STATE_EARLY_SUSPEND,
-	STATE_SUSPEND,
-	STATE_COUNT
-};
-
 #if !defined(HPS_PERIODICAL_BY_WAIT_QUEUE) && !defined(HPS_PERIODICAL_BY_TIMER)
 #define HPS_PERIODICAL_BY_WAIT_QUEUE	0
 #define HPS_PERIODICAL_BY_TIMER		1
 #endif
 
-/* TODO: verify do you need action? no use now */
 enum hps_ctxt_action_e {
 	ACTION_NONE = 0,
 	ACTION_BASE_LITTLE,		/* bit  1, 0x0002 */
@@ -96,14 +82,9 @@ enum hps_ctxt_action_e {
 struct hps_ctxt_struct {
 	/* state */
 	unsigned int init_state;
-	unsigned int state;
 
 	/* enabled */
 	unsigned int enabled;
-	unsigned int early_suspend_enabled;
-		/* default 1, disable all big cores if is_hmp afterscreen off */
-	unsigned int suspend_enabled;
-		/* default 1, disable hotplug strategy in suspend flow */
 	unsigned int log_mask;
 
 	/* core */
@@ -117,15 +98,6 @@ struct hps_ctxt_struct {
 	struct timer_list hps_tmr;
 	struct timer_list *active_hps_tmr;
 #endif
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	struct early_suspend es_handler;
-#endif
-	struct platform_driver pdrv;
-
-	/* backup */
-	unsigned int enabled_backup;
-	unsigned int rush_boost_enabled_backup;
 
 	/* cpu arch */
 	unsigned int is_hmp;
@@ -141,20 +113,27 @@ struct hps_ctxt_struct {
 	unsigned int up_times;
 	unsigned int down_threshold;
 	unsigned int down_times;
-	unsigned int input_boost_enabled;
-	unsigned int input_boost_cpu_num;
 	unsigned int rush_boost_enabled;
 	unsigned int rush_boost_threshold;
 	unsigned int rush_boost_times;
+	unsigned int quick_landing_enabled;
 	unsigned int tlp_times;
 
 	/* algo bound */
 	unsigned int little_num_base_perf_serv;
+	unsigned int little_num_base_custom1;
+	unsigned int little_num_base_custom2;
+	unsigned int little_num_limit_custom1;
+	unsigned int little_num_limit_custom2;
 	unsigned int little_num_limit_thermal;
 	unsigned int little_num_limit_low_battery;
 	unsigned int little_num_limit_ultra_power_saving;
 	unsigned int little_num_limit_power_serv;
 	unsigned int big_num_base_perf_serv;
+	unsigned int big_num_base_custom1;
+	unsigned int big_num_base_custom2;
+	unsigned int big_num_limit_custom1;
+	unsigned int big_num_limit_custom2;
 	unsigned int big_num_limit_thermal;
 	unsigned int big_num_limit_low_battery;
 	unsigned int big_num_limit_ultra_power_saving;
@@ -184,6 +163,36 @@ struct hps_ctxt_struct {
 	unsigned int action;
 	atomic_t is_ondemand;
 };
+
+#define NUM_LIMIT_LITTLE_LIST	{				\
+		&hps_ctxt.little_num_limit_thermal,		\
+		&hps_ctxt.little_num_limit_low_battery,		\
+		&hps_ctxt.little_num_limit_ultra_power_saving,	\
+		&hps_ctxt.little_num_limit_power_serv,		\
+		&hps_ctxt.little_num_limit_custom1,		\
+		&hps_ctxt.little_num_limit_custom2		\
+	}
+
+#define NUM_LIMIT_BIG_LIST	{				\
+		&hps_ctxt.big_num_limit_thermal,		\
+		&hps_ctxt.big_num_limit_low_battery,		\
+		&hps_ctxt.big_num_limit_ultra_power_saving,	\
+		&hps_ctxt.big_num_limit_power_serv,		\
+		&hps_ctxt.big_num_limit_custom1,		\
+		&hps_ctxt.big_num_limit_custom2			\
+	}
+
+#define NUM_BASE_LITTLE_LIST	{				\
+		&hps_ctxt.little_num_base_perf_serv,		\
+		&hps_ctxt.little_num_base_custom1,		\
+		&hps_ctxt.little_num_base_custom2		\
+	}
+
+#define NUM_BASE_BIG_LIST	{				\
+		&hps_ctxt.big_num_base_perf_serv,		\
+		&hps_ctxt.big_num_base_custom1,			\
+		&hps_ctxt.big_num_base_custom2			\
+	}
 
 struct hps_cpu_ctxt_struct {
 	unsigned int load;
@@ -246,6 +255,11 @@ extern int hps_procfs_init(void);
  */
 #define num_possible_little_cpus()	cpumask_weight(&hps_ctxt.little_cpumask)
 #define num_possible_big_cpus()		cpumask_weight(&hps_ctxt.big_cpumask)
+
+extern unsigned int num_limit_little_cpus(void);
+extern unsigned int num_limit_big_cpus(void);
+extern unsigned int num_base_little_cpus(void);
+extern unsigned int num_base_big_cpus(void);
 
 extern int hps_cpu_up(unsigned int cpu);
 extern int hps_cpu_down(unsigned int cpu);

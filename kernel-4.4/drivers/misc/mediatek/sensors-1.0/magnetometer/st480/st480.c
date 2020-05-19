@@ -667,10 +667,23 @@ static long st480d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		write_unlock(&st480sensordata.datalock);
 		break;
 
-	default:
-		/* MSE_ERR("%s not supported = 0x%04x", __FUNCTION__, cmd); */
-		return -ENOIOCTLCMD;
-		/* break; */
+	case IOCTL_SENSOR_GET_COMPASS_FLAG:
+		status = st480_GetOpenStatus();
+		if (copy_to_user(argp, &status, sizeof(status))) {
+			MSE_ERR("copy_to_user failed.");
+			retval = -EFAULT;
+			goto err_out;
+		}
+		break;
+
+
+	case IOCTL_SENSOR_GET_COMPASS_DELAY:
+		if (copy_to_user(argp, (void *)&st480d_delay, sizeof(st480d_delay)) != 0) {
+			MSE_ERR("copy to user error.\n");
+			retval = -EFAULT;
+			goto err_out;
+		}
+		break;
 	}
 	return 0;
 
@@ -759,6 +772,35 @@ static long st480_compat_ioctl(struct file *file, unsigned int cmd, unsigned lon
 			return ret;
 		}
 		break;
+
+	case IOCTL_SENSOR_GET_COMPASS_FLAG:
+		if (arg32 == NULL) {
+			/* MAGN_LOG("invalid argument."); */
+			return -EINVAL;
+		}
+
+		ret = file->f_op->unlocked_ioctl(file, IOCTL_SENSOR_GET_COMPASS_FLAG,
+						 (unsigned long)arg32);
+		if (ret) {
+			/* MAGN_LOG("IOCTL_SENSOR_GET_COMPASS_FLAG unlocked_ioctl failed."); */
+			return ret;
+		}
+		break;
+
+	case IOCTL_SENSOR_GET_COMPASS_DELAY:
+		if (arg32 == NULL) {
+			/* MAGN_LOG("invalid argument."); */
+			return -EINVAL;
+		}
+
+		ret = file->f_op->unlocked_ioctl(file, IOCTL_SENSOR_GET_COMPASS_DELAY,
+						 (unsigned long)arg32);
+		if (ret) {
+			/* MAGN_LOG("IOCTL_SENSOR_GET_COMPASS_DELAY unlocked_ioctl failed."); */
+			return ret;
+		}
+		break;
+
 	default:
 		/* MSE_ERR("%s not supported = 0x%04x", __FUNCTION__, cmd); */
 		return -ENOIOCTLCMD;

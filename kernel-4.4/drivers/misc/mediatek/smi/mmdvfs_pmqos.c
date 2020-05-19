@@ -24,12 +24,30 @@
 #include "mmdvfs_config_util.h"
 #include "mmdvfs_pmqos.h"
 
+#ifdef MMDVFS_MMP
+#include "mmprofile.h"
+#include "mmprofile_function.h"
+#endif
+
 #undef pr_fmt
 #define pr_fmt(fmt) "[mmdvfs]" fmt
 
 #define CLK_TYPE_NONE 0
 #define CLK_TYPE_MUX 1
 #define CLK_TYPE_PLL 2
+
+#ifdef MMDVFS_MMP
+struct mmdvfs_mmp_events_t {
+	mmp_event mmdvfs;
+	mmp_event freq_change;
+};
+static struct mmdvfs_mmp_events_t mmdvfs_mmp_events;
+#endif
+
+static u32 log_level;
+enum mmdvfs_log_level {
+	mmdvfs_log_freq_change = 0,
+};
 
 #define STEP_UNREQUEST -1
 struct mm_freq_step_config {
@@ -116,12 +134,12 @@ static struct mm_freq_config img_freq = {
 	.current_step = STEP_UNREQUEST,
 };
 
+/* order should be same as pm_qos_class order */
 struct mm_freq_config *all_freqs[] = {
-	&disp_freq, &mdp_freq, &vdec_freq, &venc_freq, &cam_freq, &img_freq};
+	&disp_freq, &mdp_freq, &vdec_freq, &venc_freq, &img_freq, &cam_freq};
 
 static void mm_apply_vcore(s32 vopp)
 {
-	pr_notice("set vcore step: %d\n", vopp);
 	pm_qos_update_request(&vcore_request, vopp);
 }
 
@@ -139,6 +157,16 @@ static s32 mm_apply_clk(struct mm_freq_config *config, u32 step)
 	if (step_config.clk_type == CLK_TYPE_NONE) {
 		pr_notice("No need to change clk of %s\n", config->prop_name);
 		return 0;
+	}
+
+	if (config->pm_qos_class == PM_QOS_DISP_FREQ) {
+		u64 freq = config->freq_steps[step];
+
+#ifdef MMDVFS_MMP
+		mmprofile_log_ex(mmdvfs_mmp_events.freq_change, MMPROFILE_FLAG_PULSE, step, freq);
+#endif
+		if (log_level & 1 << mmdvfs_log_freq_change)
+			pr_notice("mmdvfs freq change: step (%u), freq: %llu MHz", step, freq);
 	}
 
 	if (step_config.clk_type == CLK_TYPE_MUX) {
@@ -355,6 +383,17 @@ static int mmdvfs_probe(struct platform_device *pdev)
 	struct mm_freq_config *mm_freq;
 	const __be32 *p;
 
+#ifdef MMDVFS_MMP
+	mmprofile_enable(1);
+	if (mmdvfs_mmp_events.mmdvfs == 0) {
+		mmdvfs_mmp_events.mmdvfs = mmprofile_register_event(MMP_ROOT_EVENT, "MMDVFS");
+		mmdvfs_mmp_events.freq_change =
+		    mmprofile_register_event(mmdvfs_mmp_events.mmdvfs, "freq_change");
+		mmprofile_enable_event_recursive(mmdvfs_mmp_events.mmdvfs, 1);
+	}
+	mmprofile_start(1);
+#endif
+
 	mmdvfs_enable = true;
 	pm_qos_add_request(&vcore_request, PM_QOS_VCORE_OPP,
 		PM_QOS_VCORE_OPP_DEFAULT_VALUE);
@@ -439,6 +478,19 @@ static void __exit mmdvfs_pmqos_exit(void)
 	platform_driver_unregister(&mmdvfs_pmqos_driver);
 }
 
+u64 mmdvfs_qos_get_freq(u32 pm_qos_class)
+{
+	u64 current_freq = 0;
+	u32 index = pm_qos_class - PM_QOS_DISP_FREQ;
+
+	if (index >= 0 && index < ARRAY_SIZE(all_freqs) &&
+	current_max_step >= 0 && current_max_step < step_size)
+		current_freq = all_freqs[index]->freq_steps[current_max_step];
+
+	return current_freq;
+}
+EXPORT_SYMBOL_GPL(mmdvfs_qos_get_freq);
+
 int dump_setting(char *buf, const struct kernel_param *kp)
 {
 	u32 i, j, clk_param1, clk_param2;
@@ -448,8 +500,8 @@ int dump_setting(char *buf, const struct kernel_param *kp)
 	for (i = 0; i < ARRAY_SIZE(all_freqs); i++) {
 		mm_freq = all_freqs[i];
 		length += snprintf(buf + length, PAGE_SIZE - length,
-			"[%s] step_size: %u, current_step:%d\n", mm_freq->prop_name,
-			step_size, mm_freq->current_step);
+			"[%s] step_size: %u, current_step:%d (%lluMhz)\n", mm_freq->prop_name,
+			step_size, mm_freq->current_step, mmdvfs_qos_get_freq(mm_freq->pm_qos_class));
 		for (j = 0; j < step_size; j++) {
 			if (mm_freq->step_config[j].clk_type == CLK_TYPE_MUX) {
 				clk_param1 = mm_freq->step_config[j].clk_mux_id;
@@ -539,6 +591,40 @@ static struct kernel_param_ops mmdvfs_enable_ops = {
 };
 module_param_cb(mmdvfs_enable, &mmdvfs_enable_ops, &mmdvfs_enable, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(mmdvfs_enable, "enable or disable mmdvfs");
+
+module_param(log_level, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(log_level, "mmdvfs log level");
+
+static s32 vote_freq;
+static bool vote_req_init;
+struct pm_qos_request vote_req;
+int set_vote_freq(const char *val, const struct kernel_param *kp)
+{
+	int result;
+	int new_vote_freq;
+
+	result = kstrtoint(val, 0, &new_vote_freq);
+	if (result) {
+		pr_notice("force set step failed: %d\n", result);
+		return result;
+	}
+
+	if (!vote_req_init) {
+		pm_qos_add_request(&vote_req, PM_QOS_DISP_FREQ, PM_QOS_MM_FREQ_DEFAULT_VALUE);
+		vote_req_init = true;
+	}
+	vote_freq = new_vote_freq;
+	pm_qos_update_request(&vote_req, vote_freq);
+	return 0;
+}
+static struct kernel_param_ops vote_freq_ops = {
+	.set = set_vote_freq,
+	.get = param_get_int,
+};
+module_param_cb(vote_freq, &vote_freq_ops, &vote_freq, 0644);
+MODULE_PARM_DESC(vote_freq, "vote mmdvfs to specified freq, 0 for unset");
+
+
 
 arch_initcall(mmdvfs_pmqos_init);
 module_exit(mmdvfs_pmqos_exit);

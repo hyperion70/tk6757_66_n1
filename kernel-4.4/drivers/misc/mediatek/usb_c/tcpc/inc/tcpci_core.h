@@ -43,7 +43,7 @@
 #define TCPC_DBG_ENABLE		0
 #define TCPC_DBG2_ENABLE	0
 #define DPM_INFO_ENABLE		1
-#define DPM_INFO2_ENABLE	0
+#define DPM_INFO2_ENABLE	1
 #define DPM_DBG_ENABLE		0
 #define PD_ERR_ENABLE		1
 #define PE_DBG_ENABLE		0
@@ -190,6 +190,7 @@ struct tcpc_ops {
 	int (*init)(struct tcpc_device *tcpc, bool sw_reset);
 	int (*alert_status_clear)(struct tcpc_device *tcpc, uint32_t mask);
 	int (*fault_status_clear)(struct tcpc_device *tcpc, uint8_t status);
+	int (*get_alert_mask)(struct tcpc_device *tcpc, uint32_t *mask);
 	int (*get_alert_status)(struct tcpc_device *tcpc, uint32_t *alert);
 	int (*get_power_status)(struct tcpc_device *tcpc, uint16_t *pwr_status);
 	int (*get_fault_status)(struct tcpc_device *tcpc, uint8_t *status);

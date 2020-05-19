@@ -2351,6 +2351,11 @@ static unsigned int color_is_reg_addr_valid(unsigned long addr)
 static unsigned long color_pa2va(unsigned int addr)
 {
 	unsigned int i = 0;
+	/* check base is not zero */
+	if ((addr & 0xFFFF0000) == 0) {
+		COLOR_ERR("invalid address! addr=0x%x!\n", addr);
+		return 0;
+	}
 
 	_color_get_VA();
 
@@ -2957,14 +2962,14 @@ static int color_ioctl(enum DISP_MODULE_ENUM module, void *handle,
 }
 #endif
 
-static int _color_io(enum DISP_MODULE_ENUM module, int msg, unsigned long arg, void *cmdq)
+static int _color_io(enum DISP_MODULE_ENUM module, unsigned int msg, unsigned long arg, void *cmdq)
 {
 	/* legacy chip use driver .cmd to call _color_io */
 	/* After mt6763 directly call ioctl_function from ddp_manager */
 	return disp_color_ioctl(module, msg, arg, cmdq);
 }
 
-int disp_color_ioctl(enum DISP_MODULE_ENUM module, int msg, unsigned long arg, void *cmdq)
+int disp_color_ioctl(enum DISP_MODULE_ENUM module, unsigned int msg, unsigned long arg, void *cmdq)
 {
 
 	int ret = 0;

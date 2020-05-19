@@ -21,9 +21,9 @@
 #include <linux/input.h>
 #include <linux/workqueue.h>
 #include <linux/kobject.h>
-
 #include <linux/platform_device.h>
 #include <linux/atomic.h>
+#include <linux/pm_wakeup.h>
 
 #include <hwmsensor.h>
 #include <sensors_io.h>
@@ -47,13 +47,13 @@ typedef enum {
 } PKUPHUB_TRC;
 
 static struct situation_init_info pkuphub_init_info;
+static struct wakeup_source pickup_wake_lock;
 
 static int pickup_gesture_get_data(int *probability, int *status)
 {
 	int err = 0;
 	struct data_unit_t data;
 	uint64_t time_stamp = 0;
-	uint64_t time_stamp_gpt = 0;
 
 	err = sensor_get_data_from_hub(ID_PICK_UP_GESTURE, &data);
 	if (err < 0) {
@@ -61,10 +61,9 @@ static int pickup_gesture_get_data(int *probability, int *status)
 		return -1;
 	}
 	time_stamp = data.time_stamp;
-	time_stamp_gpt = data.time_stamp_gpt;
 	*probability = data.gesture_data_t.probability;
-	PKUPHUB_LOG("recv ipi: timestamp: %lld, timestamp_gpt: %lld, probability: %d!\n",
-		    time_stamp, time_stamp_gpt, *probability);
+	PKUPHUB_LOG("recv ipi: timestamp: %lld, probability: %d!\n",
+		    time_stamp, *probability);
 	return 0;
 }
 
@@ -91,8 +90,10 @@ static int pickup_gesture_recv_data(struct data_unit_t *event, void *reserved)
 {
 	if (event->flush_action == FLUSH_ACTION)
 		PKUPHUB_LOG("pickup_gesture do not support flush\n");
-	else if (event->flush_action == DATA_ACTION)
+	else if (event->flush_action == DATA_ACTION) {
+		__pm_wakeup_event(&pickup_wake_lock, msecs_to_jiffies(100));
 		situation_notify(ID_PICK_UP_GESTURE);
+	}
 	return 0;
 }
 
@@ -122,6 +123,7 @@ static int pkuphub_local_init(void)
 		PKUPHUB_PR_ERR("SCP_sensorHub_data_registration fail!!\n");
 		goto exit_create_attr_failed;
 	}
+	wakeup_source_init(&pickup_wake_lock, "pickup_wake_lock");
 	return 0;
 exit:
 exit_create_attr_failed:

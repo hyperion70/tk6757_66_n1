@@ -458,10 +458,10 @@ static int simple_sd_ioctl_get_csd(struct msdc_ioctl *msdc_ctl)
 
 static int simple_sd_ioctl_get_excsd(struct msdc_ioctl *msdc_ctl)
 {
-	u8 *l_buf;
+	u8 *l_buf = NULL;
 	struct msdc_host *host_ctl;
 	struct mmc_host *mmc;
-	int ret;
+	int ret = 0;
 
 #if DEBUG_MMC_IOCTL
 	int i;
@@ -491,8 +491,10 @@ static int simple_sd_ioctl_get_excsd(struct msdc_ioctl *msdc_ctl)
 	if (ret)
 		goto end;
 
-	if (copy_to_user(msdc_ctl->buffer, l_buf, 512))
-		return -EFAULT;
+	if (copy_to_user(msdc_ctl->buffer, l_buf, 512)) {
+		ret = -EFAULT;
+		goto end;
+	}
 
 #if DEBUG_MMC_IOCTL
 	for (i = 0; i < 512; i++) {
@@ -505,13 +507,13 @@ static int simple_sd_ioctl_get_excsd(struct msdc_ioctl *msdc_ctl)
 end:
 	kfree(l_buf);
 
-	return 0;
+	return ret;
 
 }
 
 static int simple_sd_ioctl_get_bootpart(struct msdc_ioctl *msdc_ctl)
 {
-	u8 *l_buf;
+	u8 *l_buf = NULL;
 	struct msdc_host *host_ctl;
 	struct mmc_host *mmc;
 	int ret = 0;
@@ -568,7 +570,7 @@ end:
 
 static int simple_sd_ioctl_set_bootpart(struct msdc_ioctl *msdc_ctl)
 {
-	u8 *l_buf;
+	u8 *l_buf = NULL;
 	struct msdc_host *host_ctl;
 	struct mmc_host *mmc;
 	int ret = 0;
@@ -1387,10 +1389,11 @@ static long simple_sd_compat_ioctl(struct file *file, unsigned int cmd,
 {
 	struct compat_simple_sd_ioctl *arg32;
 	struct msdc_ioctl *arg64;
+	compat_int_t k_opcode;
 	int err, ret;
 
 	if (!file->f_op || !file->f_op->unlocked_ioctl) {
-		pr_err("f_op or unlocked ioctl is NULL.\n");
+		pr_notice("f_op or unlocked ioctl is NULL.\n");
 		return -ENOTTY;
 	}
 
@@ -1404,11 +1407,19 @@ static long simple_sd_compat_ioctl(struct file *file, unsigned int cmd,
 	if (arg64 == NULL)
 		return -EFAULT;
 
+	if (!access_ok(VERIFY_WRITE, arg32, sizeof(*arg32)) ||
+	     !access_ok(VERIFY_WRITE, arg64, sizeof(*arg64))) {
+		return -EFAULT;
+	}
+
 	err = compat_get_simple_ion_allocation(arg32, arg64);
 	if (err)
 		return err;
+	err = get_user(k_opcode, &(arg64->opcode));
+	if (err)
+		return err;
 
-	ret = file->f_op->unlocked_ioctl(file, arg64->opcode,
+	ret = file->f_op->unlocked_ioctl(file, (unsigned int)k_opcode,
 		(unsigned long)arg64);
 
 	err = compat_put_simple_ion_allocation(arg32, arg64);

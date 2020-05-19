@@ -11,7 +11,7 @@
 * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
 */
 
-bat_gm30: bat_gm30{
+bat_gm30: battery{
 	compatible = "mediatek,bat_gm30";
 	DIFFERENCE_FULLOCV_ITH = <(200)>;	/*	Charging termination current.*/
 	MTK_CHR_EXIST = <(1)>;	/*	Configures whether MTK charger exist or not.*/

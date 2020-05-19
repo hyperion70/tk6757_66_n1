@@ -105,7 +105,14 @@ void __attribute__((weak)) mt_cirq_disable(void)
 static inline void spm_suspend_footprint(enum spm_suspend_step step)
 {
 #ifdef CONFIG_MTK_RAM_CONSOLE
-	aee_rr_rec_spm_suspend_val(step | (smp_processor_id() << CPU_FOOTPRINT_SHIFT));
+	aee_rr_rec_spm_suspend_val(aee_rr_curr_spm_suspend_val() | step | (smp_processor_id() << CPU_FOOTPRINT_SHIFT));
+#endif
+}
+
+static inline void spm_suspend_reset_footprint(void)
+{
+#ifdef CONFIG_MTK_RAM_CONSOLE
+	aee_rr_rec_spm_suspend_val(0);
 #endif
 }
 
@@ -132,7 +139,11 @@ static void spm_trigger_wfi_for_sleep(struct pwr_ctrl *pwrctrl)
 		spm_crit2("spm_dormant_sta %d", spm_dormant_sta);
 
 	if (is_infra_pdn(pwrctrl->pcm_flags))
+#if defined(CONFIG_MACH_MT6771)
+		mtk8250_restore_dev();
+#else
 		mtk_uart_restore();
+#endif
 }
 
 static void spm_suspend_pcm_setup_before_wfi(u32 cpu,
@@ -210,6 +221,8 @@ static unsigned int spm_output_wake_reason(struct wake_status *wakesta)
 
 #if !defined(CONFIG_FPGA_EARLY_PORTING)
 #ifdef CONFIG_MTK_ECCCI_DRIVER
+	if (wakesta->r12 & WAKE_SRC_R12_CLDMA_EVENT_B)
+		exec_ccci_kern_func_by_md_id(0, ID_GET_MD_WAKEUP_SRC, NULL, 0);
 	if (wakesta->r12 & WAKE_SRC_R12_MD2AP_PEER_EVENT_B)
 		exec_ccci_kern_func_by_md_id(0, ID_GET_MD_WAKEUP_SRC, NULL, 0);
 	if (wakesta->r12 & WAKE_SRC_R12_CCIF0_EVENT_B)
@@ -327,6 +340,7 @@ unsigned int spm_go_to_sleep(u32 spm_flags, u32 spm_data)
 		spm_crit2("FAILED TO GET WD API\n");
 #endif
 
+	lockdep_off();
 	spin_lock_irqsave(&__spm_lock, flags);
 
 #if defined(CONFIG_MTK_GIC_V3_EXT)
@@ -351,7 +365,11 @@ unsigned int spm_go_to_sleep(u32 spm_flags, u32 spm_data)
 	spm_suspend_footprint(SPM_SUSPEND_ENTER_UART_SLEEP);
 
 #if !defined(CONFIG_FPGA_EARLY_PORTING)
+#if defined(CONFIG_MACH_MT6771)
+	if (mtk8250_request_to_sleep()) {
+#else
 	if (request_uart_to_sleep()) {
+#endif
 		last_wr = WR_UART_BUSY;
 		goto RESTORE_IRQ;
 	}
@@ -364,7 +382,11 @@ unsigned int spm_go_to_sleep(u32 spm_flags, u32 spm_data)
 	spm_suspend_footprint(SPM_SUSPEND_LEAVE_WFI);
 
 #if !defined(CONFIG_FPGA_EARLY_PORTING)
+#if defined(CONFIG_MACH_MT6771)
+	mtk8250_request_to_wakeup();
+#else
 	request_uart_to_wakeup();
+#endif
 RESTORE_IRQ:
 #endif
 
@@ -387,6 +409,7 @@ RESTORE_IRQ:
 #endif
 
 	spin_unlock_irqrestore(&__spm_lock, flags);
+	lockdep_on();
 
 #if defined(CONFIG_MTK_WATCHDOG) && defined(CONFIG_MTK_WD_KICKER)
 	if (!wd_ret) {
@@ -404,7 +427,7 @@ RESTORE_IRQ:
 	if (usb2jtag_mode())
 		mtk_usb2jtag_resume();
 #endif
-	spm_suspend_footprint(0);
+	spm_suspend_reset_footprint();
 
 	if (last_wr == WR_PCM_ASSERT)
 		rekick_vcorefs_scenario();
@@ -440,9 +463,11 @@ u32 spm_get_last_wakeup_src(void)
 {
 	return spm_wakesta.r12;
 }
+EXPORT_SYMBOL(spm_get_last_wakeup_src);
 
 u32 spm_get_last_wakeup_misc(void)
 {
 	return spm_wakesta.wake_misc;
 }
+EXPORT_SYMBOL(spm_get_last_wakeup_misc);
 MODULE_DESCRIPTION("SPM-Sleep Driver v0.1");

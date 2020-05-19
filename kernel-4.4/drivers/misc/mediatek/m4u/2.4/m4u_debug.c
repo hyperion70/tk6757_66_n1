@@ -27,10 +27,11 @@
 #include "trustzone/kree/mem.h"
 #endif
 
-#if defined(CONFIG_TRUSTONIC_TEE_SUPPORT) && defined(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)
+#if defined(CONFIG_MTK_LEGACY_SECMEM_SUPPORT)
 #include "secmem.h"
+#elif defined(CONFIG_MTK_SECURE_MEM_SUPPORT)
+#include "secmem_api.h"
 #endif
-
 
 /* global variables */
 int gM4U_log_to_uart = 2;
@@ -1526,7 +1527,7 @@ const struct file_operations m4u_debug_monitor_fops = {
 
 int m4u_debug_register_show(struct seq_file *s, void *unused)
 {
-	m4u_dump_reg(0, 0);
+	m4u_dump_reg(0, 0, 400);
 	return 0;
 }
 

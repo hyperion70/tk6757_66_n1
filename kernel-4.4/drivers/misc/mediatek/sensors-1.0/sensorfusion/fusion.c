@@ -66,6 +66,9 @@ static int handle_to_index(int handle)
 	case ID_GRAVITY:
 		index = grav;
 		break;
+	case ID_ACCELEROMETER_UNCALIBRATED:
+		index = unacc;
+		break;
 	case ID_GYROSCOPE_UNCALIBRATED:
 		index = ungyro;
 		break;
@@ -74,6 +77,9 @@ static int handle_to_index(int handle)
 		break;
 	case ID_PDR:
 		index = pdr;
+		break;
+	case ID_GYRO_TEMPERATURE:
+		index = ungyro_temperature;
 		break;
 	default:
 		index = -1;
@@ -84,6 +90,7 @@ static int handle_to_index(int handle)
 	return index;
 }
 
+#ifndef CONFIG_NANOHUB
 static int fusion_enable_and_batch(int index)
 {
 	struct fusion_context *cxt = fusion_context_obj;
@@ -136,6 +143,8 @@ static int fusion_enable_and_batch(int index)
 	}
 	return 0;
 }
+#endif
+
 static ssize_t fusion_store_active(struct device *dev, struct device_attribute *attr,
 				const char *buf, size_t count)
 {
@@ -153,6 +162,12 @@ static ssize_t fusion_store_active(struct device *dev, struct device_attribute *
 		FUSION_PR_ERR("[%s] invalid handle\n", __func__);
 		return -1;
 	}
+
+	if (cxt->fusion_context[index].fusion_ctl.enable_nodata == NULL) {
+		pr_debug("[%s] ctl not registered\n", __func__);
+		return -1;
+	}
+
 	mutex_lock(&fusion_context_obj->fusion_op_mutex);
 	if (en == 1)
 		cxt->fusion_context[index].enable = 1;
@@ -163,9 +178,26 @@ static ssize_t fusion_store_active(struct device *dev, struct device_attribute *
 		err = -1;
 		goto err_out;
 	}
+#ifdef CONFIG_NANOHUB
+	if (cxt->fusion_context[index].enable == 1) {
+		err = cxt->fusion_context[index].fusion_ctl.enable_nodata(1);
+		if (err) {
+			pr_err(FUSION_TAG "fusion turn on power err = %d\n", err);
+			goto err_out;
+		}
+	} else {
+			err = cxt->fusion_context[index].fusion_ctl.enable_nodata(0);
+			if (err) {
+				pr_err("fusion turn off power err = %d\n", err);
+				goto err_out;
+			}
+	}
+#else
 	err = fusion_enable_and_batch(index);
+#endif
 err_out:
 	mutex_unlock(&fusion_context_obj->fusion_op_mutex);
+	pr_info(FUSION_TAG "%s done\n", __func__);
 	return err;
 }
 
@@ -181,9 +213,10 @@ static ssize_t fusion_show_active(struct device *dev, struct device_attribute *a
 		FUSION_LOG("fusion index:%d vender_div: %d\n", index, vendor_div[index]);
 	}
 
-	return snprintf(buf, PAGE_SIZE, "%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+	return snprintf(buf, PAGE_SIZE, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
 		vendor_div[orientation], vendor_div[grv],
-		vendor_div[gmrv], vendor_div[rv], vendor_div[la], vendor_div[grav],
+		vendor_div[gmrv], vendor_div[rv],
+		vendor_div[la], vendor_div[grav], vendor_div[unacc],
 		vendor_div[ungyro], vendor_div[unmag], vendor_div[pdr]);
 }
 
@@ -210,14 +243,38 @@ static ssize_t fusion_store_batch(struct device *dev, struct device_attribute *a
 		FUSION_PR_ERR("[%s] invalid handle\n", __func__);
 		return -1;
 	}
+
+	if (cxt->fusion_context[index].fusion_ctl.batch == NULL) {
+		pr_debug("[%s] ctl not registered\n", __func__);
+		return -1;
+	}
+
 	FUSION_LOG("handle %d, flag:%d samplingPeriodNs:%lld, maxBatchReportLatencyNs: %lld\n",
 			handle, flag, samplingPeriodNs, maxBatchReportLatencyNs);
 	cxt->fusion_context[index].delay_ns = samplingPeriodNs;
 	cxt->fusion_context[index].latency_ns = maxBatchReportLatencyNs;
 
 	mutex_lock(&fusion_context_obj->fusion_op_mutex);
+#ifdef CONFIG_NANOHUB
+	if (cxt->fusion_context[index].delay_ns >= 0) {
+		if (cxt->fusion_context[index].fusion_ctl.is_support_batch)
+			err = cxt->fusion_context[index].fusion_ctl.batch(0, cxt->fusion_context[index].delay_ns,
+				cxt->fusion_context[index].latency_ns);
+		else
+			err = cxt->fusion_context[index].fusion_ctl.batch(0, cxt->fusion_context[index].delay_ns, 0);
+		if (err) {
+			pr_err(FUSION_TAG "fusion set batch(ODR) err %d\n", err);
+			goto err_out;
+		}
+	} else
+		pr_info(FUSION_TAG "batch state no need change\n");
+#else
 	err = fusion_enable_and_batch(index);
+#endif
+
+err_out:
 	mutex_unlock(&fusion_context_obj->fusion_op_mutex);
+	pr_info(FUSION_TAG "%s done\n", __func__);
 	return err;
 }
 
@@ -515,9 +572,22 @@ int orientation_flush_report(void)
 {
 	return fusion_flush_report(ID_ORIENTATION);
 }
+int uncali_acc_data_report(int *data, int status, int64_t nt)
+{
+	return uncali_sensor_data_report(data,
+		status, nt, ID_ACCELEROMETER_UNCALIBRATED);
+}
+int uncali_acc_flush_report(void)
+{
+	return uncali_sensor_flush_report(ID_ACCELEROMETER_UNCALIBRATED);
+}
 int uncali_gyro_data_report(int *data, int status, int64_t nt)
 {
 	return uncali_sensor_data_report(data, status, nt, ID_GYROSCOPE_UNCALIBRATED);
+}
+int uncali_gyro_temperature_data_report(int *data, int status, int64_t nt)
+{
+	return uncali_sensor_data_report(data, status, nt, ID_GYRO_TEMPERATURE);
 }
 
 int uncali_gyro_flush_report(void)

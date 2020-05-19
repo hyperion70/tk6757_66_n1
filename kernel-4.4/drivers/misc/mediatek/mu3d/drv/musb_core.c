@@ -94,9 +94,6 @@
 #include <linux/prefetch.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
-#ifdef CONFIG_USB_C_SWITCH
-#include <typec.h>
-#endif
 #ifdef CONFIG_USBIF_COMPLIANCE
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
@@ -655,6 +652,7 @@ static irqreturn_t musb_stage0_irq(struct musb *musb, u32 int_usb, u8 devctl, u8
 				break;
 		case OTG_STATE_B_PERIPHERAL:
 			musb_g_suspend(musb);
+			#if 0
 			musb->is_active = is_otg_enabled(musb)
 			    && otg->gadget->b_hnp_enable;
 			if (musb->is_active) {
@@ -663,6 +661,7 @@ static irqreturn_t musb_stage0_irq(struct musb *musb, u32 int_usb, u8 devctl, u8
 				mod_timer(&musb->otg_timer, jiffies
 					  + msecs_to_jiffies(OTG_TIME_B_ASE0_BRST));
 			}
+			#endif
 			break;
 		case OTG_STATE_A_WAIT_BCON:
 			if (musb->a_wait_bcon != 0)
@@ -1021,6 +1020,9 @@ void musb_start(struct musb *musb)
 		mu3d_hal_u2dev_connect();
 #endif
 	}
+#ifdef CONFIG_DUAL_ROLE_USB_INTF
+	mt_usb_dual_role_to_device();
+#endif
 }
 
 
@@ -1065,6 +1067,35 @@ static void set_ssusb_ip_sleep(struct musb *musb)
 	os_setmsk(U3D_SSUSB_IP_PW_CTRL0, SSUSB_IP_SW_RST);
 }
 
+
+void musb_power_down(struct musb *musb)
+{
+#ifdef EP_PROFILING
+		cancel_delayed_work_sync(&musb->ep_prof_work);
+#endif
+		/*
+		* Note: musb_save_context() _MUST_ be called
+		* _BEFORE_ setting SSUSB_IP_SW_RST.
+		* Because when setting SSUSB_IP_SW_RST to reset the SSUSB IP,
+		* All MAC regs can _NOT_ be read and be reset to
+		* the default value.
+		* So save the MUST-SAVED reg in the context structure.
+		*/
+		musb_save_context(musb);
+
+		set_ssusb_ip_sleep(musb);
+
+#ifndef CONFIG_FPGA_EARLY_PORTING
+		/* Let PHY enter savecurrent mode. And turn off CLK. */
+#ifdef CONFIG_PHY_MTK_SSUSB
+		phy_power_off(musb->mtk_phy);
+#else
+		usb_phy_savecurrent(musb->is_clk_on);
+#endif
+		musb->is_clk_on = 0;
+#endif
+}
+
 /*
  * Make the HDRC stop (disable interrupts, etc.);
  * reversible by musb_start
@@ -1075,6 +1106,9 @@ static void set_ssusb_ip_sleep(struct musb *musb)
 void musb_stop(struct musb *musb)
 {
 	os_printk(K_INFO, "musb_stop\n");
+#ifdef CONFIG_DUAL_ROLE_USB_INTF
+	mt_usb_dual_role_to_none();
+#endif
 
 	/* stop IRQs, timers, ... */
 	musb_platform_disable(musb);
@@ -1095,25 +1129,7 @@ void musb_stop(struct musb *musb)
 
 	/* Move to suspend work queue */
 #ifdef NEVER
-	/*
-	 * Note: When reset the SSUSB IP, All MAC regs can _NOT_ be accessed and be reset to the default value.
-	 * So save the MUST-SAVED reg in the context structure before set SSUSB_IP_SW_RST.
-	 */
-	musb_save_context(musb);
-
-	/* Set SSUSB_IP_SW_RST to avoid power leakage */
-#ifdef CONFIG_MTK_UART_USB_SWITCH
-	if (!in_uart_mode)
-		set_ssusb_ip_sleep(musb);
-#else
-	set_ssusb_ip_sleep(musb);
-#endif
-
-#ifndef CONFIG_FPGA_EARLY_PORTING
-	/* Let PHY enter savecurrent mode. And turn off CLK. */
-	usb_phy_savecurrent(musb->is_clk_on);
-	musb->is_clk_on = 0;
-#endif
+	musb_power_down(musb);
 #endif				/* NEVER */
 
 	/* FIXME
@@ -1719,6 +1735,13 @@ irqreturn_t musb_interrupt(struct musb *musb)
 		  (devctl & USB_DEVCTL_HOSTMODE) ? "host" : "peripheral",
 		  musb->int_usb, musb->int_tx, musb->int_rx);
 
+	if (unlikely(!musb->softconnect)) {
+		os_printk(K_WARNIN, "!softconnect, IRQ %s usb%04x tx%04x rx%04x\n",
+				(devctl & USB_DEVCTL_HOSTMODE) ? "host" : "peripheral",
+				musb->int_usb, musb->int_tx, musb->int_rx);
+		return IRQ_HANDLED;
+	}
+
 	/* the core can interrupt us for multiple reasons; docs have
 	 * a generic interrupt flowchart to follow
 	 */
@@ -2008,6 +2031,8 @@ static void musb_restore_context(struct musb *musb)
 #endif
 }
 
+
+
 static void musb_suspend_work(struct work_struct *data)
 {
 	struct musb *musb = container_of(data, struct musb, suspend_work);
@@ -2017,29 +2042,7 @@ static void musb_suspend_work(struct work_struct *data)
 
 	if (musb->is_clk_on == 1
 	    && !usb_cable_connected()) {
-
-#ifdef EP_PROFILING
-		cancel_delayed_work_sync(&musb->ep_prof_work);
-#endif
-		/*
-		 * Note: musb_save_context() _MUST_ be called _BEFORE_ setting SSUSB_IP_SW_RST.
-		 * Because when setting SSUSB_IP_SW_RST to reset the SSUSB IP,
-		 * All MAC regs can _NOT_ be read and be reset to the default value.
-		 * So save the MUST-SAVED reg in the context structure.
-		 */
-		musb_save_context(musb);
-
-		set_ssusb_ip_sleep(musb);
-
-#ifndef CONFIG_FPGA_EARLY_PORTING
-		/* Let PHY enter savecurrent mode. And turn off CLK. */
-#ifdef CONFIG_PHY_MTK_SSUSB
-		phy_power_off(musb->mtk_phy);
-#else
-		usb_phy_savecurrent(musb->is_clk_on);
-#endif
-		musb->is_clk_on = 0;
-#endif
+		musb_power_down(musb);
 	}
 }
 
@@ -2064,16 +2067,6 @@ const struct hc_driver musb_hc_driver = {
 	.flags = HCD_USB2 | HCD_MEMORY,
 };
 
-#ifdef CONFIG_USB_C_SWITCH
-#ifndef CONFIG_TCPC_CLASS
-static struct typec_switch_data switch_driver = {
-	.name = (char *)musb_driver_name,
-	.type = DEVICE_TYPE,
-	.enable		= typec_switch_usb_connect,
-	.disable	= typec_switch_usb_disconnect,
-};
-#endif /* CONFIG_TCPC_CLASS */
-#endif
 /* --------------------------------------------------------------------------
  * Init support
  */
@@ -2115,7 +2108,6 @@ allocate_instance(struct device *dev, struct musb_hdrc_config *config, void __io
 		ep->musb = musb;
 		ep->epnum = epnum;
 	}
-	musb->in_ipo_off = false;
 	musb->controller = dev;
 
 	/* added for ssusb: */
@@ -2157,7 +2149,6 @@ static void musb_free(struct musb *musb)
 #endif
 
 	cancel_work_sync(&musb->irq_work);
-	cancel_delayed_work_sync(&musb->connection_work);
 	/* cancel_delayed_work_sync(&musb->check_ltssm_work); */
 	cancel_work_sync(&musb->suspend_work);
 
@@ -2245,8 +2236,6 @@ static int __init musb_init_controller(struct device *dev, int nIrq, void __iome
 
 	wake_lock_init(&musb->usb_wakelock, WAKE_LOCK_SUSPEND, "USB.lock");
 
-	INIT_DELAYED_WORK(&musb->connection_work, connection_work);
-
 	INIT_DELAYED_WORK(&musb->check_ltssm_work, check_ltssm_work);
 
 #ifndef CONFIG_USBIF_COMPLIANCE
@@ -2298,16 +2287,6 @@ static int __init musb_init_controller(struct device *dev, int nIrq, void __iome
 				? MUSB_CONTROLLER_MHDRC : MUSB_CONTROLLER_HDRC, musb);
 	if (status < 0)
 		goto fail3;
-
-#ifdef CONFIG_USB_C_SWITCH
-#ifndef CONFIG_TCPC_CLASS
-	switch_driver.priv_data = musb;
-	os_printk(K_INFO, "type c test\n");
-	status = register_typec_switch_callback(&switch_driver);
-	if (status < 0)
-		goto fail3;
-#endif /* CONFIG_TCPC_CLASS */
-#endif
 
 	/* REVISIT-J: Do _NOT_ support OTG functionality */
 	/* setup_timer(&musb->otg_timer, musb_otg_timer_func, (unsigned long) musb); */
@@ -2389,6 +2368,13 @@ static int __init musb_init_controller(struct device *dev, int nIrq, void __iome
 			s = "OTG"; break; }; s; }
 		), ctrl, (is_dma_capable() && musb->dma_controller)
 		? "DMA" : "PIO", musb->nIrq);
+
+	/* only enable on iddig mode */
+#ifndef CONFIG_USB_C_SWITCH
+#ifdef CONFIG_DUAL_ROLE_USB_INTF
+	mt_usb_dual_role_init(musb);
+#endif
+#endif
 
 	return 0;
 
@@ -2531,6 +2517,8 @@ static int __init musb_probe(struct platform_device *pdev)
 	status = musb_init_controller(dev, irq, u3_base);
 	if (status < 0)
 		goto exit_regs;
+
+	mt_usb_disconnect();
 
 	return status;
 
@@ -2805,20 +2793,8 @@ static int musb_suspend_noirq(struct device *dev)
 	struct musb *musb = dev_to_musb(dev);
 
 	os_printk(K_INFO, "%s\n", __func__);
-	/*
-	 * Note: musb_save_context() _MUST_ be called _BEFORE_ mtu3d_suspend_noirq().
-	 * Because when mtu3d_suspend_noirq() resets the SSUSB IP, All MAC regs can _NOT_ be read and be reset to
-	 * the default value. So save the MUST-SAVED reg in the context structure.
-	 */
-	musb_save_context(musb);
 
-	set_ssusb_ip_sleep(musb);
-
-#ifndef CONFIG_FPGA_EARLY_PORTING
-	/* Let PHY enter savecurrent mode. And turn off CLK. */
-	usb_phy_savecurrent(musb->is_clk_on);
-	musb->is_clk_on = 0;
-#endif
+	musb_power_down(musb);
 
 	return 0;
 }

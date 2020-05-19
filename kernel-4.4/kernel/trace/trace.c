@@ -45,10 +45,6 @@
 #include <linux/fs.h>
 #include <linux/sched/rt.h>
 
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
-#include <linux/exm_driver.h>
-#endif
-
 #include "trace.h"
 #include "trace_output.h"
 
@@ -1382,6 +1378,7 @@ void tracing_reset_all_online_cpus(void)
 
 #define SAVED_CMDLINES_DEFAULT 128
 #define NO_CMDLINE_MAP UINT_MAX
+
 static arch_spinlock_t trace_cmdline_lock = __ARCH_SPIN_LOCK_UNLOCKED;
 struct saved_cmdlines_buffer {
 	unsigned map_pid_to_cmdline[PID_MAX_DEFAULT+1];
@@ -1409,48 +1406,25 @@ static inline void set_cmdline(int idx, const char *cmdline)
 static int allocate_cmdlines_buffer(unsigned int val,
 				    struct saved_cmdlines_buffer *s)
 {
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
-	s->map_cmdline_to_pid = extmem_malloc(val * sizeof(*s->map_cmdline_to_pid));
-#else
 	s->map_cmdline_to_pid = kmalloc(val * sizeof(*s->map_cmdline_to_pid),
 					GFP_KERNEL);
-#endif
 	if (!s->map_cmdline_to_pid)
 		return -ENOMEM;
 
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
-	s->saved_cmdlines = extmem_malloc(val * TASK_COMM_LEN);
-#else
 	s->saved_cmdlines = kmalloc(val * TASK_COMM_LEN, GFP_KERNEL);
-#endif
 	if (!s->saved_cmdlines) {
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
-		extmem_free((void *)s->map_cmdline_to_pid);
-#else
 		kfree(s->map_cmdline_to_pid);
-#endif
 		return -ENOMEM;
 	}
 
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
-	s->map_cmdline_to_tgid = extmem_malloc(val,
-		sizeof(*s->map_cmdline_to_tgid),
-		GFP_KERNEL);
-	if (!s->map_cmdline_to_tgid) {
-		extmem_free(s->map_cmdline_to_pid);
-		extmem_free(s->saved_cmdlines);
-		return -ENOMEM;
-	}
-#else
 	s->map_cmdline_to_tgid = kmalloc_array(val,
-		sizeof(*s->map_cmdline_to_tgid),
-		GFP_KERNEL);
+					       sizeof(*s->map_cmdline_to_tgid),
+					       GFP_KERNEL);
 	if (!s->map_cmdline_to_tgid) {
 		kfree(s->map_cmdline_to_pid);
 		kfree(s->saved_cmdlines);
 		return -ENOMEM;
 	}
-#endif
 
 	s->cmdline_idx = 0;
 	s->cmdline_num = val;
@@ -1466,22 +1440,14 @@ static int allocate_cmdlines_buffer(unsigned int val,
 static int trace_create_savedcmd(void)
 {
 	int ret;
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
-	savedcmd =
-		(struct saved_cmdlines_buffer *)extmem_malloc(sizeof(*savedcmd));
-#else
+
 	savedcmd = kmalloc(sizeof(*savedcmd), GFP_KERNEL);
-#endif
 	if (!savedcmd)
 		return -ENOMEM;
 
 	ret = allocate_cmdlines_buffer(SAVED_CMDLINES_DEFAULT, savedcmd);
 	if (ret < 0) {
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
-		extmem_free((void *)savedcmd);
-#else
 		kfree(savedcmd);
-#endif
 		savedcmd = NULL;
 		return -ENOMEM;
 	}
@@ -2806,13 +2772,14 @@ static void test_cpu_buff_start(struct trace_iterator *iter)
 	if (!(iter->iter_flags & TRACE_FILE_ANNOTATE))
 		return;
 
-	if (iter->started && cpumask_test_cpu(iter->cpu, iter->started))
+	if (cpumask_available(iter->started) &&
+	    cpumask_test_cpu(iter->cpu, iter->started))
 		return;
 
 	if (per_cpu_ptr(iter->trace_buffer->data, iter->cpu)->skipped_entries)
 		return;
 
-	if (iter->started)
+	if (cpumask_available(iter->started))
 		cpumask_set_cpu(iter->cpu, iter->started);
 
 	/* Don't print started cpu buffer for the first entry of the trace */
@@ -3530,37 +3497,30 @@ static const struct file_operations show_traces_fops = {
 	.llseek		= seq_lseek,
 };
 
-/*
- * The tracer itself will not take this lock, but still we want
- * to provide a consistent cpumask to user-space:
- */
-static DEFINE_MUTEX(tracing_cpumask_update_lock);
-
-/*
- * Temporary storage for the character representation of the
- * CPU bitmask (and one more byte for the newline):
- */
-static char mask_str[NR_CPUS + 1];
-
 static ssize_t
 tracing_cpumask_read(struct file *filp, char __user *ubuf,
 		     size_t count, loff_t *ppos)
 {
 	struct trace_array *tr = file_inode(filp)->i_private;
+	char *mask_str;
 	int len;
 
-	mutex_lock(&tracing_cpumask_update_lock);
+	len = snprintf(NULL, 0, "%*pb\n",
+		       cpumask_pr_args(tr->tracing_cpumask)) + 1;
+	mask_str = kmalloc(len, GFP_KERNEL);
+	if (!mask_str)
+		return -ENOMEM;
 
-	len = snprintf(mask_str, count, "%*pb\n",
+	len = snprintf(mask_str, len, "%*pb\n",
 		       cpumask_pr_args(tr->tracing_cpumask));
 	if (len >= count) {
 		count = -EINVAL;
 		goto out_err;
 	}
-	count = simple_read_from_buffer(ubuf, count, ppos, mask_str, NR_CPUS+1);
+	count = simple_read_from_buffer(ubuf, count, ppos, mask_str, len);
 
 out_err:
-	mutex_unlock(&tracing_cpumask_update_lock);
+	kfree(mask_str);
 
 	return count;
 }
@@ -3579,8 +3539,6 @@ tracing_cpumask_write(struct file *filp, const char __user *ubuf,
 	err = cpumask_parse_user(ubuf, count, tracing_cpumask_new);
 	if (err)
 		goto err_unlock;
-
-	mutex_lock(&tracing_cpumask_update_lock);
 
 	local_irq_disable();
 	arch_spin_lock(&tr->max_lock);
@@ -3604,8 +3562,6 @@ tracing_cpumask_write(struct file *filp, const char __user *ubuf,
 	local_irq_enable();
 
 	cpumask_copy(tr->tracing_cpumask, tracing_cpumask_new);
-
-	mutex_unlock(&tracing_cpumask_update_lock);
 	free_cpumask_var(tracing_cpumask_new);
 
 	return count;
@@ -4084,37 +4040,22 @@ tracing_saved_cmdlines_size_read(struct file *filp, char __user *ubuf,
 
 static void free_saved_cmdlines_buffer(struct saved_cmdlines_buffer *s)
 {
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
-	extmem_free((void *)s->saved_cmdlines);
-	extmem_free((void *)s->map_cmdline_to_pid);
-	extmem_free((void *)s->map_cmdline_to_tgid);
-	extmem_free((void *)s);
-#else
 	kfree(s->saved_cmdlines);
 	kfree(s->map_cmdline_to_pid);
 	kfree(s->map_cmdline_to_tgid);
 	kfree(s);
-#endif
 }
 
 static int tracing_resize_saved_cmdlines(unsigned int val)
 {
 	struct saved_cmdlines_buffer *s, *savedcmd_temp;
 
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
-	s = (struct saved_cmdlines_buffer *)extmem_malloc(sizeof(*s));
-#else
 	s = kmalloc(sizeof(*s), GFP_KERNEL);
-#endif
 	if (!s)
 		return -ENOMEM;
 
 	if (allocate_cmdlines_buffer(val, s) < 0) {
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
-		extmem_free((void *)s);
-#else
 		kfree(s);
-#endif
 		return -ENOMEM;
 	}
 
@@ -6013,7 +5954,7 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 		.spd_release	= buffer_spd_release,
 	};
 	struct buffer_ref *ref;
-	int entries, size, i;
+	int entries, i;
 	ssize_t ret = 0;
 
 #ifdef CONFIG_TRACER_MAX_TRACE
@@ -6063,14 +6004,6 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 			kfree(ref);
 			break;
 		}
-
-		/*
-		 * zero out any left over data, this is going to
-		 * user land.
-		 */
-		size = ring_buffer_page_len(ref->page);
-		if (size < PAGE_SIZE)
-			memset(ref->page + size, 0, PAGE_SIZE - size);
 
 		page = virt_to_page(ref->page);
 
@@ -6810,6 +6743,7 @@ allocate_trace_buffer(struct trace_array *tr, struct trace_buffer *buf, int size
 	buf->data = alloc_percpu(struct trace_array_cpu);
 	if (!buf->data) {
 		ring_buffer_free(buf->buffer);
+		buf->buffer = NULL;
 		return -ENOMEM;
 	}
 
@@ -6832,8 +6766,11 @@ static int allocate_trace_buffers(struct trace_array *tr, int size)
 	ret = allocate_trace_buffer(tr, &tr->max_buffer,
 				    allocate_snapshot ? size : 1);
 	if (WARN_ON(ret)) {
+		pr_debug("[ftrace]allocate_trace_buffers size %d\n", size);
 		ring_buffer_free(tr->trace_buffer.buffer);
+		tr->trace_buffer.buffer = NULL;
 		free_percpu(tr->trace_buffer.data);
+		tr->trace_buffer.data = NULL;
 		return -ENOMEM;
 	}
 	tr->allocated_snapshot = allocate_snapshot;

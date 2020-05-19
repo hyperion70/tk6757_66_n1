@@ -362,6 +362,7 @@ int emmc_execute_dvfs_autok(struct msdc_host *host, u32 opcode, u8 *res)
 {
 	int ret = 0;
 
+	res = host->autok_res[0];
 	if (host->mmc->ios.timing == MMC_TIMING_MMC_HS200) {
 		if (opcode == MMC_SEND_STATUS) {
 			pr_err("[AUTOK]eMMC HS200 Tune CMD only\n");

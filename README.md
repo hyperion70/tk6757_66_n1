@@ -1,4 +1,4 @@
-Device Tree for Santin N1 (Malata M3 Plus) ALPS project 8.1
+Device Tree for Santin N1 (Malata M3 Plus) ALPS project 9.0 (kernel 4.4.146)
 
 ===========================================
 

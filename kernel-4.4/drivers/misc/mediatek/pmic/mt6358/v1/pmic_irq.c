@@ -261,6 +261,41 @@ struct pmic_sp_interrupt sp_interrupts[] = {
 
 unsigned int sp_interrupt_size = ARRAY_SIZE(sp_interrupts);
 
+static unsigned int get_spNo(enum PMIC_IRQ_ENUM intNo)
+{
+	if (intNo >= SP_BUCK_TOP_START && intNo < SP_LDO_TOP_START)
+		return 0; /* SP_BUCK_TOP */
+	else if (intNo >= SP_LDO_TOP_START && intNo < SP_PSC_TOP_START)
+		return 1; /* SP_LDO_TOP */
+	else if (intNo >= SP_PSC_TOP_START && intNo < SP_SCK_TOP_START)
+		return 2; /* SP_PSC_TOP */
+	else if (intNo >= SP_SCK_TOP_START && intNo < SP_BM_TOP_START)
+		return 3; /* SP_SCK_TOP */
+	else if (intNo >= SP_BM_TOP_START && intNo < SP_HK_TOP_START)
+		return 4; /* SP_BM_TOP */
+	else if (intNo >= SP_HK_TOP_START && intNo < SP_AUD_TOP_START)
+		return 5; /* SP_HK_TOP */
+	else if (intNo >= SP_AUD_TOP_START && intNo < SP_MISC_TOP_START)
+		return 6; /* SP_AUD_TOP */
+	else if (intNo >= SP_MISC_TOP_START && intNo < INT_ENUM_MAX)
+		return 7; /* SP_MISC_TOP */
+	return 99;
+}
+
+static unsigned int pmic_check_intNo(enum PMIC_IRQ_ENUM intNo,
+	unsigned int *spNo, unsigned int *sp_conNo, unsigned int *sp_irqNo)
+{
+	if (intNo >= INT_ENUM_MAX)
+		return 1;	/* fail intNo */
+
+	*spNo = get_spNo(intNo);
+	*sp_conNo = (intNo - sp_interrupts[*spNo].int_offset) / PMIC_INT_WIDTH;
+	*sp_irqNo = intNo % PMIC_INT_WIDTH;
+	if (sp_interrupts[*spNo].sp_irqs[*sp_conNo][*sp_irqNo].used == 0)
+		return 2;	/* fail intNo */
+	return 0;
+}
+
 /* PWRKEY Int Handler */
 void pwrkey_int_handler(void)
 {
@@ -302,16 +337,60 @@ void homekey_int_handler_r(void)
 }
 
 #if ENABLE_ALL_OC_IRQ
+static unsigned int vio18_oc_times;
+
 /* General OC Int Handler */
 static void oc_int_handler(enum PMIC_IRQ_ENUM intNo, const char *int_name)
 {
 	char oc_str[30] = "";
+	unsigned int spNo, sp_conNo, sp_irqNo;
+	unsigned int times;
+
+	if (pmic_check_intNo(intNo, &spNo, &sp_conNo, &sp_irqNo)) {
+		pr_notice(PMICTAG "[%s] fail intNo=%d\n", __func__, intNo);
+		return;
+	}
+	times = sp_interrupts[spNo].sp_irqs[sp_conNo][sp_irqNo].times;
 
 	IRQLOG("[%s] int name=%s\n", __func__, int_name);
 	switch (intNo) {
 	case INT_VCN33_OC:
 		/* keep OC interrupt and keep tracking */
 		pr_notice(PMICTAG "[PMIC_INT] PMIC OC: %s\n", int_name);
+		break;
+	case INT_VIO18_OC:
+		pr_notice("LDO_DEGTD_SEL=0x%x\n",
+			pmic_get_register_value(PMIC_LDO_DEGTD_SEL));
+		pr_notice("RG_INT_EN_VIO18_OC=0x%x\n",
+			pmic_get_register_value(PMIC_RG_INT_EN_VIO18_OC));
+		pr_notice("RG_INT_MASK_VIO18_OC=0x%x\n",
+			pmic_get_register_value(PMIC_RG_INT_MASK_VIO18_OC));
+		pr_notice("RG_INT_STATUS_VIO18_OC=0x%x\n",
+			pmic_get_register_value(PMIC_RG_INT_STATUS_VIO18_OC));
+		pr_notice("RG_INT_RAW_STATUS_VIO18_OC=0x%x\n",
+			pmic_get_register_value(PMIC_RG_INT_RAW_STATUS_VIO18_OC));
+		pr_notice("DA_VIO18_OCFB_EN=0x%x\n",
+			pmic_get_register_value(PMIC_DA_VIO18_OCFB_EN));
+		pr_notice("RG_LDO_VIO18_OCFB_EN=0x%x\n",
+			pmic_get_register_value(PMIC_RG_LDO_VIO18_OCFB_EN));
+		vio18_oc_times++;
+		if (vio18_oc_times >= 2) {
+			snprintf(oc_str, 30, "PMIC OC:%s", int_name);
+			aee_kernel_warning(
+				oc_str,
+				"\nCRDISPATCH_KEY:PMIC OC\nOC Interrupt: %s",
+				int_name);
+			pmic_enable_interrupt(intNo, 0, "PMIC");
+			pr_notice("disable OC interrupt: %s\n", int_name);
+		}
+		break;
+	case INT_VLDO28_OC:
+		/* keep OC interrupt and keep tracking */
+		pr_notice(PMICTAG "[PMIC_INT] PMIC OC: %s\n", int_name);
+		if (times >= 2) {
+			pmic_enable_interrupt(intNo, 0, "PMIC");
+			pr_notice("disable OC interrupt: %s\n", int_name);
+		}
 		break;
 	default:
 		/* issue AEE exception and disable OC interrupt */
@@ -387,42 +466,6 @@ irqreturn_t mt_pmic_eint_irq(int irq, void *desc)
 	wake_up_pmic();
 	return IRQ_HANDLED;
 }
-
-static unsigned int get_spNo(enum PMIC_IRQ_ENUM intNo)
-{
-	if (intNo >= SP_BUCK_TOP_START && intNo < SP_LDO_TOP_START)
-		return 0; /* SP_BUCK_TOP */
-	else if (intNo >= SP_LDO_TOP_START && intNo < SP_PSC_TOP_START)
-		return 1; /* SP_LDO_TOP */
-	else if (intNo >= SP_PSC_TOP_START && intNo < SP_SCK_TOP_START)
-		return 2; /* SP_PSC_TOP */
-	else if (intNo >= SP_SCK_TOP_START && intNo < SP_BM_TOP_START)
-		return 3; /* SP_SCK_TOP */
-	else if (intNo >= SP_BM_TOP_START && intNo < SP_HK_TOP_START)
-		return 4; /* SP_BM_TOP */
-	else if (intNo >= SP_HK_TOP_START && intNo < SP_AUD_TOP_START)
-		return 5; /* SP_HK_TOP */
-	else if (intNo >= SP_AUD_TOP_START && intNo < SP_MISC_TOP_START)
-		return 6; /* SP_AUD_TOP */
-	else if (intNo >= SP_MISC_TOP_START && intNo < INT_ENUM_MAX)
-		return 7; /* SP_MISC_TOP */
-	return 99;
-}
-
-static unsigned int pmic_check_intNo(enum PMIC_IRQ_ENUM intNo,
-	unsigned int *spNo, unsigned int *sp_conNo, unsigned int *sp_irqNo)
-{
-	if (intNo >= INT_ENUM_MAX)
-		return 1;	/* fail intNo */
-
-	*spNo = get_spNo(intNo);
-	*sp_conNo = (intNo - sp_interrupts[*spNo].int_offset) / PMIC_INT_WIDTH;
-	*sp_irqNo = intNo % PMIC_INT_WIDTH;
-	if (sp_interrupts[*spNo].sp_irqs[*sp_conNo][*sp_irqNo].used == 0)
-		return 2;	/* fail intNo */
-	return 0;
-}
-
 
 void pmic_enable_interrupt(enum PMIC_IRQ_ENUM intNo, unsigned int en, char *str)
 {
@@ -540,19 +583,14 @@ void register_all_oc_interrupts(void)
 		switch (oc_interrupt) {
 		case INT_VSIM1_OC:
 		case INT_VSIM2_OC:
+		case INT_VIBR_OC:
 		case INT_VMCH_OC:
 		case INT_VCAMA1_OC:
 		case INT_VCAMA2_OC:
 		case INT_VCAMD_OC:
 		case INT_VCAMIO_OC:
-			IRQLOG("[PMIC_INT] non-enabled OC: %d\n", oc_interrupt);
+			/* handle these OC INTs by module */
 			break;
-#if 0
-		case INT_VCAMA_OC:
-			IRQLOG("[PMIC_INT] OC:%d should be enabled after power on\n", oc_interrupt);
-			pmic_register_oc_interrupt_callback(oc_interrupt);
-			break;
-#endif
 		default:
 			pmic_register_oc_interrupt_callback(oc_interrupt);
 			pmic_enable_interrupt(oc_interrupt, 1, "PMIC");
@@ -571,10 +609,10 @@ static void pmic_sp_irq_handler(unsigned int spNo, unsigned int sp_conNo, unsign
 		return; /* this subpack control has no interrupt triggered */
 
 	IRQLOG("[PMIC_INT] Reg[0x%x]=0x%x\n",
-		(sp_interrupts[spNo].status + 0x6 * sp_conNo), sp_int_status);
+		(sp_interrupts[spNo].status + 0x2 * sp_conNo), sp_int_status);
 
 	/* clear interrupt status in this subpack control */
-	upmu_set_reg_value((sp_interrupts[spNo].status + 0x6 * sp_conNo), sp_int_status);
+	upmu_set_reg_value((sp_interrupts[spNo].status + 0x2 * sp_conNo), sp_int_status);
 
 	for (i = 0; i < PMIC_INT_WIDTH; i++) {
 		if (sp_int_status & (1 << i)) {
@@ -605,7 +643,7 @@ static void pmic_int_handler(void)
 		if (!(top_int_status & (1 << sp_interrupts[spNo].top_int_bit)))
 			continue; /* this subpack has no interrupt triggered */
 		for (sp_conNo = 0; sp_conNo < sp_interrupts[spNo].con_len; sp_conNo++) {
-			status_reg = sp_interrupts[spNo].status + 0x6 * sp_conNo;
+			status_reg = sp_interrupts[spNo].status + 0x2 * sp_conNo;
 			sp_int_status = upmu_get_reg_value(status_reg);
 			pmic_sp_irq_handler(spNo, sp_conNo, sp_int_status);
 		}
@@ -647,7 +685,7 @@ int pmic_thread_kthread(void *x)
 #endif
 		for (spNo = 0; spNo < sp_interrupt_size; spNo++) {
 			for (sp_conNo = 0; sp_conNo < sp_interrupts[spNo].con_len; sp_conNo++) {
-				status_reg = sp_interrupts[spNo].status + 0x6 * sp_conNo;
+				status_reg = sp_interrupts[spNo].status + 0x2 * sp_conNo;
 				sp_int_status = upmu_get_reg_value(status_reg);
 				IRQLOG("[PMIC_INT] after, Reg[0x%x]=0x%x\n",
 					status_reg, sp_int_status);

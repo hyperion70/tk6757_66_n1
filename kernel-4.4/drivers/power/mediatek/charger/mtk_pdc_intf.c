@@ -45,10 +45,10 @@ void mtk_pdc_check_cable_impedance(struct charger_manager *pinfo)
 
 	get_monotonic_boottime(&ptime[0]);
 
-	/* Set ichg = 2500mA, set MIVR=4.5V */
+	/* Set ichg = 2500mA, set MIVR=4.6V */
 	charger_dev_set_charging_current(pinfo->chg1_dev, 2500000);
 	mdelay(240);
-	charger_dev_set_mivr(pinfo->chg1_dev, 4500000);
+	charger_dev_set_mivr(pinfo->chg1_dev, pinfo->data.min_charger_voltage);
 	/* pe20_set_mivr(pinfo, 4300000); */
 
 	get_monotonic_boottime(&ptime[1]);
@@ -101,13 +101,11 @@ static bool mtk_is_pdc_ready(struct charger_manager *info)
 	if (info->tcpc == NULL)
 		return false;
 
-	if (tcpm_inquire_pd_prev_connected(info->tcpc) == 0)
-		return false;
+	if (info->pd_type == PD_CONNECT_PE_READY_SNK ||
+		info->pd_type == PD_CONNECT_PE_READY_SNK_PD30)
+		return true;
 
-	if (info->pd_type == PD_CONNECT_PE_READY_SNK_APDO)
-		return false;
-
-	return true;
+	return false;
 }
 
 bool mtk_pdc_check_charger(struct charger_manager *info)

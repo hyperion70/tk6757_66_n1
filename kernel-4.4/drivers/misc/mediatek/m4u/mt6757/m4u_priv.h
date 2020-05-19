@@ -49,6 +49,7 @@
 #define mmp_event unsigned int
 #else
 #include <mmprofile.h>
+#include <mmprofile_function.h>
 #endif
 
 #ifdef CONFIG_PM
@@ -311,6 +312,7 @@ enum M4U_MMP_TYPE {
 	M4U_MMP_M4U_ERROR,
 	M4U_MMP_CACHE_SYNC,
 	M4U_MMP_TOGGLE_CG,
+	M4U_MMP_TOGGLE_MVA_DBG,
 	M4U_MMP_MAX,
 };
 extern mmp_event M4U_MMP_Events[M4U_MMP_MAX];

@@ -26,6 +26,7 @@
 #include <linux/wakelock.h>
 #include <linux/spinlock.h>
 #include <mt-plat/mtk_battery.h>
+#include <mtk_gauge_time_service.h>
 
 /* PD */
 #include <tcpm.h>
@@ -179,6 +180,7 @@ struct charger_custom_data {
 	int battery_cv;	/* uv */
 	int max_charger_voltage;
 	int max_charger_voltage_setting;
+	int min_charger_voltage;
 
 	int usb_charger_current_suspend;
 	int usb_charger_current_unconfigured;
@@ -238,6 +240,7 @@ struct charger_custom_data {
 	int pe40_dual_charger_input_current;
 	int pe40_dual_charger_chg1_current;
 	int pe40_dual_charger_chg2_current;
+	int pe40_stop_battery_soc;
 
 	/* pe3.0 */
 	int cv_limit;	/* vbus upper bound (mv)*/
@@ -302,6 +305,8 @@ struct charger_data {
 	int charging_current_limit;
 	int disable_charging_count;
 	int input_current_limit_by_aicl;
+	int junction_temp_min;
+	int junction_temp_max;
 };
 
 struct charger_manager {
@@ -322,7 +327,7 @@ struct charger_manager {
 	struct notifier_block chg2_nb;
 	struct charger_data chg2_data;
 
-	CHARGER_TYPE chr_type;
+	enum charger_type chr_type;
 	bool can_charging;
 
 	int (*do_algorithm)(struct charger_manager *);
@@ -383,6 +388,9 @@ struct charger_manager {
 	bool enable_pe_4;
 	struct mtk_pe40 pe4;
 
+	/* type-C*/
+	bool enable_type_c;
+
 	/* pd */
 	struct mtk_pdc pdc;
 
@@ -417,6 +425,24 @@ extern void _wake_up_charger(struct charger_manager *);
 extern int mtk_get_dynamic_cv(struct charger_manager *info, unsigned int *cv);
 extern bool is_dual_charger_supported(struct charger_manager *info);
 extern int charger_enable_vbus_ovp(struct charger_manager *pinfo, bool enable);
+extern bool is_typec_adapter(struct charger_manager *info);
+
+/* pmic API */
+extern unsigned int upmu_get_rgs_chrdet(void);
+extern int pmic_get_vbus(void);
+extern int pmic_get_charging_current(void);
+extern int pmic_get_battery_voltage(void);
+extern int pmic_get_bif_battery_voltage(int *vbat);
+extern int pmic_is_bif_exist(void);
+extern int pmic_enable_hw_vbus_ovp(bool enable);
+extern bool pmic_is_battery_exist(void);
+
+/* add legacy battery API */
+extern unsigned int battery_get_bat_soc(void);
+extern signed int battery_meter_get_battery_temperature(void);
+extern bool battery_get_bat_current_sign(void);
+extern signed int battery_get_bat_uisoc(void);
+extern int get_ui_soc(void);
 
 /* procfs */
 #define PROC_FOPS_RW(name)							\

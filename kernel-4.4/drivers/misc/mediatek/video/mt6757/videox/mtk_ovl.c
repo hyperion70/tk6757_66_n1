@@ -20,7 +20,6 @@
 #include <linux/kthread.h>
 #include <linux/mutex.h>
 #include "debug.h"
-#include "mmdvfs_mgr.h"
 
 #include "disp_drv_log.h"
 #include "disp_utils.h"
@@ -412,10 +411,6 @@ Exit:
 	_ovl2mem_path_unlock(__func__);
 	mmprofile_log_ex(ddp_mmp_get_events()->ovl_trigger, MMPROFILE_FLAG_PULSE, 0x01, 1);
 
-	/* re-use mhl scenario for dvfs control */
-	if (!ret)
-		mmdvfs_mhl_enable(1);
-
 	DISPDBG("ovl2mem_init done\n");
 
 	return ret;
@@ -703,9 +698,6 @@ int ovl2mem_deinit(void)
 Exit:
 	_ovl2mem_path_unlock(__func__);
 	mmprofile_log_ex(ddp_mmp_get_events()->ovl_trigger, MMPROFILE_FLAG_END, 0x03, (loop_cnt<<24)|1);
-
-	/* re-use mhl scenario for dvfs control */
-	mmdvfs_mhl_enable(0);
 
 	DISPMSG("ovl2mem_deinit done\n");
 	return ret;

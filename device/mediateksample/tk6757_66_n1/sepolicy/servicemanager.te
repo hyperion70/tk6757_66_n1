@@ -1,0 +1,8 @@
+allow servicemanager hal_fingerprint_custom:dir search;
+allow servicemanager hal_fingerprint_custom:file { open read };
+allow servicemanager hal_fingerprint_custom:process getattr;
+
+allow servicemanager gx_fpd:dir r_dir_perms;
+allow servicemanager gx_fpd:file r_file_perms;
+allow servicemanager gx_fpd:process getattr;
+

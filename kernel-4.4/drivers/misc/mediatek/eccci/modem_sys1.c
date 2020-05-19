@@ -384,6 +384,7 @@ static int md_cd_start(struct ccci_modem *md)
 
 	md_cldma_hw_reset(md->index);
 
+	notify_md_on(md->index);
 	ret = md_cd_power_on(md);
 	if (ret) {
 		CCCI_BOOTUP_LOG(md->index, TAG, "power on MD fail %d\n", ret);
@@ -396,6 +397,7 @@ static int md_cd_start(struct ccci_modem *md)
 	atomic_set(&md->reset_on_going, 0);
 
 	md->per_md_data.md_dbg_dump_flag = MD_DBG_DUMP_AP_REG;
+	md->per_md_data.sim_type = 0xEEEEEEEE;
 
 	/* 7. let modem go */
 	md_cd_let_md_go(md);
@@ -437,11 +439,14 @@ static int check_power_off_en(struct ccci_modem *md)
 
 static int md_cd_soft_start(struct ccci_modem *md, unsigned int mode)
 {
+	notify_md_on(md->index);
 	return md_cd_soft_power_on(md, mode);
 }
 
+
 static int md_cd_soft_stop(struct ccci_modem *md, unsigned int mode)
 {
+	notify_md_off(md->index, MD_OFF_LVL_1);
 	return md_cd_soft_power_off(md, mode);
 }
 
@@ -537,6 +542,7 @@ static int md_cd_stop(struct ccci_modem *md, unsigned int stop_type)
 	md_cd_check_emi_state(md, 1);	/* Check EMI before */
 
 	/* power off MD */
+	notify_md_off(md->index, MD_OFF_LVL_0);
 	ret = md_cd_power_off(md, stop_type == MD_FLIGHT_MODE_ENTER ? 100 : 0);
 	CCCI_NORMAL_LOG(md->index, TAG, "CLDMA modem is power off done, %d\n", ret);
 
@@ -1170,7 +1176,7 @@ static struct syscore_ops md_cldma_sysops = {
 };
 
 #define DMA_BIT_MASK(n) (((n) == 64) ? ~0ULL : ((1ULL<<(n))-1))
-static u64 cldma_dmamask = DMA_BIT_MASK((sizeof(unsigned long) << 3));
+static u64 cldma_dmamask = DMA_BIT_MASK(36);
 static int ccci_modem_probe(struct platform_device *plat_dev)
 {
 	struct ccci_modem *md;

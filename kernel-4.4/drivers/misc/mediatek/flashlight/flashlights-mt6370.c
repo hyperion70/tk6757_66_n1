@@ -423,13 +423,13 @@ static int mt6370_operate(int channel, int enable)
 			mt6370_timer_cancel(MT6370_CHANNEL_CH1);
 			mt6370_timer_cancel(MT6370_CHANNEL_CH2);
 		} else {
-			if (mt6370_timeout_ms[MT6370_CHANNEL_CH1]) {
+			if (mt6370_timeout_ms[MT6370_CHANNEL_CH1] && mt6370_en_ch1 != MT6370_DISABLE) {
 				ktime = ktime_set(
 						mt6370_timeout_ms[MT6370_CHANNEL_CH1] / 1000,
 						(mt6370_timeout_ms[MT6370_CHANNEL_CH1] % 1000) * 1000000);
 				mt6370_timer_start(MT6370_CHANNEL_CH1, ktime);
 			}
-			if (mt6370_timeout_ms[MT6370_CHANNEL_CH2]) {
+			if (mt6370_timeout_ms[MT6370_CHANNEL_CH2] && mt6370_en_ch2 != MT6370_DISABLE) {
 				ktime = ktime_set(
 						mt6370_timeout_ms[MT6370_CHANNEL_CH2] / 1000,
 						(mt6370_timeout_ms[MT6370_CHANNEL_CH2] % 1000) * 1000000);
@@ -546,14 +546,14 @@ static int mt6370_set_driver(int set)
 		if (!use_count)
 			ret = mt6370_init();
 		use_count++;
-		pr_debug("Set driver: %d\n", use_count);
+		pr_info_ratelimited("Set driver: %d\n", use_count);
 	} else {
 		use_count--;
 		if (!use_count)
 			ret = mt6370_uninit();
 		if (use_count < 0)
 			use_count = 0;
-		pr_debug("Unset driver: %d\n", use_count);
+		pr_info_ratelimited("Unset driver: %d\n", use_count);
 	}
 	mutex_unlock(&mt6370_mutex);
 

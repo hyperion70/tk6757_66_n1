@@ -16,12 +16,13 @@
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/of.h>
+#include <linux/delay.h>
 #include "../../flashlight/richtek/rtfled.h"
 
 #include "inc/mt6370_pmu.h"
 #include "inc/mt6370_pmu_fled.h"
 
-#define MT6370_PMU_FLED_DRV_VERSION	"1.0.1_MTK"
+#define MT6370_PMU_FLED_DRV_VERSION	"1.0.2_MTK"
 
 static u8 mt6370_fled_inited;
 static u8 mt6370_global_mode = FLASHLIGHT_MODE_OFF;
@@ -288,11 +289,13 @@ static int mt6370_fled_set_mode(struct rt_fled_dev *info,
 			break;
 		ret |= mt6370_pmu_reg_clr_bit(fi->chip,
 			MT6370_PMU_REG_FLEDEN, MT6370_STROBE_EN_MASK);
-		ret |= mt6370_pmu_reg_set_bit(fi->chip,
-				MT6370_PMU_REG_FLEDEN, fi->id == MT6370_FLED1 ? 0x02 : 0x01);
+		udelay(500);
+		ret |= mt6370_pmu_reg_set_bit(fi->chip, MT6370_PMU_REG_FLEDEN,
+				fi->id == MT6370_FLED1 ? 0x02 : 0x01);
 		ret |= mt6370_pmu_reg_set_bit(fi->chip,
 				MT6370_PMU_REG_FLEDEN, MT6370_TORCH_EN_MASK);
-		dev_info(fi->dev, "set to torch mode\n");
+		udelay(500);
+		dev_info(fi->dev, "set to torch mode with 500 us delay\n");
 		mt6370_global_mode = mode;
 		if (fi->id == MT6370_FLED1)
 			mt6370_fled_on |= 1 << MT6370_FLED1;
@@ -302,11 +305,13 @@ static int mt6370_fled_set_mode(struct rt_fled_dev *info,
 	case FLASHLIGHT_MODE_FLASH:
 		ret = mt6370_pmu_reg_clr_bit(fi->chip,
 			MT6370_PMU_REG_FLEDEN, MT6370_STROBE_EN_MASK);
-		ret |= mt6370_pmu_reg_set_bit(fi->chip,
-			MT6370_PMU_REG_FLEDEN, fi->id == MT6370_FLED1 ? 0x02 : 0x01);
+		udelay(400);
+		ret |= mt6370_pmu_reg_set_bit(fi->chip, MT6370_PMU_REG_FLEDEN,
+			fi->id == MT6370_FLED1 ? 0x02 : 0x01);
 		ret |= mt6370_pmu_reg_set_bit(fi->chip,
 			MT6370_PMU_REG_FLEDEN, MT6370_STROBE_EN_MASK);
-		dev_info(fi->dev, "set to flash mode\n");
+		mdelay(5);
+		dev_info(fi->dev, "set to flash mode with 400/4500 us delay\n");
 		mt6370_global_mode = mode;
 		if (fi->id == MT6370_FLED1)
 			mt6370_fled_on |= 1 << MT6370_FLED1;
@@ -721,6 +726,9 @@ MODULE_VERSION(MT6370_PMU_FLED_DRV_VERSION);
 
 /*
  * Version Note
+ * 1.0.2_MTK
+ * (1) Add delay for strobe on/off
+ *
  * 1.0.1_MTK
  * (1) Remove typedef
  *

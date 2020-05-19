@@ -16,6 +16,7 @@
 */
 
 #include "ccci_fsm_internal.h"
+#include "port_t.h"
 
 static struct ccci_fsm_ctl *ccci_fsm_entries[MAX_MD_NUM];
 
@@ -317,6 +318,8 @@ static void fsm_routine_stop(struct ccci_fsm_ctl *ctl, struct ccci_fsm_command *
 	struct ccci_fsm_event *event, *next;
 	struct ccci_fsm_command *ee_cmd = NULL;
 	unsigned long flags;
+	struct port_t *port = NULL;
+	struct sk_buff *skb = NULL;
 
 	/* 1. state sanity check */
 	if (ctl->curr_state == CCCI_FSM_GATED)
@@ -351,6 +354,23 @@ static void fsm_routine_stop(struct ccci_fsm_ctl *ctl, struct ccci_fsm_command *
 	spin_unlock_irqrestore(&ctl->event_lock, flags);
 	/* 6. always end in stopped state */
 success:
+	/* when MD is stopped, the skb list of ccci_fs should be clean */
+	port = port_get_by_channel(ctl->md_id, CCCI_FS_RX);
+	if (port && (port->flags & PORT_F_CLEAN)) {
+		CCCI_NORMAL_LOG(ctl->md_id, FSM,
+			"clear port:%s skb list data. qlen: %d\n",
+			port->name, port->rx_skb_list.qlen);
+
+		spin_lock_irqsave(&port->rx_skb_list.lock, flags);
+		while ((skb = __skb_dequeue(&port->rx_skb_list)) != NULL)
+			ccci_free_skb(skb);
+		spin_unlock_irqrestore(&port->rx_skb_list.lock, flags);
+
+	} else if (!port)
+		CCCI_NORMAL_LOG(ctl->md_id, FSM,
+			"find port fail: md_id:%d, ch:CCCI_FS_RX\n",
+			ctl->md_id);
+
 	ctl->last_state = ctl->curr_state;
 	ctl->curr_state = CCCI_FSM_GATED;
 	fsm_broadcast_state(ctl, GATED);
@@ -453,7 +473,7 @@ int fsm_append_command(struct ccci_fsm_ctl *ctl, CCCI_FSM_COMMAND cmd_id, unsign
 	spin_lock_irqsave(&ctl->command_lock, flags);
 	list_add_tail(&cmd->entry, &ctl->command_queue);
 	spin_unlock_irqrestore(&ctl->command_lock, flags);
-	CCCI_NORMAL_LOG(ctl->md_id, FSM, "command %d is appended %x from %ps\n", cmd->cmd_id, cmd->flag,
+	CCCI_NORMAL_LOG(ctl->md_id, FSM, "command %d is appended %x from %ps\n", cmd_id, flag,
 			__builtin_return_address(0));
 	wake_up(&ctl->command_wq); /* after this line, only dereference cmd when "wait-for-complete" */
 	if (flag & FSM_CMD_FLAG_WAIT_FOR_COMPLETE) {
@@ -554,6 +574,14 @@ struct ccci_fsm_ctl *fsm_get_entity_by_md_id(int md_id)
 	return NULL;
 }
 
+static int fsm_sim_type_handler(int md_id, int data)
+{
+	struct ccci_per_md *per_md_data = ccci_get_per_md_data(md_id);
+
+	per_md_data->sim_type = data;
+	return 0;
+}
+
 int ccci_fsm_init(int md_id)
 {
 	struct ccci_fsm_ctl *ctl;
@@ -582,6 +610,7 @@ int ccci_fsm_init(int md_id)
 	fsm_poller_init(&ctl->poller_ctl);
 	fsm_ee_init(&ctl->ee_ctl);
 	fsm_monitor_init(&ctl->monitor_ctl);
+	register_ccci_sys_call_back(ctl->md_id, MD_SIM_TYPE, fsm_sim_type_handler);
 
 	ccci_fsm_entries[md_id] = ctl;
 	return 0;

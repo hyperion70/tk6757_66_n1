@@ -214,19 +214,16 @@ struct dbg_run_host_log {
 	int type;
 	int cmd;
 	int arg;
-	int skip;
+	int skip_cmd23cnt;
 };
 static struct dbg_run_host_log dbg_run_host_log_dat[dbg_max_cnt];
 char msdc_aee_buffer[MSDC_AEE_BUFFER_SIZE];
 static int dbg_host_cnt;
-static int is_lock_init;
-static spinlock_t cmd_dump_lock;
-
 static unsigned int printk_cpu_test = UINT_MAX;
-struct timeval cur_tv;
 
 /* type 0: cmd, type 1 rsp */
-void dbg_add_host_log(struct mmc_host *mmc, int type, int cmd, int arg)
+void mmc_cmd_log(struct mmc_host *mmc, int type, int cmd, int arg,
+	struct mmc_command *sbc)
 {
 	unsigned long long t;
 	unsigned long long nanosec_rem;
@@ -239,14 +236,9 @@ void dbg_add_host_log(struct mmc_host *mmc, int type, int cmd, int arg)
 	if (!host || host->id != 0)
 		return;
 
-	if (!is_lock_init) {
-		spin_lock_init(&cmd_dump_lock);
-		is_lock_init = 1;
-	}
-
-	spin_lock_irqsave(&cmd_dump_lock, flags);
+	spin_lock_irqsave(&host->cmd_dump_lock, flags);
 	if (type == 1) {
-		 /*skip log if last cmd rsp are the same*/
+		/*skip log if last cmd rsp are the same*/
 		if (last_cmd == cmd &&
 			last_arg == arg && cmd == 13) {
 			skip++;
@@ -260,21 +252,22 @@ void dbg_add_host_log(struct mmc_host *mmc, int type, int cmd, int arg)
 		last_arg = arg;
 		l_skip = skip;
 		skip = 0;
+	} else if (check_mmc_cmd1825(cmd) && sbc) {
+		l_skip = sbc->arg & 0xffff;
 	}
 	t = cpu_clock(printk_cpu_test);
 	nanosec_rem = do_div(t, 1000000000)/1000;
-	do_gettimeofday(&cur_tv);
 	dbg_run_host_log_dat[dbg_host_cnt].time_sec = t;
 	dbg_run_host_log_dat[dbg_host_cnt].time_usec = nanosec_rem;
 	dbg_run_host_log_dat[dbg_host_cnt].type = type;
 	dbg_run_host_log_dat[dbg_host_cnt].cmd = cmd;
 	dbg_run_host_log_dat[dbg_host_cnt].arg = arg;
-	dbg_run_host_log_dat[dbg_host_cnt].skip = l_skip;
+	dbg_run_host_log_dat[dbg_host_cnt].skip_cmd23cnt = l_skip;
 	dbg_host_cnt++;
 	if (dbg_host_cnt >= dbg_max_cnt)
 		dbg_host_cnt = 0;
 end:
-	spin_unlock_irqrestore(&cmd_dump_lock, flags);
+	spin_unlock_irqrestore(&host->cmd_dump_lock, flags);
 }
 
 void mmc_cmd_dump(char **buff, unsigned long *size, struct seq_file *m,
@@ -295,12 +288,8 @@ void mmc_cmd_dump(char **buff, unsigned long *size, struct seq_file *m,
 	host = mmc_priv(mmc);
 	if (!host || host->id != 0)
 		return;
-	if (!is_lock_init) {
-		spin_lock_init(&cmd_dump_lock);
-		is_lock_init = 1;
-	}
 
-	spin_lock_irqsave(&cmd_dump_lock, flags);
+	spin_lock_irqsave(&host->cmd_dump_lock, flags);
 	dump_cnt = min_t(u32, latest_cnt, dbg_max_cnt);
 
 	i = dbg_host_cnt - 1;
@@ -313,10 +302,10 @@ void mmc_cmd_dump(char **buff, unsigned long *size, struct seq_file *m,
 		type = dbg_run_host_log_dat[i].type;
 		cmd = dbg_run_host_log_dat[i].cmd;
 		arg = dbg_run_host_log_dat[i].arg;
-		skip = dbg_run_host_log_dat[i].skip;
+		skip = dbg_run_host_log_dat[i].skip_cmd23cnt;
 		if (cmd == 44 && !type) {
 			cnt = arg & 0xffff;
-			tag = (arg >> 16) & 0xf;
+			tag = (arg >> 16) & 0x1f;
 			is_read = (arg >> 30) & 0x1;
 			is_rel = (arg >> 31) & 0x1;
 			is_fprg = (arg >> 24) & 0x1;
@@ -341,16 +330,17 @@ void mmc_cmd_dump(char **buff, unsigned long *size, struct seq_file *m,
 		if (i < 0)
 			i = dbg_max_cnt - 1;
 	}
-	spin_unlock_irqrestore(&cmd_dump_lock, flags);
+	spin_unlock_irqrestore(&host->cmd_dump_lock, flags);
 #ifdef CONFIG_MTK_EMMC_CQ_SUPPORT
 	SPREAD_PRINTF(buff, size, m,
-		"areq_cnt:%d, task_id_index %08lx, cq_wait_rdy:%d\n",
+		"areq_cnt:%d, task_id_index %08lx, cq_wait_rdy:%d, cq_rdy_cnt:%d\n",
 		atomic_read(&mmc->areq_cnt),
-		mmc->task_id_index, atomic_read(&mmc->cq_wait_rdy));
+		mmc->task_id_index, atomic_read(&mmc->cq_wait_rdy), atomic_read(&mmc->cq_rdy_cnt));
 #endif
 }
 #else
-void dbg_add_host_log(struct mmc_host *mmc, int type, int cmd, int arg)
+void mmc_cmd_log(struct mmc_host *mmc, int type, int cmd, int arg,
+	struct mmc_command *sbc)
 {
 }
 
@@ -393,7 +383,7 @@ void msdc_dump_host_state(char **buff, unsigned long *size,
 	}
 }
 
-static void msdc_proc_dump(struct seq_file *m, u32 id)
+void msdc_proc_dump(struct seq_file *m, u32 id)
 {
 	struct msdc_host *host = mtk_msdc_host[id];
 
@@ -405,6 +395,7 @@ static void msdc_proc_dump(struct seq_file *m, u32 id)
 	msdc_dump_host_state(NULL, NULL, m, host);
 	mmc_cmd_dump(NULL, NULL, m, host->mmc, 500);
 }
+EXPORT_SYMBOL(msdc_proc_dump);
 
 void get_msdc_aee_buffer(unsigned long *vaddr, unsigned long *size)
 {
@@ -1921,11 +1912,9 @@ static int msdc_debug_proc_show(struct seq_file *m, void *v)
 	sscanf_num = sscanf(cmd_buf, "%x %x %x %x %x %x %x %x %x", &cmd,
 		&p1, &p2, &p3, &p4, &p5, &p6, &p7, &p8);
 
-	if (cmd == -1) {
-		seq_puts(m, "Please run: echo cmd [p1] [p2] [p3] [p4] [p5] [p6] [p7] [p8]> /proc/msdc_debug\n");
-		seq_puts(m, "For help run: cat /proc/msdc_help\n");
-		return 0;
-	}
+	/* clear buffer */
+	g_count = 0;
+	cmd_buf[g_count] = '\0';
 
 	if (cmd == SD_TOOL_ZONE) {
 		id = p1;
@@ -2398,12 +2387,10 @@ static int msdc_debug_proc_show(struct seq_file *m, void *v)
 			goto invalid_host_id;
 		host = mtk_msdc_host[id];
 		msdc_cmdq_func(host, p2, m);
-	} else if (cmd == MMC_HANG_DETECT_DUMP) {
-		seq_puts(m, "==== hang detect dump ====\n");
-		id = p1;
-		if (id >= HOST_MAX_NUM || id < 0)
-			goto invalid_host_id;
-		msdc_proc_dump(m, id);
+	} else {
+		/* default dump info for aee */
+		seq_puts(m, "==== msdc debug info for aee ====\n");
+		msdc_proc_dump(m, 0);
 	}
 
 out:

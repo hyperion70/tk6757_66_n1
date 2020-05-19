@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2017 TRUSTONIC LIMITED
+ * Copyright (c) 2013-2018 TRUSTONIC LIMITED
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -39,7 +39,7 @@
 #include "client.h"
 #include "admin.h"
 
-static struct admin_ctx {
+static struct {
 	struct mutex admin_tgid_mutex;  /* Lock for admin_tgid below */
 	pid_t admin_tgid;
 	int (*tee_start_cb)(void);
@@ -160,7 +160,7 @@ static struct tee_object *tee_object_alloc(bool is_sp_trustlet, size_t length)
 	}
 
 	/* Check size for overflow */
-	if (size < length) {
+	if (size < length || size > OBJECT_LENGTH_MAX) {
 		mc_dev_notice("cannot allocate object of size %zu", length);
 		return NULL;
 	}
@@ -318,7 +318,7 @@ end:
 	if (ret)
 		request_cancel();
 
-	mc_dev_devel("request_send ret=%d", ret);
+	mc_dev_devel("%s ret=%d", __func__, ret);
 	return ret;
 }
 
@@ -612,6 +612,13 @@ struct tee_object *tee_object_read(u32 spid, uintptr_t address, size_t length)
 	if (copy_from_user(&thdr, addr, sizeof(thdr))) {
 		mc_dev_notice("header: copy_from_user failed");
 		return ERR_PTR(-EFAULT);
+	}
+
+	/* Check header */
+	if ((thdr.intro.magic != MC_SERVICE_HEADER_MAGIC_BE) &&
+	    (thdr.intro.magic != MC_SERVICE_HEADER_MAGIC_LE)) {
+		mc_dev_notice("header: invalid magic");
+		return ERR_PTR(-EINVAL);
 	}
 
 	/* Allocate memory */
@@ -1097,7 +1104,7 @@ int mc_admin_init(struct cdev *cdev, int (*tee_start_cb)(void),
 	/* Register the call back for starting the secure world */
 	admin_ctx.tee_start_cb = tee_start_cb;
 	admin_ctx.tee_stop_cb = tee_stop_cb;
-	admin_ctx.last_start_ret = 1;
+	admin_ctx.last_start_ret = TEE_START_NOT_TRIGGERED;
 	return 0;
 }
 

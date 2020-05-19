@@ -33,6 +33,12 @@ MTK_GPU_DVFS_TYPE_LIST
 #undef MTK_GPU_DVFS_TYPE_ITEM
 MTK_GPU_DVFS_TYPE;
 
+#define GT_MAKE_BIT(start_bit, index) ((index##u) << (start_bit))
+enum GPU_TUNER_FEATURE {
+	MTK_GPU_TUNER_ANISOTROPIC_DISABLE = GT_MAKE_BIT(0, 1),
+	MTK_GPU_TUNER_TRILINEAR_DISABLE = GT_MAKE_BIT(1, 1),
+};
+
 
 #ifdef __cplusplus
 extern "C"
@@ -91,6 +97,8 @@ typedef struct {
 } GPU_PMU;
 bool mtk_get_gpu_pmu_init(GPU_PMU *pmus, int pmu_size, int *ret_size);
 bool mtk_get_gpu_pmu_swapnreset(GPU_PMU *pmus, int pmu_size);
+bool mtk_get_gpu_pmu_deinit(void);
+bool mtk_get_gpu_pmu_swapnreset_stop(void);
 
 typedef void (*gpu_power_change_notify_fp)(int power_on);
 
@@ -99,6 +107,14 @@ bool mtk_unregister_gpu_power_change(const char *name);
 
 /* GPU POWER NOTIFY should be called by GPU only */
 void mtk_notify_gpu_power_change(int power_on);
+
+/* Quality Tuner */
+bool mtk_gpu_tuner_hint_set(char *packagename,
+	enum GPU_TUNER_FEATURE eFeature);
+bool mtk_gpu_tuner_hint_restore(char *packagename,
+	enum GPU_TUNER_FEATURE eFeature);
+bool mtk_gpu_tuner_get_stauts_by_packagename(char *packagename, int *feature);
+
 
 #ifdef __cplusplus
 }

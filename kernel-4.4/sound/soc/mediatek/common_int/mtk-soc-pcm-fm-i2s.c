@@ -89,7 +89,7 @@ static int Audio_fm_i2s_Volume_Set(struct snd_kcontrol *kcontrol,
 	pr_warn("%s mfm_i2s_Volume = 0x%x\n", __func__, mfm_i2s_Volume);
 
 	if (GetFmI2sInPathEnable() == true)
-		SetHwDigitalGain(mfm_i2s_Volume, Soc_Aud_Hw_Digital_Gain_HW_DIGITAL_GAIN1);
+		SetHwDigitalGain(Soc_Aud_Digital_Block_HW_GAIN1, mfm_i2s_Volume);
 
 	return 0;
 }
@@ -164,7 +164,7 @@ static int mtk_pcm_fm_i2s_open(struct snd_pcm_substream *substream)
 	AudDrv_Clk_On();
 	AudDrv_I2S_Clk_On();
 
-	pr_warn("mtk_pcm_fm_i2s_open\n");
+	pr_debug("%s()\n", __func__);
 	runtime->hw = mtk_fm_i2s_hardware;
 	memcpy((void *)(&(runtime->hw)), (void *)&mtk_fm_i2s_hardware,
 	       sizeof(struct snd_pcm_hardware));
@@ -182,7 +182,7 @@ static int mtk_pcm_fm_i2s_open(struct snd_pcm_substream *substream)
 	}
 
 	SetFMEnableFlag(true);
-	pr_warn("mtk_pcm_fm_i2s_open return\n");
+	pr_debug("%s(), return\n", __func__);
 	return 0;
 }
 
@@ -233,10 +233,10 @@ static int mtk_pcm_fm_i2s_prepare(struct snd_pcm_substream *substream)
 		SetFmI2sConnection(Soc_Aud_InterCon_Connection);
 
 		/* Set HW_GAIN */
-		SetHwDigitalGainMode(Soc_Aud_Hw_Digital_Gain_HW_DIGITAL_GAIN1, runtime->rate,
+		SetHwDigitalGainMode(Soc_Aud_Digital_Block_HW_GAIN1, runtime->rate,
 				     0x40);
-		SetHwDigitalGainEnable(Soc_Aud_Hw_Digital_Gain_HW_DIGITAL_GAIN1, true);
-		SetHwDigitalGain(mfm_i2s_Volume, Soc_Aud_Hw_Digital_Gain_HW_DIGITAL_GAIN1);
+		SetHwDigitalGainEnable(Soc_Aud_Digital_Block_HW_GAIN1, true);
+		SetHwDigitalGain(Soc_Aud_Digital_Block_HW_GAIN1, mfm_i2s_Volume);
 
 		/* start I2S DAC out */
 		if (GetMemoryPathEnable(Soc_Aud_Digital_Block_I2S_OUT_DAC) == false) {

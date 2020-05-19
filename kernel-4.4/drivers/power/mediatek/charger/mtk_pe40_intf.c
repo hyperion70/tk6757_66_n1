@@ -55,12 +55,13 @@ int mtk_pe40_pd_1st_request(struct charger_manager *pinfo,
 {
 	unsigned int oldmA;
 	int ret;
-	int mivr = 4500;
+	int mivr;
 
 	chr_err("pe40_pd_req:vbus:%d ibus:%d input_current:%d\n",
 		adapter_mv, adapter_ma, ma);
 
-	charger_dev_set_mivr(pinfo->chg1_dev, 4500000);
+	mivr = pinfo->data.min_charger_voltage / 1000;
+	charger_dev_set_mivr(pinfo->chg1_dev, pinfo->data.min_charger_voltage);
 
 	charger_dev_get_input_current(pinfo->chg1_dev, &oldmA);
 	oldmA = oldmA / 1000;
@@ -73,7 +74,7 @@ int mtk_pe40_pd_1st_request(struct charger_manager *pinfo,
 	if (oldmA < ma)
 		charger_dev_set_input_current(pinfo->chg1_dev, ma * 1000);
 
-	if ((adapter_mv - PE40_VBUS_IR_DROP_THRESHOLD) > 4500)
+	if ((adapter_mv - PE40_VBUS_IR_DROP_THRESHOLD) > mivr)
 		mivr = adapter_mv - PE40_VBUS_IR_DROP_THRESHOLD;
 
 	charger_dev_set_mivr(pinfo->chg1_dev, mivr * 1000);
@@ -88,12 +89,13 @@ int mtk_pe40_pd_request(struct charger_manager *pinfo,
 {
 	unsigned int oldmA;
 	int ret;
-	int mivr = 4500;
+	int mivr;
 
 	chr_err("pe40_pd_req:vbus:%d ibus:%d input_current:%d\n",
 		adapter_mv, adapter_ma, ma);
 
-	charger_dev_set_mivr(pinfo->chg1_dev, 4500000);
+	mivr = pinfo->data.min_charger_voltage / 1000;
+	charger_dev_set_mivr(pinfo->chg1_dev, pinfo->data.min_charger_voltage);
 
 	charger_dev_get_input_current(pinfo->chg1_dev, &oldmA);
 	oldmA = oldmA / 1000;
@@ -103,7 +105,7 @@ int mtk_pe40_pd_request(struct charger_manager *pinfo,
 	if (oldmA < ma)
 		charger_dev_set_input_current(pinfo->chg1_dev, ma * 1000);
 
-	if ((adapter_mv - PE40_VBUS_IR_DROP_THRESHOLD) > 4500)
+	if ((adapter_mv - PE40_VBUS_IR_DROP_THRESHOLD) > mivr)
 		mivr = adapter_mv - PE40_VBUS_IR_DROP_THRESHOLD;
 
 	charger_dev_set_mivr(pinfo->chg1_dev, mivr * 1000);
@@ -121,10 +123,12 @@ void mtk_pe40_reset(struct charger_manager *pinfo, bool enable)
 
 	if (pe40->is_connect == true) {
 		tcpm_set_pd_charging_policy(pinfo->tcpc, DPM_CHARGING_POLICY_VSAFE5V, NULL);
-		charger_dev_set_mivr(pinfo->chg1_dev, 4500000);
+		charger_dev_set_mivr(pinfo->chg1_dev, pinfo->data.min_charger_voltage);
 		charger_enable_vbus_ovp(pinfo, true);
 		pinfo->polling_interval = 10;
 		swchgalg->state = CHR_CC;
+		chr_err("set TD true\n");
+		charger_dev_enable_termination(pinfo->chg1_dev, true);
 	}
 
 	pe40->cap.nr = 0;
@@ -173,9 +177,13 @@ void mtk_pe40_init_cap(struct charger_manager *info)
 	int idx = 0;
 	int i;
 	struct pe40_power_cap *pe40_cap;
+	struct mtk_pe40 *pe40;
 
 	if (info->tcpc == NULL)
 		return;
+
+	pe40 = &info->pe4;
+	pe40->max_vbus = PE40_MAX_VBUS;
 
 	pe40_cap = &info->pe4.cap;
 	while (1) {
@@ -187,20 +195,27 @@ void mtk_pe40_init_cap(struct charger_manager *info)
 			break;
 		}
 
+		pe40_cap->pwr_limit[idx] = cap.pwr_limit;
 		pe40_cap->ma[idx] = cap.ma;
 		pe40_cap->max_mv[idx] = cap.max_mv;
 		pe40_cap->min_mv[idx] = cap.min_mv;
 		pe40_cap->maxwatt[idx] = cap.max_mv * cap.ma;
 		pe40_cap->minwatt[idx] = cap.min_mv * cap.ma;
+		if (cap.pwr_limit == 1)
+			pe40->max_vbus = 9000;
 		idx++;
-		chr_err("pps_boundary[%d], %d mv ~ %d mv, %d ma\n", cap_i, cap.min_mv, cap.max_mv, cap.ma);
+		chr_err("pps_boundary[%d], %d mv ~ %d mv, %d ma pl:%d\n",
+			cap_i, cap.min_mv, cap.max_mv, cap.ma, cap.pwr_limit);
 	}
 
 	pe40_cap->nr = idx;
 
 	for (i = 0; i < pe40_cap->nr; i++) {
-		chr_err("pps_cap[%d:%d], %d mv ~ %d mv, %d ma\n", i, (int)pe40_cap->nr,
-			pe40_cap->min_mv[i], pe40_cap->max_mv[i], pe40_cap->ma[i]);
+		chr_err("pps_cap[%d:%d], %d mv ~ %d mv, %d ma pl:%d\n", i, (int)pe40_cap->nr,
+			pe40_cap->min_mv[i],
+			pe40_cap->max_mv[i],
+			pe40_cap->ma[i],
+			cap.pwr_limit);
 	}
 
 	if (cap_i == 0)
@@ -353,7 +368,7 @@ bool mtk_pe40_is_ready(struct charger_manager *pinfo)
 	pdata = &pinfo->chg1_data;
 
 	ret = charger_dev_get_ibus(pinfo->chg1_dev, &ibus);
-	chr_err("mtk_pe40_is_ready:%d hv:%d thermal:%d,%d tmp:%d,%d,%d pps:%d enable:%d ibus:%d\n",
+	chr_err("pe40_ready:%d hv:%d thermal:%d,%d tmp:%d,%d,%d pps:%d en:%d ibus:%d %d\n",
 		pinfo->enable_pe_4,
 		pinfo->enable_hv_charging,
 		pdata->thermal_charging_current_limit,
@@ -363,7 +378,8 @@ bool mtk_pe40_is_ready(struct charger_manager *pinfo)
 		LOW_TEMP_TO_ENTER_PE40,
 		mtk_is_TA_support_pd_pps(pinfo),
 		mtk_pe40_get_is_enable(pinfo),
-		ret);
+		ret,
+		pinfo->data.pe40_stop_battery_soc);
 
 	if (pinfo->enable_pe_4 == false ||
 		pinfo->enable_hv_charging == false ||
@@ -372,6 +388,10 @@ bool mtk_pe40_is_ready(struct charger_manager *pinfo)
 		tmp > HIGH_TEMP_TO_ENTER_PE40 ||
 		tmp < LOW_TEMP_TO_ENTER_PE40 ||
 		ret == -ENOTSUPP)
+		return false;
+
+	if (is_dual_charger_supported(pinfo) == true &&
+		battery_get_bat_soc() >= pinfo->data.pe40_stop_battery_soc)
 		return false;
 
 	if (mtk_is_TA_support_pd_pps(pinfo) == true)
@@ -404,6 +424,7 @@ int mtk_pe40_get_init_watt(struct charger_manager *pinfo)
 	struct charger_data *pdata;
 	int vbus1, ibus1;
 	int vbus2, ibus2;
+	int vbat1, vbat2;
 	int voltage = 0, input_current = 1000, actual_current = 0;
 	int voltage1 = 0, adapter_ibus;
 	bool is_enable = false, is_chip_enable = false;
@@ -429,6 +450,7 @@ int mtk_pe40_get_init_watt(struct charger_manager *pinfo)
 	charger_dev_get_ibus(pinfo->chg1_dev, &ibus1);
 	vbus1 = battery_get_vbus();
 	ibus1 = ibus1 / 1000;
+	vbat1 = battery_get_bat_voltage();
 	voltage1 = voltage;
 
 	voltage = 0;
@@ -448,15 +470,16 @@ int mtk_pe40_get_init_watt(struct charger_manager *pinfo)
 		charger_dev_get_ibus(pinfo->chg1_dev, &ibus2);
 		vbus2 = battery_get_vbus();
 		ibus2 = ibus2 / 1000;
+		vbat2 = battery_get_bat_voltage();
 
 		if (is_dual_charger_supported(pinfo) == true) {
 			charger_dev_is_enabled(pinfo->chg2_dev, &is_enable);
 			charger_dev_is_chip_enabled(pinfo->chg2_dev, &is_chip_enable);
 		}
 
-		chr_err("[pe40_vbus] vbus1:%d ibus1:%d vbus2:%d ibus2:%d watt:%d en:%d %d\n",
+		chr_err("[pe40_vbus] vbus1:%d ibus1:%d vbus2:%d ibus2:%d watt:%d en:%d %d vbat:%d %d\n",
 			vbus1, ibus1, vbus2, ibus2, voltage1 * ibus1, is_enable,
-			is_chip_enable);
+			is_chip_enable, vbat1, vbat2);
 	}
 
 	return voltage1 * ibus1;
@@ -484,6 +507,9 @@ int mtk_pe40_init_state(struct charger_manager *pinfo)
 
 	if (pinfo->enable_hv_charging == false)
 		goto disable_hv;
+
+	chr_err("set TD false\n");
+	charger_dev_enable_termination(pinfo->chg1_dev, false);
 
 	charger_enable_vbus_ovp(pinfo, false);
 
@@ -515,12 +541,14 @@ int mtk_pe40_init_state(struct charger_manager *pinfo)
 	}
 	msleep(500);
 
-
+	cap.output_ma = 0;
+	cap.output_mv = 0;
 	ret = pe40_tcpm_dpm_pd_get_pps_status(pinfo->tcpc, NULL, &cap);
 
 	pe40->can_query = true;
-	if (ret == 0 && cap.output_ma == -1 &&
-		cap.output_mv == -1)
+	if (ret == 0 && (cap.output_ma == -1 || cap.output_mv == -1))
+		pe40->can_query = false;
+	else if (ret == TCP_DPM_RET_NOT_SUPPORT)
 		pe40->can_query = false;
 	else if (ret != 0) {
 		chr_err("[pe40_i0] err:2 %d\n", ret);
@@ -747,22 +775,26 @@ int mtk_pe40_safety_check(struct charger_manager *pinfo)
 		}
 	}
 
-	if (TAstatus.event_flags & PD_STASUS_EVENT_OCP ||
-		TAstatus.event_flags & PD_STATUS_EVENT_OTP ||
-		TAstatus.event_flags & PD_STATUS_EVENT_OVP) {
+	if (ret == TCP_DPM_RET_NOT_SUPPORT)
+		chr_err("[pe40]TA tcpm_dpm_pd_get_status not support\n");
+	else {
+		if (TAstatus.event_flags & PD_STASUS_EVENT_OCP ||
+			TAstatus.event_flags & PD_STATUS_EVENT_OTP ||
+			TAstatus.event_flags & PD_STATUS_EVENT_OVP) {
 
-		chr_err("[pe40_err]TA protect: ocp:%d otp:%d ovp:%d\n",
+			chr_err("[pe40_err]TA protect: ocp:%d otp:%d ovp:%d\n",
+				TAstatus.event_flags & PD_STASUS_EVENT_OCP,
+				TAstatus.event_flags & PD_STATUS_EVENT_OTP,
+				TAstatus.event_flags & PD_STATUS_EVENT_OVP);
+			goto err;
+		}
+
+		chr_err("PD_TA:TA protect: ocp:%d otp:%d ovp:%d tmp:%d\n",
 			TAstatus.event_flags & PD_STASUS_EVENT_OCP,
 			TAstatus.event_flags & PD_STATUS_EVENT_OTP,
-			TAstatus.event_flags & PD_STATUS_EVENT_OVP);
-		goto err;
+			TAstatus.event_flags & PD_STATUS_EVENT_OVP,
+			TAstatus.internal_temp);
 	}
-
-	chr_err("PD_TA:TA protect: ocp:%d otp:%d ovp:%d tmp:%d\n",
-		TAstatus.event_flags & PD_STASUS_EVENT_OCP,
-		TAstatus.event_flags & PD_STATUS_EVENT_OTP,
-		TAstatus.event_flags & PD_STATUS_EVENT_OVP,
-		TAstatus.internal_temp);
 
 	tmp = battery_get_bat_temperature();
 

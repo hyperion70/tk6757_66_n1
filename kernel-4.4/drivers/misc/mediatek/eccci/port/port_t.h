@@ -27,6 +27,9 @@
 #define PORT_F_TX_DATA_FULLED	(1<<1)	/* reused for net tx, Data queue, same bit as RX_FULLED */
 #define PORT_F_TX_ACK_FULLED	(1<<8)
 
+/*Can be clean when MD is invalid*/
+#define PORT_F_CLEAN            (1<<9)
+
 enum {
 	PORT_DBG_DUMP_RILD = 0,
 	PORT_DBG_DUMP_AUDIO,
@@ -66,6 +69,7 @@ struct port_t {
 	/* device node related */
 	unsigned int minor;
 	char *name;
+	char *user;
 	/* un-initiallized in defination, always put them at the end */
 	int md_id;
 	void *port_proxy;

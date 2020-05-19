@@ -61,6 +61,7 @@ enum dvfs_kicker {
 	KIR_THERMAL,
 	KIR_FB,
 	KIR_FBT,
+	KIR_BOOTUP,
 	NUM_KICKER,
 
 	/* internal kicker */
@@ -160,5 +161,9 @@ extern void governor_autok_manager(void);
 extern bool governor_autok_check(int kicker);
 extern bool governor_autok_lock_check(int kicker, int opp);
 
+/* BOOTUP kicker init opp API */
+extern int vcorefs_bootup_get_init_opp(void);
+extern void  vcorefs_bootup_set_init_opp(int opp);
+extern bool vcorefs_request_init_opp(int kicker, int opp);
 
 #endif	/* _MT_VCOREFS_GOVERNOR_H */

@@ -14,3 +14,4 @@ config MTK_BLOCK_TAG
 	  IO statistics of each process. The Block Tag also provides
 	  utility functions to MMC/UFS Block IO log, such as throughput
 	  calculation, log printing, and ring trace handling.
+

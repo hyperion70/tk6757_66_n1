@@ -401,7 +401,7 @@ static void cldma_dump_queue_history(struct md_cd_ctrl *md_ctrl, unsigned int qn
 	ccci_md_dump_log_history(md_ctrl->md_id, &md_ctrl->traffic_info, 0, qno, qno);
 }
 
-static int cldma_queue_broadcast_state(struct md_cd_ctrl *md_ctrl, enum MD_STATE state, DIRECTION dir, int index)
+static int cldma_queue_broadcast_state(struct md_cd_ctrl *md_ctrl, enum HIF_STATE state, DIRECTION dir, int index)
 {
 	ccci_port_queue_status_notify(md_ctrl->md_id, md_ctrl->hif_id, index, dir, state);
 	return 0;
@@ -564,10 +564,7 @@ again:
 		ccci_h = *((struct ccci_header *)skb->data);
 #endif
 #endif
-		/* check wakeup source */
-		if (atomic_cmpxchg(&md_ctrl->wakeup_src, 1, 0) == 1)
-			CCCI_NOTICE_LOG(md_ctrl->md_id, TAG, "CLDMA_MD wakeup source:(%d/%d/%x)\n",
-							queue->index, ccci_h.channel, ccci_h.reserved);
+
 		CCCI_DEBUG_LOG(md_ctrl->md_id, TAG, "recv Rx msg (%x %x %x %x) rxq=%d len=%d\n",
 						ccci_h.data[0], ccci_h.data[1], *(((u32 *)&ccci_h) + 2),
 						ccci_h.reserved, queue->index,
@@ -853,9 +850,11 @@ static int cldma_gpd_bd_tx_collect(struct md_cd_queue *queue, int budget, int bl
 		ccci_h = (struct ccci_header *)skb_free->data;
 #endif
 		/* check wakeup source */
-		if (atomic_cmpxchg(&md_ctrl->wakeup_src, 1, 0) == 1)
-			CCCI_NOTICE_LOG(md_ctrl->md_id, TAG, "CLDMA_AP wakeup source:(%d/%d)\n",
-							queue->index, ccci_h->channel);
+		if (atomic_cmpxchg(&md_ctrl->wakeup_src, 1, 0) == 1) {
+			md_ctrl->wakeup_count++;
+			CCCI_NOTICE_LOG(md_ctrl->md_id, TAG, "CLDMA_AP wakeup source:(%d/%d)(%u)\n",
+							queue->index, ccci_h->channel, md_ctrl->wakeup_count);
+		}
 		CCCI_DEBUG_LOG(md_ctrl->md_id, TAG, "harvest Tx msg (%x %x %x %x) txq=%d len=%d\n",
 			     ccci_h->data[0], ccci_h->data[1], *(((u32 *) ccci_h) + 2), ccci_h->reserved, queue->index,
 			     tgpd->data_buff_len);
@@ -961,9 +960,11 @@ static int cldma_gpd_tx_collect(struct md_cd_queue *queue, int budget, int block
 		ccci_h = (struct ccci_header *)skb_free->data;
 #endif
 		/* check wakeup source */
-		if (atomic_cmpxchg(&md_ctrl->wakeup_src, 1, 0) == 1)
-			CCCI_NOTICE_LOG(md_ctrl->md_id, TAG, "CLDMA_AP wakeup source:(%d/%d)\n",
-							queue->index, ccci_h->channel);
+		if (atomic_cmpxchg(&md_ctrl->wakeup_src, 1, 0) == 1) {
+			md_ctrl->wakeup_count++;
+			CCCI_NOTICE_LOG(md_ctrl->md_id, TAG, "CLDMA_AP wakeup source:(%d/%d)(%u)\n",
+							queue->index, ccci_h->channel, md_ctrl->wakeup_count);
+		}
 		CCCI_DEBUG_LOG(md_ctrl->md_id, TAG, "harvest Tx msg (%x %x %x %x) txq=%d len=%d\n",
 			     ccci_h->data[0], ccci_h->data[1], *(((u32 *) ccci_h) + 2), ccci_h->reserved, queue->index,
 			     skb_free->len);

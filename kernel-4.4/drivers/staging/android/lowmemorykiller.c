@@ -44,6 +44,12 @@
 #include <linux/notifier.h>
 #include <linux/freezer.h>
 
+#define MTK_LMK_USER_EVENT
+
+#ifdef MTK_LMK_USER_EVENT
+#include <linux/miscdevice.h>
+#endif
+
 #if defined(CONFIG_MTK_AEE_FEATURE) && defined(CONFIG_MTK_ENG_BUILD)
 #include <mt-plat/aee.h>
 #include <disp_assert_layer.h>
@@ -56,6 +62,12 @@ static u32 in_lowmem;
 
 #ifdef CONFIG_MTK_GPU_SUPPORT
 #include <mt-plat/mtk_gpu_utility.h>
+#endif
+
+#ifdef CONFIG_64BIT
+#define ENABLE_AMR_RAMSIZE	(0x80000)	/* > 2GB */
+#else
+#define ENABLE_AMR_RAMSIZE	(0x40000)	/* > 1GB */
 #endif
 
 static short lowmem_debug_adj;	/* default: 0 */
@@ -119,8 +131,59 @@ static unsigned long lowmem_count(struct shrinker *s,
 		global_page_state(NR_INACTIVE_FILE);
 }
 
+#ifdef MTK_LMK_USER_EVENT
+static const struct file_operations mtklmk_fops = {
+	.owner = THIS_MODULE,
+};
+
+static struct miscdevice mtklmk_misc = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = "mtklmk",
+	.fops = &mtklmk_fops,
+};
+
+static struct work_struct mtklmk_work;
+static int uevent_adj, uevent_minfree;
+static void mtklmk_async_uevent(struct work_struct *work)
+{
+#define MTKLMK_EVENT_LENGTH	(24)
+	char adj[MTKLMK_EVENT_LENGTH], free[MTKLMK_EVENT_LENGTH];
+	char *envp[3] = { adj, free, NULL };
+
+	snprintf(adj, MTKLMK_EVENT_LENGTH, "OOM_SCORE_ADJ=%d", uevent_adj);
+	snprintf(free, MTKLMK_EVENT_LENGTH, "MINFREE=%d", uevent_minfree);
+	kobject_uevent_env(&mtklmk_misc.this_device->kobj, KOBJ_CHANGE, envp);
+#undef MTKLMK_EVENT_LENGTH
+}
+
+static unsigned int mtklmk_initialized;
+static unsigned int mtklmk_uevent_timeout = 10000; /* ms */
+module_param_named(uevent_timeout, mtklmk_uevent_timeout, uint, 0644);
+static void mtklmk_uevent(int oom_score_adj, int minfree)
+{
+	static unsigned long last_time;
+	unsigned long timeout;
+
+	/* change to use jiffies */
+	timeout = msecs_to_jiffies(mtklmk_uevent_timeout);
+
+	if (!last_time)
+		last_time = jiffies - timeout;
+
+	if (time_before(jiffies, last_time + timeout))
+		return;
+
+	last_time = jiffies;
+
+	uevent_adj = oom_score_adj;
+	uevent_minfree = minfree;
+	schedule_work(&mtklmk_work);
+}
+#endif
+
 static void dump_memory_status(void)
 {
+	show_task_mem();
 	show_free_areas(0);
 #ifdef CONFIG_MTK_ION
 	/* Show ION status */
@@ -134,6 +197,10 @@ static void dump_memory_status(void)
 
 static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 {
+#define LOWMEM_P_STATE_D	(0x1)
+#define LOWMEM_P_STATE_R	(0x2)
+#define LOWMEM_P_STATE_OTHER	(0x4)
+
 	struct task_struct *tsk;
 	struct task_struct *selected = NULL;
 	unsigned long rem = 0;
@@ -153,11 +220,12 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	int print_extra_info = 0;
 	static unsigned long lowmem_print_extra_info_timeout;
 	enum zone_type high_zoneidx = gfp_zone(sc->gfp_mask);
-	int d_state_is_found = 0;
+	int p_state_is_found = 0;
 	int unreclaimable_zones = 0;
-#if defined(CONFIG_SWAP) && defined(CONFIG_MTK_GMO_RAM_OPTIMIZE)
+#ifdef CONFIG_SWAP
 	int to_be_aggressive = 0;
 	unsigned long swap_pages = 0;
+	short amr_adj = OOM_SCORE_ADJ_MAX + 1;
 #endif
 #ifdef CONFIG_MTK_ENG_BUILD
 	int pid_dump = -1; /* process to be dump */
@@ -246,7 +314,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	}
 #endif
 
-#if defined(CONFIG_SWAP) && defined(CONFIG_MTK_GMO_RAM_OPTIMIZE)
+#ifdef CONFIG_SWAP
 	swap_pages = atomic_long_read(&nr_swap_pages);
 	/* More than 1/2 swap usage */
 	if (swap_pages * 2 < total_swap_pages)
@@ -254,6 +322,17 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	/* More than 3/4 swap usage */
 	if (swap_pages * 4 < total_swap_pages)
 		to_be_aggressive++;
+
+#ifndef CONFIG_MTK_GMO_RAM_OPTIMIZE
+	/* Try to enable AMR when we have enough memory */
+	if (totalram_pages < ENABLE_AMR_RAMSIZE) {
+		to_be_aggressive = 0;
+	} else {
+		i = lowmem_adj_size - 1 - to_be_aggressive;
+		if (to_be_aggressive > 0 && i >= 0)
+			amr_adj = lowmem_adj[i];
+	}
+#endif
 #endif
 
 	if (lowmem_adj_size < array_size)
@@ -263,7 +342,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	for (i = 0; i < array_size; i++) {
 		minfree = lowmem_minfree[i];
 		if (other_free < minfree && other_file < minfree) {
-#if defined(CONFIG_SWAP) && defined(CONFIG_MTK_GMO_RAM_OPTIMIZE)
+#ifdef CONFIG_SWAP
 			if (to_be_aggressive != 0 && i > 3) {
 				i -= to_be_aggressive;
 				if (i < 3)
@@ -274,6 +353,10 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 			break;
 		}
 	}
+
+#if defined(CONFIG_SWAP) && !defined(CONFIG_MTK_GMO_RAM_OPTIMIZE)
+	min_score_adj = min(min_score_adj, amr_adj);
+#endif
 
 	/* Promote its priority */
 	if (unreclaimable_zones > 0)
@@ -304,7 +387,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	if (output_expect(enable_candidate_log)) {
 		if (min_score_adj <= lowmem_debug_adj) {
 			if (time_after_eq(jiffies, lowmem_print_extra_info_timeout)) {
-				lowmem_print_extra_info_timeout = jiffies + HZ;
+				lowmem_print_extra_info_timeout = jiffies + HZ * 2;
 				print_extra_info = 1;
 			}
 		}
@@ -349,18 +432,34 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		if (!p)
 			continue;
 
-#ifdef CONFIG_MTK_ENG_BUILD
+#ifdef CONFIG_MTK_AEE_FEATURE
 		if (p->signal->flags & SIGNAL_GROUP_COREDUMP) {
 			task_unlock(p);
 			continue;
 		}
 #endif
+
+		/* Bypass process which has been selected */
+		if (task_lmk_waiting(p)) {
+#ifdef CONFIG_MTK_ENG_BUILD
+			pr_info_ratelimited("%d (%s) is dying, find next candidate\n",
+					    p->pid, p->comm);
+#endif
+			if (p->state == TASK_RUNNING)
+				p_state_is_found |= LOWMEM_P_STATE_R;
+			else
+				p_state_is_found |= LOWMEM_P_STATE_OTHER;
+
+			task_unlock(p);
+			continue;
+		}
+
 		/* Bypass D-state process */
 		if (p->state & TASK_UNINTERRUPTIBLE) {
 			lowmem_print(2, "lowmem_scan filter D state process: %d (%s) state:0x%lx\n",
 				     p->pid, p->comm, p->state);
 			task_unlock(p);
-			d_state_is_found = 1;
+			p_state_is_found |= LOWMEM_P_STATE_D;
 			continue;
 		}
 
@@ -454,14 +553,22 @@ log_again:
 		lowmem_print(1, "Killing '%s' (%d), adj %hd, state(%ld)\n"
 				"   to free %ldkB on behalf of '%s' (%d) because\n"
 				"   cache %ldkB is below limit %ldkB for oom_score_adj %hd\n"
-				"   Free memory is %ldkB above reserved\n",
+				"   Free memory is %ldkB above reserved\n"
+#ifdef CONFIG_SWAP
+				"   (decrease %d level, amr_adj %hd)\n"
+#endif
+				,
 			     selected->comm, selected->pid,
 			     selected_oom_score_adj, selected->state,
 			     selected_tasksize * (long)(PAGE_SIZE / 1024),
 			     current->comm, current->pid,
 			     cache_size, cache_limit,
 			     min_score_adj,
-			     free);
+			     free
+#ifdef CONFIG_SWAP
+			     , to_be_aggressive, amr_adj
+#endif
+			     );
 
 		lowmem_deathpending_timeout = jiffies + LOWMEM_DEATHPENDING_TIMEOUT;
 
@@ -516,8 +623,12 @@ log_again:
 #endif
 		rem += selected_tasksize;
 	} else {
-		if (d_state_is_found == 1)
+		if (p_state_is_found & LOWMEM_P_STATE_D)
 			lowmem_print(2, "No selected (full of D-state processes at %d)\n", (int)min_score_adj);
+		if (p_state_is_found & LOWMEM_P_STATE_R)
+			lowmem_print(2, "No selected (full of R-state processes at %d)\n", (int)min_score_adj);
+		if (p_state_is_found & LOWMEM_P_STATE_OTHER)
+			lowmem_print(2, "No selected (full of OTHER-state processes at %d)\n", (int)min_score_adj);
 	}
 
 	lowmem_print(4, "lowmem_scan %lu, %x, return %lu\n",
@@ -530,7 +641,17 @@ log_again:
 		if (print_extra_info)
 			dump_memory_status();
 
+#ifdef MTK_LMK_USER_EVENT
+	/* Send uevent if needed */
+	if (mtklmk_initialized && current_is_kswapd() && mtklmk_uevent_timeout)
+		mtklmk_uevent(min_score_adj, minfree);
+#endif
+
 	return rem;
+
+#undef LOWMEM_P_STATE_D
+#undef LOWMEM_P_STATE_R
+#undef LOWMEM_P_STATE_OTHER
 }
 
 static struct shrinker lowmem_shrinker = {
@@ -542,9 +663,21 @@ static struct shrinker lowmem_shrinker = {
 static int __init lowmem_init(void)
 {
 #if defined(CONFIG_ZRAM) && defined(CONFIG_MTK_GMO_RAM_OPTIMIZE)
-	vm_swappiness = 150;
+	vm_swappiness = 100;
 #endif
 	register_shrinker(&lowmem_shrinker);
+
+#ifdef MTK_LMK_USER_EVENT
+	/* initialize work for uevent */
+	INIT_WORK(&mtklmk_work, mtklmk_async_uevent);
+
+	/* register as misc device */
+	if (!misc_register(&mtklmk_misc)) {
+		pr_info("%s: successful to register misc device!\n", __func__);
+		mtklmk_initialized = 1;
+	}
+#endif
+
 	return 0;
 }
 device_initcall(lowmem_init);
@@ -712,4 +845,3 @@ module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
 module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);
 module_param_named(debug_adj, lowmem_debug_adj, short, S_IRUGO | S_IWUSR);
 module_param_named(candidate_log, enable_candidate_log, uint, S_IRUGO | S_IWUSR);
-

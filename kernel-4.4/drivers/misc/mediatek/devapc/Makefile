@@ -14,11 +14,9 @@
 LOCAL_PATH := $(srctree)/drivers/misc/mediatek/devapc
 PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
 
-ifeq ($(TARGET_BUILD_VARIANT), eng)
-subdir-ccflags-y += -DDBG_ENABLE
-endif
+subdir-ccflags-$(CONFIG_MTK_ENG_BUILD) += -DDBG_ENABLE
 
-$(info PLATFORM = $(PLATFORM))
+#$(info PLATFORM = $(PLATFORM))
 
 ifneq ($(wildcard $(LOCAL_PATH)/$(PLATFORM)/Makefile),)
    $(info DEVAPC platform code exists...)

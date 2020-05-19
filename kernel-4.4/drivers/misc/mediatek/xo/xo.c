@@ -445,16 +445,73 @@ static ssize_t store_xo_capid(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR(xo_capid, 0664, show_xo_capid, store_xo_capid);
 
+static uint32_t xo_capid_add_offset(uint32_t capid, uint32_t offset)
+{
+	uint32_t capid_sign, capid_value;
+	uint32_t offset_sign, offset_value;
+	int32_t tmp_value;
+	uint32_t final_capid;
+
+	capid_sign = !!(capid & 0x40);
+	capid_value = capid & 0x3F;
+	offset_sign = !!(offset & 0x40);
+	offset_value = offset & 0x3F;
+
+	/* process plus/minus overflow */
+	if (capid_sign ^ offset_sign) {	/* minus */
+		tmp_value = (int32_t)capid_value - (int32_t)offset_value;
+		if (tmp_value < 0) {
+			capid_sign = !capid_sign;
+			tmp_value = -tmp_value;
+		}
+		final_capid = (capid_sign << 6) | (uint32_t)tmp_value;
+	} else {	/* plus */
+		tmp_value = (int32_t)capid_value + (int32_t)offset_value;
+		if (tmp_value > 0x3F) { /* value overflow */
+			final_capid = (capid_sign << 6) | 0x3F;
+		} else {
+			final_capid = (capid_sign << 6) | (uint32_t)tmp_value;
+		}
+	}
+	return final_capid;
+}
+
+static uint32_t xo_capid_sub_offset(uint32_t cur_capid, uint32_t ori_capid)
+{
+	uint32_t cur_capid_sign, cur_capid_value;
+	uint32_t ori_capid_sign, ori_capid_value;
+	int32_t tmp_value;
+	uint32_t final_offset;
+
+	cur_capid_sign = !!(cur_capid & 0x40);
+	cur_capid_value = cur_capid & 0x3F;
+	ori_capid_sign = !!(ori_capid & 0x40);
+	ori_capid_value = ori_capid & 0x3F;
+
+	/* process plus/minus error */
+	if (cur_capid_sign ^ ori_capid_sign) {	/* plus */
+		tmp_value = (int32_t)cur_capid_value + (int32_t)ori_capid_value;
+		if (tmp_value > 0x3F) { /* value overflow */
+			final_offset = (cur_capid_sign << 6) | 0x3F;
+		} else {
+			final_offset = (cur_capid_sign << 6) | (uint32_t)tmp_value;
+		}
+	} else {	/* minus */
+		tmp_value = (int32_t)cur_capid_value - (int32_t)ori_capid_value;
+		if (tmp_value < 0) {
+			cur_capid_sign = !cur_capid_sign;
+			tmp_value = -tmp_value;
+		}
+		final_offset = (cur_capid_sign << 6) | (uint32_t)tmp_value;
+	}
+	return final_offset;
+}
+
 static ssize_t show_xo_board_offset(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	uint32_t offset;
 
-	if (xo_inst->cur_xo_capid > xo_inst->ori_xo_capid)
-		offset = xo_inst->cur_xo_capid - xo_inst->ori_xo_capid;
-	else{
-		offset = xo_inst->ori_xo_capid - xo_inst->cur_xo_capid;
-		offset |= 0x40;
-	}
+	offset = xo_capid_sub_offset(xo_inst->cur_xo_capid, xo_inst->ori_xo_capid);
 
 	return sprintf(buf, "xo capid offset: 0x%x\n", offset);
 
@@ -482,12 +539,7 @@ static ssize_t store_xo_board_offset(struct device *dev, struct device_attribute
 		capid = xo_inst->ori_xo_capid;
 		pr_notice("original cap code: 0x%x\n", capid);
 
-		/* check sign bit */
-		if (offset & 0x40)
-			capid -= (offset & 0x3F);
-		else
-			capid += (offset & 0x3F);
-
+		capid = xo_capid_add_offset(capid, offset);
 		XO_trim_write(capid);
 		mdelay(10);
 		xo_inst->cur_xo_capid = XO_trim_read();

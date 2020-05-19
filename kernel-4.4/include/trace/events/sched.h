@@ -77,6 +77,7 @@ TRACE_EVENT(sched_kthread_stop_ret,
 static inline long __trace_sched_switch_state(bool preempt, struct task_struct *p);
 #endif
 
+extern bool system_overutilized(int cpu);
 /*
  * Tracepoint for waking up a task:
  */
@@ -106,7 +107,7 @@ DECLARE_EVENT_CLASS(sched_wakeup_template,
 		__entry->target_cpu	= task_cpu(p);
 #ifdef CONFIG_MTK_SCHED_TRACERS
 		__entry->state	= __trace_sched_switch_state(false, p);
-		__entry->overutil = task_rq(p)->rd->overutilized;
+		__entry->overutil = system_overutilized(task_rq(p)->cpu);
 #endif
 	),
 
@@ -887,6 +888,30 @@ TRACE_EVENT(sched_wake_idle_without_ipi,
 	TP_printk("cpu=%d", __entry->cpu)
 );
 
+TRACE_EVENT(sched_contrib_scale_f,
+
+	TP_PROTO(int cpu, unsigned long freq_scale_factor,
+		 unsigned long cpu_scale_factor),
+
+	TP_ARGS(cpu, freq_scale_factor, cpu_scale_factor),
+
+	TP_STRUCT__entry(
+		__field(int, cpu)
+		__field(unsigned long, freq_scale_factor)
+		__field(unsigned long, cpu_scale_factor)
+	),
+
+	TP_fast_assign(
+		__entry->cpu = cpu;
+		__entry->freq_scale_factor = freq_scale_factor;
+		__entry->cpu_scale_factor = cpu_scale_factor;
+	),
+
+	TP_printk("cpu=%d freq_scale_factor=%lu cpu_scale_factor=%lu",
+		  __entry->cpu, __entry->freq_scale_factor,
+		  __entry->cpu_scale_factor)
+);
+
 #ifdef CONFIG_MTK_SCHED_TRACERS
 /*
  * Tracepoint for showing the result of task runqueue selection
@@ -1026,6 +1051,25 @@ TRACE_EVENT(sched_cpufreq_fastpath,
 
 );
 #endif
+TRACE_EVENT(sched_ctl_walt,
+		TP_PROTO(unsigned int user, int walted),
+
+		TP_ARGS(user, walted),
+
+		TP_STRUCT__entry(
+			__field(unsigned int, user)
+			__field(int, walted)
+			),
+		TP_fast_assign(
+			__entry->user		= user;
+			__entry->walted		= walted;
+			),
+
+		TP_printk("user_mask=0x%x walted=%d",
+			__entry->user,
+			__entry->walted
+		)
+);
 
 TRACE_EVENT(sched_heavy_task,
 		TP_PROTO(const char *s),
@@ -1421,9 +1465,9 @@ TRACE_EVENT(sched_boost_cpu,
 TRACE_EVENT(sched_tune_tasks_update,
 
 		TP_PROTO(struct task_struct *tsk, int cpu, int tasks, int idx,
-			int boost, int max_boost),
+			int boost, int max_boost, int capacity_min, int max_capacity_min),
 
-		TP_ARGS(tsk, cpu, tasks, idx, boost, max_boost),
+		TP_ARGS(tsk, cpu, tasks, idx, boost, max_boost, capacity_min, max_capacity_min),
 
 		TP_STRUCT__entry(
 			__array(char,	comm,	TASK_COMM_LEN)
@@ -1433,6 +1477,8 @@ TRACE_EVENT(sched_tune_tasks_update,
 			__field(int,		idx)
 			__field(int,		boost)
 			__field(int,		max_boost)
+			__field(int,		capacity_min)
+			__field(int,		max_capacity_min)
 		),
 
 		TP_fast_assign(
@@ -1443,12 +1489,15 @@ TRACE_EVENT(sched_tune_tasks_update,
 			__entry->idx		= idx;
 			__entry->boost		= boost;
 			__entry->max_boost	= max_boost;
+			__entry->capacity_min	= capacity_min;
+			__entry->max_capacity_min = max_capacity_min;
 		),
 
-		TP_printk("pid=%d comm=%s cpu=%d tasks=%d idx=%d boost=%d max_boost=%d",
+		TP_printk("pid=%d comm=%s cpu=%d tasks=%d idx=%d boost=%d max_boost=%d cap_min=%d max_cap_min=%d",
 			__entry->pid, __entry->comm,
 			__entry->cpu, __entry->tasks, __entry->idx,
-			__entry->boost, __entry->max_boost)
+			__entry->boost, __entry->max_boost,
+			__entry->capacity_min, __entry->max_capacity_min)
 		);
 
 /*
@@ -1595,6 +1644,33 @@ TRACE_EVENT(sched_tune_filter,
 			__entry->nrg_gain, __entry->cap_gain,
 			__entry->payoff, __entry->region)
 );
+
+/*
+ * Tracepoint for showing tracked cfs runqueue runnable load.
+ */
+TRACE_EVENT(sched_cfs_runnable_load,
+
+		TP_PROTO(int cpu_id, int cpu_load, int cpu_ntask),
+
+		TP_ARGS(cpu_id, cpu_load, cpu_ntask),
+
+		TP_STRUCT__entry(
+			__field(int, cpu_id)
+			__field(int, cpu_load)
+			__field(int, cpu_ntask)
+			),
+
+		TP_fast_assign(
+			__entry->cpu_id = cpu_id;
+			__entry->cpu_load = cpu_load;
+			__entry->cpu_ntask = cpu_ntask;
+			),
+
+		TP_printk("cpu-id=%d cfs-load=%4d, cfs-ntask=%2d",
+			__entry->cpu_id,
+			__entry->cpu_load,
+			__entry->cpu_ntask)
+		);
 
 #ifdef CONFIG_HMP_TRACER
 /*
@@ -1872,33 +1948,6 @@ TRACE_EVENT(sched_cfs_load_update,
 				__entry->tsk_load,
 				__entry->tsk_delta,
 				__entry->comm)
-		);
-
-/*
- * Tracepoint for showing tracked cfs runqueue runnable load.
- */
-TRACE_EVENT(sched_cfs_runnable_load,
-
-		TP_PROTO(int cpu_id, int cpu_load, int cpu_ntask),
-
-		TP_ARGS(cpu_id, cpu_load, cpu_ntask),
-
-		TP_STRUCT__entry(
-			__field(int, cpu_id)
-			__field(int, cpu_load)
-			__field(int, cpu_ntask)
-			),
-
-		TP_fast_assign(
-			__entry->cpu_id = cpu_id;
-			__entry->cpu_load = cpu_load;
-			__entry->cpu_ntask = cpu_ntask;
-			),
-
-		TP_printk("cpu-id=%d cfs-load=%4d, cfs-ntask=%2d",
-			__entry->cpu_id,
-			__entry->cpu_load,
-			__entry->cpu_ntask)
 		);
 
 /*

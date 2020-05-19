@@ -57,6 +57,7 @@
 #define FORCE_NOTHING           (0x0)
 
 static u32 *sg_msdc_multi_buffer;
+#define SG_MSDC_MULTI_BUFFER_SIZE (64 * 1024)
 
 static int simple_sd_open(struct inode *inode, struct file *file)
 {
@@ -161,7 +162,8 @@ int simple_sd_ioctl_rw(struct msdc_ioctl *msdc_ctl)
 	mmc = host_ctl->mmc;
 
 	if ((msdc_ctl->total_size <= 0) ||
-	    (msdc_ctl->total_size > host_ctl->mmc->max_seg_size))
+	    (msdc_ctl->total_size > host_ctl->mmc->max_seg_size) ||
+	    (msdc_ctl->total_size > SG_MSDC_MULTI_BUFFER_SIZE))
 		return -EINVAL;
 	total_size = msdc_ctl->total_size;
 
@@ -439,7 +441,7 @@ static int simple_sd_ioctl_get_csd(struct msdc_ioctl *msdc_ctl)
 
 static int simple_sd_ioctl_get_bootpart(struct msdc_ioctl *msdc_ctl)
 {
-	u8 *l_buf;
+	u8 *l_buf = NULL;
 	struct msdc_host *host_ctl;
 	struct mmc_host *mmc;
 	int ret = 0;
@@ -493,7 +495,7 @@ end:
 
 static int simple_sd_ioctl_set_bootpart(struct msdc_ioctl *msdc_ctl)
 {
-	u8 *l_buf;
+	u8 *l_buf = NULL;
 	struct msdc_host *host_ctl;
 	struct mmc_host *mmc;
 	int ret = 0;
@@ -615,6 +617,10 @@ static int simple_sd_ioctl_set_driving(struct msdc_ioctl *msdc_ctl)
 	void __iomem *base;
 	struct msdc_host *host;
 
+	/* cannot access ioctl except of Engineer Mode */
+	if (strcmp(current->comm, "em_svr"))
+		return -EINVAL;
+
 	host = mtk_msdc_host[msdc_ctl->host_num];
 	if (host == NULL)
 		return -EINVAL;
@@ -731,6 +737,7 @@ end:
 	return 0;
 }
 
+#ifdef CONFIG_PWR_LOSS_MTK_TEST
 /* These definitiona and functions are coded by reference to
  * mmc_blk_issue_discard_rq()@block.c
  */
@@ -799,6 +806,7 @@ out:
 	return msdc_ctl->result;
 
 }
+#endif
 
 static int simple_mmc_erase_partition(unsigned char *name)
 {
@@ -844,7 +852,7 @@ static int simple_mmc_erase_partition_wrap(struct msdc_ioctl *msdc_ctl)
 static long simple_sd_ioctl(struct file *file, unsigned int cmd,
 	unsigned long arg)
 {
-	struct msdc_ioctl msdc_ctl;
+	struct msdc_ioctl *msdc_ctl;
 	struct msdc_host *host;
 	int ret = 0;
 
@@ -888,74 +896,87 @@ static long simple_sd_ioctl(struct file *file, unsigned int cmd,
 		return ret;
 	}
 
-	if (copy_from_user(&msdc_ctl, (struct msdc_ioctl *)arg,
+	msdc_ctl = kmalloc(sizeof(*msdc_ctl), GFP_KERNEL);
+	if (!msdc_ctl)
+		return -ENOMEM;
+
+	if (copy_from_user(msdc_ctl, (struct msdc_ioctl *)arg,
 		sizeof(struct msdc_ioctl))) {
+		kfree(msdc_ctl);
 		return -EFAULT;
 	}
 
-	if (msdc_ctl.opcode != MSDC_ERASE_PARTITION) {
-		if ((msdc_ctl.host_num < 0)
-		 || (msdc_ctl.host_num >= HOST_MAX_NUM)) {
-			pr_notice("invalid host num: %d\n", msdc_ctl.host_num);
+	if (msdc_ctl->opcode != MSDC_ERASE_PARTITION) {
+		if ((msdc_ctl->host_num < 0)
+		 || (msdc_ctl->host_num >= HOST_MAX_NUM)) {
+			pr_notice("invalid host num: %d\n", msdc_ctl->host_num);
+			kfree(msdc_ctl);
 			return -EINVAL;
 		}
 	}
 
-	switch (msdc_ctl.opcode) {
+	switch (msdc_ctl->opcode) {
 	case MSDC_SINGLE_READ_WRITE:
 	case MSDC_MULTIPLE_READ_WRITE:
-		msdc_ctl.result = simple_sd_ioctl_rw(&msdc_ctl);
+		msdc_ctl->result = simple_sd_ioctl_rw(msdc_ctl);
 		break;
 	case MSDC_GET_CID:
-		msdc_ctl.result = simple_sd_ioctl_get_cid(&msdc_ctl);
+		msdc_ctl->result = simple_sd_ioctl_get_cid(msdc_ctl);
 		break;
 	case MSDC_GET_CSD:
-		msdc_ctl.result = simple_sd_ioctl_get_csd(&msdc_ctl);
+		msdc_ctl->result = simple_sd_ioctl_get_csd(msdc_ctl);
 		break;
 	case MSDC_DRIVING_SETTING:
-		if (msdc_ctl.iswrite == 1) {
-			msdc_ctl.result =
-				simple_sd_ioctl_set_driving(&msdc_ctl);
+		if (msdc_ctl->iswrite == 1) {
+			msdc_ctl->result =
+				simple_sd_ioctl_set_driving(msdc_ctl);
 		} else {
-			msdc_ctl.result =
-				simple_sd_ioctl_get_driving(&msdc_ctl);
+			msdc_ctl->result =
+				simple_sd_ioctl_get_driving(msdc_ctl);
 		}
 		break;
 	case MSDC_ERASE_PARTITION:
 		/* Used by ftp_emmc.c of factory and roots.cpp of recovery */
-		msdc_ctl.result =
-			simple_mmc_erase_partition_wrap(&msdc_ctl);
+		msdc_ctl->result =
+			simple_mmc_erase_partition_wrap(msdc_ctl);
 		break;
+#ifdef CONFIG_PWR_LOSS_MTK_TEST
 	case MSDC_ERASE_SELECTED_AREA:
-		msdc_ctl.result = simple_sd_ioctl_erase_selected_area(
-			&msdc_ctl);
+		msdc_ctl->result = simple_sd_ioctl_erase_selected_area(
+			msdc_ctl);
 		break;
+#endif
 	case MSDC_SD30_MODE_SWITCH:
 		pr_notice("obsolete opcode!!\n");
+		kfree(msdc_ctl);
 		return -EINVAL;
 	case MSDC_GET_BOOTPART:
-		msdc_ctl.result =
-			simple_sd_ioctl_get_bootpart(&msdc_ctl);
+		msdc_ctl->result =
+			simple_sd_ioctl_get_bootpart(msdc_ctl);
 		break;
 	case MSDC_SET_BOOTPART:
-		msdc_ctl.result =
-			simple_sd_ioctl_set_bootpart(&msdc_ctl);
+		msdc_ctl->result =
+			simple_sd_ioctl_set_bootpart(msdc_ctl);
 		break;
 	case MSDC_GET_PARTSIZE:
-		msdc_ctl.result =
-			simple_sd_ioctl_get_partition_size(&msdc_ctl);
+		msdc_ctl->result =
+			simple_sd_ioctl_get_partition_size(msdc_ctl);
 		break;
 	default:
 		pr_notice("simple_sd_ioctl:invlalid opcode!!\n");
+		kfree(msdc_ctl);
 		return -EINVAL;
 	}
 
-	if (copy_to_user((struct msdc_ioctl *)arg, &msdc_ctl,
+	if (copy_to_user((struct msdc_ioctl *)arg, msdc_ctl,
 		sizeof(struct msdc_ioctl))) {
+		kfree(msdc_ctl);
 		return -EFAULT;
 	}
 
-	return msdc_ctl.result;
+	ret = msdc_ctl->result;
+	kfree(msdc_ctl);
+	return ret;
 }
 
 #ifdef CONFIG_COMPAT
@@ -1122,6 +1143,7 @@ static long simple_sd_compat_ioctl(struct file *file, unsigned int cmd,
 {
 	struct compat_simple_sd_ioctl *arg32;
 	struct msdc_ioctl *arg64;
+	compat_int_t k_opcode;
 	int err, ret;
 
 	if (!file->f_op || !file->f_op->unlocked_ioctl) {
@@ -1139,11 +1161,19 @@ static long simple_sd_compat_ioctl(struct file *file, unsigned int cmd,
 	if (arg64 == NULL)
 		return -EFAULT;
 
+	if (!access_ok(VERIFY_WRITE, arg32, sizeof(*arg32)) ||
+	     !access_ok(VERIFY_WRITE, arg64, sizeof(*arg64))) {
+		return -EFAULT;
+	}
+
 	err = compat_get_simple_ion_allocation(arg32, arg64);
 	if (err)
 		return err;
+	err = get_user(k_opcode, &(arg64->opcode));
+	if (err)
+		return err;
 
-	ret = file->f_op->unlocked_ioctl(file, arg64->opcode,
+	ret = file->f_op->unlocked_ioctl(file, (unsigned int)k_opcode,
 		(unsigned long)arg64);
 
 	err = compat_put_simple_ion_allocation(arg32, arg64);
@@ -1198,7 +1228,7 @@ static int __init simple_sd_init(void)
 {
 	int ret;
 
-	sg_msdc_multi_buffer = kmalloc(64 * 1024, GFP_KERNEL);
+	sg_msdc_multi_buffer = kmalloc(SG_MSDC_MULTI_BUFFER_SIZE, GFP_KERNEL);
 	if (sg_msdc_multi_buffer == NULL)
 		return 0;
 

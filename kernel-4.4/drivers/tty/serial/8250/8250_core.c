@@ -603,6 +603,7 @@ static void univ8250_console_write(struct console *co, const char *s,
 static int univ8250_console_setup(struct console *co, char *options)
 {
 	struct uart_port *port;
+	int retval;
 
 	/*
 	 * Check whether an invalid uart number has been specified, and
@@ -615,7 +616,10 @@ static int univ8250_console_setup(struct console *co, char *options)
 	/* link port to console */
 	port->cons = co;
 
-	return serial8250_console_setup(port, options, false);
+	retval = serial8250_console_setup(port, options, false);
+	if (retval != 0)
+		port->cons = NULL;
+	return retval;
 }
 
 /**
@@ -760,7 +764,7 @@ void serial8250_suspend_port(int line)
 	struct uart_port *port = &up->port;
 
 	if (!console_suspend_enabled && uart_console(port) &&
-	    port->type != PORT_8250) {
+	    port->type != PORT_8250 && port->type != PORT_16650V2) {
 		unsigned char canary = 0xa5;
 		serial_out(up, UART_SCR, canary);
 		if (serial_in(up, UART_SCR) == canary)

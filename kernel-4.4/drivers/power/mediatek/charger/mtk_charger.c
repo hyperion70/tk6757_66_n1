@@ -71,12 +71,24 @@
 #include <mt-plat/mtk_boot.h>
 #include <musb_core.h>
 #include <pmic.h>
+#include <mtk_gauge_time_service.h>
 
 static struct charger_manager *pinfo;
 static struct list_head consumer_head = LIST_HEAD_INIT(consumer_head);
 static DEFINE_MUTEX(consumer_mutex);
 
 #define USE_FG_TIMER 1
+
+bool is_power_path_supported(void)
+{
+	if (pinfo == NULL)
+		return false;
+
+	if (pinfo->data.power_path_support == true)
+		return true;
+
+	return false;
+}
 
 bool is_disable_charger(void)
 {
@@ -429,10 +441,9 @@ int charger_manager_get_charger_temperature(struct charger_consumer *consumer,
 	int idx, int *tchg_min,	int *tchg_max)
 {
 	struct charger_manager *info = consumer->cm;
-	int ret;
 
 	if (info != NULL) {
-		struct charger_device *pchr;
+		struct charger_data *pdata;
 
 		if (!upmu_get_rgs_chrdet()) {
 			pr_debug("[%s] No cable in, skip it\n", __func__);
@@ -442,17 +453,16 @@ int charger_manager_get_charger_temperature(struct charger_consumer *consumer,
 		}
 
 		if (idx == MAIN_CHARGER)
-			pchr = info->chg1_dev;
+			pdata = &info->chg1_data;
 		else if (idx == SLAVE_CHARGER)
-			pchr = info->chg2_dev;
-		else if (idx == DIRECT_CHARGER)
-			pchr = info->dc_chg;
+			pdata = &info->chg2_data;
 		else
 			return -ENOTSUPP;
 
-		ret = charger_dev_get_temperature(pchr, tchg_min, tchg_max);
+		*tchg_min = pdata->junction_temp_min;
+		*tchg_max = pdata->junction_temp_max;
 
-		return ret;
+		return 0;
 	}
 	return -EBUSY;
 }
@@ -742,6 +752,21 @@ int charger_enable_vbus_ovp(struct charger_manager *pinfo, bool enable)
 			    enable, sw_ovp);
 	return ret;
 }
+
+bool is_typec_adapter(struct charger_manager *info)
+{
+	if (info->pd_type == PD_CONNECT_TYPEC_ONLY_SNK &&
+			tcpm_inquire_typec_remote_rp_curr(info->tcpc) != 500 &&
+			info->chr_type != STANDARD_HOST &&
+			info->chr_type != CHARGING_HOST &&
+			mtk_pe20_get_is_connect(info) == false &&
+			mtk_pe_get_is_connect(info) == false &&
+			info->enable_type_c == true)
+		return true;
+
+	return false;
+}
+
 /* internal algorithm common function end */
 
 
@@ -1075,7 +1100,7 @@ int charger_psy_event(struct notifier_block *nb, unsigned long event, void *v)
 	int tmp = 0;
 
 	if (strcmp(psy->desc->name, "battery") == 0) {
-		ret = power_supply_get_property(psy, POWER_SUPPLY_PROP_batt_temp, &val);
+		ret = power_supply_get_property(psy, POWER_SUPPLY_PROP_TEMP, &val);
 		if (!ret) {
 			tmp = val.intval / 10;
 			if (info->battery_temperature != tmp && mt_get_charger_type() != CHARGER_UNKNOWN) {
@@ -1092,8 +1117,6 @@ int charger_psy_event(struct notifier_block *nb, unsigned long event, void *v)
 
 void mtk_charger_int_handler(void)
 {
-	chr_err("mtk_charger_int_handler\n");
-
 	if (pinfo == NULL) {
 		chr_err("charger is not rdy ,skip1\n");
 		return;
@@ -1103,11 +1126,10 @@ void mtk_charger_int_handler(void)
 		chr_err("charger is not rdy ,skip2\n");
 		return;
 	}
-	chr_err("wake_up_charger\n");
 	_wake_up_charger(pinfo);
 }
 
-static int mtk_charger_plug_in(struct charger_manager *info, CHARGER_TYPE chr_type)
+static int mtk_charger_plug_in(struct charger_manager *info, enum charger_type chr_type)
 {
 	info->chr_type = chr_type;
 	info->charger_thread_polling = true;
@@ -1148,7 +1170,7 @@ static int mtk_charger_plug_out(struct charger_manager *info)
 
 static bool mtk_is_charger_on(struct charger_manager *info)
 {
-	CHARGER_TYPE chr_type;
+	enum charger_type chr_type;
 
 	chr_type = mt_get_charger_type();
 	if (chr_type == CHARGER_UNKNOWN) {
@@ -1269,6 +1291,38 @@ static void mtk_battery_notify_check(struct charger_manager *info)
 	}
 }
 
+static void mtk_chg_get_tchg(struct charger_manager *info)
+{
+	int ret;
+	int tchg_min, tchg_max;
+	struct charger_data *pdata;
+
+	pdata = &info->chg1_data;
+	ret = charger_dev_get_temperature(info->chg1_dev, &tchg_min, &tchg_max);
+
+	if (ret < 0) {
+		pdata->junction_temp_min = -127;
+		pdata->junction_temp_max = -127;
+	} else {
+		pdata->junction_temp_min = tchg_min;
+		pdata->junction_temp_max = tchg_max;
+	}
+
+	if (is_slave_charger_exist()) {
+		pdata = &info->chg2_data;
+		ret = charger_dev_get_temperature(info->chg2_dev,
+			&tchg_min, &tchg_max);
+
+		if (ret < 0) {
+			pdata->junction_temp_min = -127;
+			pdata->junction_temp_max = -127;
+		} else {
+			pdata->junction_temp_min = tchg_min;
+			pdata->junction_temp_max = tchg_max;
+		}
+	}
+}
+
 static void charger_check_status(struct charger_manager *info)
 {
 	bool charging = true;
@@ -1326,6 +1380,8 @@ static void charger_check_status(struct charger_manager *info)
 			}
 		}
 	}
+
+	mtk_chg_get_tchg(info);
 
 	if (!mtk_chg_check_vbus(info)) {
 		charging = false;
@@ -1426,9 +1482,8 @@ void mtk_charger_stop_timer(struct charger_manager *info)
 static int charger_routine_thread(void *arg)
 {
 	struct charger_manager *info = arg;
-	static int i;
 	unsigned long flags;
-	bool curr_sign, is_charger_on;
+	bool is_charger_on;
 	int bat_current, chg_current;
 
 	while (1) {
@@ -1441,13 +1496,10 @@ static int charger_routine_thread(void *arg)
 		spin_unlock_irqrestore(&info->slock, flags);
 
 		info->charger_thread_timeout = false;
-		i++;
-		curr_sign = battery_get_bat_current_sign();
 		bat_current = battery_get_bat_current();
 		chg_current = pmic_get_charging_current();
 		chr_err("Vbat=%d,Ibat=%d,I=%d,VChr=%d,T=%d,Soc=%d:%d,CT:%d:%d hv:%d pd:%d:%d\n",
-			battery_get_bat_voltage(),
-			curr_sign ? bat_current : -1 * bat_current, chg_current,
+			battery_get_bat_voltage(), bat_current, chg_current,
 			battery_get_vbus(), battery_get_bat_temperature(),
 			battery_get_bat_soc(), battery_get_bat_uisoc(),
 			mt_get_charger_type(), info->chr_type, info->enable_hv_charging,
@@ -1527,6 +1579,7 @@ static int mtk_charger_parse_dt(struct charger_manager *info, struct device *dev
 	info->enable_pe_2 = of_property_read_bool(np, "enable_pe_2");
 	info->enable_pe_3 = of_property_read_bool(np, "enable_pe_3");
 	info->enable_pe_4 = of_property_read_bool(np, "enable_pe_4");
+	info->enable_type_c = of_property_read_bool(np, "enable_type_c");
 
 	info->enable_hv_charging = true;
 
@@ -1549,6 +1602,15 @@ static int mtk_charger_parse_dt(struct charger_manager *info, struct device *dev
 		info->data.max_charger_voltage = V_CHARGER_MAX;
 	}
 	info->data.max_charger_voltage_setting = info->data.max_charger_voltage;
+
+	if (of_property_read_u32(np, "min_charger_voltage", &val) >= 0) {
+		info->data.min_charger_voltage = val;
+	} else {
+		chr_err(
+			"use default V_CHARGER_MIN:%d\n",
+			V_CHARGER_MIN);
+		info->data.min_charger_voltage = V_CHARGER_MIN;
+	}
 
 	/* charging current */
 	if (of_property_read_u32(np, "usb_charger_current_suspend", &val) >= 0) {
@@ -1924,6 +1986,14 @@ static int mtk_charger_parse_dt(struct charger_manager *info, struct device *dev
 		info->data.pe40_dual_charger_chg2_current = 2000;
 	}
 
+	if (of_property_read_u32(np, "pe40_stop_battery_soc", &val) >= 0) {
+		info->data.pe40_stop_battery_soc = val;
+	} else {
+		chr_err(
+			"use default pe40_stop_battery_soc:%d\n",
+			2000);
+		info->data.pe40_stop_battery_soc = 80;
+	}
 
 #ifdef CONFIG_MTK_DUAL_CHARGER_SUPPORT
 	/* dual charger */
@@ -2435,6 +2505,14 @@ static int pd_tcp_notifier_call(struct notifier_block *pnb, unsigned long event,
 			pinfo->pd_type = PD_CONNECT_PE_READY_SNK;
 			mutex_unlock(&pinfo->charger_pd_lock);
 		/* PD is ready */
+		break;
+
+		case PD_CONNECT_PE_READY_SNK_PD30:
+			mutex_lock(&pinfo->charger_pd_lock);
+			chr_err("PD Notify PD30 ready\r\n");
+			pinfo->pd_type = PD_CONNECT_PE_READY_SNK_PD30;
+			mutex_unlock(&pinfo->charger_pd_lock);
+		/* PD30 is ready */
 		break;
 
 		case PD_CONNECT_PE_READY_SNK_APDO:

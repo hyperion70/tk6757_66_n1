@@ -596,14 +596,14 @@ static int _get_max_layer(unsigned int session_id)
 static int disp_validate_input_params(struct disp_input_config *cfg, int layer_num)
 {
 	if (cfg->layer_id >= layer_num) {
-		disp_aee_print("layer_id=%d > layer_num=%d\n", cfg->layer_id, layer_num);
+		DISPERR("layer_id=%d > layer_num=%d\n", cfg->layer_id, layer_num);
 		return -1;
 	}
 	if (cfg->layer_enable) {
 		if ((cfg->src_fmt <= 0) || ((cfg->src_fmt >> 8) == 15) ||
-			((cfg->src_fmt >> 8) > (DISP_FORMAT_DIM >> 8))) {
-			disp_aee_print("layer_id=%d,src_fmt=0x%x is invalid color format\n",
-				cfg->layer_id, cfg->src_fmt);
+				((cfg->src_fmt >> 8) > (DISP_FORMAT_DIM >> 8))) {
+			DISPERR("layer_id=%d,src_fmt=0x%x is invalid color format\n",
+					cfg->layer_id, cfg->src_fmt);
 			return -1;
 		}
 	}
@@ -613,28 +613,29 @@ static int disp_validate_input_params(struct disp_input_config *cfg, int layer_n
 static int disp_validate_output_params(struct disp_output_config *cfg)
 {
 	if ((cfg->fmt <= 0) || ((cfg->fmt >> 8) == 15) ||
-		((cfg->fmt >> 8) > (DISP_FORMAT_DIM >> 8))) {
-		disp_aee_print("output fmt=0x%x is invalid color format\n", cfg->fmt);
+			((cfg->fmt >> 8) > (DISP_FORMAT_DIM >> 8))) {
+		DISPERR("output fmt=0x%x is invalid color format\n", cfg->fmt);
 		return -1;
 	}
-
 	return 0;
 }
 
-static int disp_validate_ioctl_params(struct disp_frame_cfg_t *cfg)
+int disp_validate_ioctl_params(struct disp_frame_cfg_t *cfg)
 {
-	int i;
+	int i, max_layer_num;
 
-	/* TODO: check session_id */
+	max_layer_num = _get_max_layer(cfg->session_id);
+	if (max_layer_num <= 0)
+		return -1;
 
-	if (cfg->input_layer_num > _get_max_layer(cfg->session_id)) {
-		disp_aee_print("sess:0x%x layer_num %d>%d\n", cfg->session_id,
-			cfg->input_layer_num, _get_max_layer(cfg->session_id));
+	if (cfg->input_layer_num > max_layer_num) {
+		DISPERR("sess:0x%x layer_num %d>%d\n", cfg->session_id,
+				cfg->input_layer_num, max_layer_num);
 		return -1;
 	}
 
 	for (i = 0; i < cfg->input_layer_num; i++)
-		if (disp_validate_input_params(&cfg->input_cfg[i], cfg->input_layer_num) != 0)
+		if (disp_validate_input_params(&cfg->input_cfg[i], max_layer_num) != 0)
 			return -1;
 
 	if (cfg->output_en && disp_validate_output_params(&cfg->output_cfg) != 0)
@@ -688,8 +689,17 @@ int disp_input_free_dirty_roi(struct disp_frame_cfg_t *cfg)
 {
 	int i;
 
-	for (i = 0; i < cfg->input_layer_num; i++)
-		kfree(cfg->input_cfg[i].dirty_roi_addr);
+	for (i = 0; i < cfg->input_layer_num; i++) {
+		if (i >= _get_max_layer(cfg->session_id))
+			break;
+		if (!cfg->input_cfg[i].layer_enable ||
+			!cfg->input_cfg[i].dirty_roi_num)
+			continue;
+		if (cfg->input_cfg[i].dirty_roi_addr != NULL) {
+			kfree(cfg->input_cfg[i].dirty_roi_addr);
+			cfg->input_cfg[i].dirty_roi_addr = NULL;
+		}
+	}
 
 	return 0;
 }
@@ -933,24 +943,36 @@ static int __frame_config(struct frame_queue_t *frame_node)
 }
 static int _ioctl_frame_config(unsigned long arg)
 {
+	void *ret_val = NULL;
 	struct frame_queue_t *frame_node;
 	struct disp_frame_cfg_t *frame_cfg;
 
 	frame_node = frame_queue_node_create();
-	if (IS_ERR_OR_NULL(frame_node))
-		return PTR_ERR(frame_node);
+	if (IS_ERR_OR_NULL(frame_node)) {
+		ret_val = ERR_PTR(-ENOMEM);
+		DISPERR("[FB Driver]: frame queue node create failed! line:%d\n", __LINE__);
+		return PTR_ERR(ret_val);
+	}
 
 	frame_cfg = &frame_node->frame_cfg;
 
 	if (copy_from_user(frame_cfg, (void __user *)arg, sizeof(*frame_cfg))) {
-		pr_err("[FB Driver]: copy_from_user failed! line:%d\n", __LINE__);
-		return -EINVAL;
+		ret_val = ERR_PTR(-EFAULT);
+		DISPERR("[FB Driver]: copy_from_user failed! line:%d\n", __LINE__);
+		goto Error;
 	}
 
-	if (disp_validate_ioctl_params(frame_cfg) != 0)
-		return -EINVAL;
-	else
-		return __frame_config(frame_node);
+	if (disp_validate_ioctl_params(frame_cfg)) {
+		ret_val = ERR_PTR(-EINVAL);
+		goto Error;
+	}
+
+	return __frame_config(frame_node);
+
+Error:
+	frame_queue_node_destroy(frame_node);
+	return PTR_ERR(ret_val);
+
 }
 
 static int _ioctl_wait_all_jobs_done(unsigned long arg)

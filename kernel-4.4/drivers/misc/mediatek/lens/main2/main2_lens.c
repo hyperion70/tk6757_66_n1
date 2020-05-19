@@ -90,6 +90,9 @@ static struct stAF_DrvList g_stAF_DrvList[MAX_NUM_OF_LENS] = {
 	{1, AFDRV_LC898217AFA, LC898217AFA_SetI2Cclient, LC898217AF_Ioctl, LC898217AF_Release, NULL},
 	{1, AFDRV_LC898217AFB, LC898217AFB_SetI2Cclient, LC898217AF_Ioctl, LC898217AF_Release, NULL},
 	{1, AFDRV_LC898217AFC, LC898217AFC_SetI2Cclient, LC898217AF_Ioctl, LC898217AF_Release, NULL},
+	#ifdef CONFIG_MTK_LENS_DW9800WAF_SUPPORT
+	{1, AFDRV_DW9800WAF, DW9800WAF_SetI2Cclient, DW9800WAF_Ioctl, DW9800WAF_Release, NULL},
+	#endif
 	{1, AFDRV_AK7371AF, AK7371AF_SetI2Cclient, AK7371AF_Ioctl, AK7371AF_Release, NULL},
 	{1, AFDRV_BU64748AF, bu64748af_SetI2Cclient_Main2, bu64748af_Ioctl_Main2, bu64748af_Release_Main2, NULL},
 };
@@ -113,14 +116,25 @@ void MAIN2AF_PowerDown(void)
 	if (g_pstAF_I2Cclient != NULL) {
 		LOG_INF("CONFIG_MTK_PLATFORM : %s\n", CONFIG_MTK_PLATFORM);
 
-		#if defined(CONFIG_MACH_MT6771) || defined(CONFIG_MACH_MT6775)
+		#if defined(CONFIG_MACH_MT6775)
 		LC898217AF_SetI2Cclient(g_pstAF_I2Cclient, &g_AF_SpinLock, &g_s4AF_Opened);
 		LC898217AF_PowerDown();
+		#endif
+
+		#if defined(CONFIG_MACH_MT6771)
+		if (strncmp(CONFIG_ARCH_MTK_PROJECT, "k71v1_64_bsp_ducam", 18) == 0) {
+			LC898217AF_SetI2Cclient(g_pstAF_I2Cclient, &g_AF_SpinLock, &g_s4AF_Opened);
+			LC898217AF_PowerDown();
+		}
 		#endif
 
 		#ifdef CONFIG_MACH_MT6758
 		AK7371AF_SetI2Cclient(g_pstAF_I2Cclient, &g_AF_SpinLock, &g_s4AF_Opened);
 		AK7371AF_PowerDown();
+		#endif
+
+		#ifdef CONFIG_MTK_LENS_DW9800WAF_SUPPORT
+		DW9800WAF_SetI2Cclient(g_pstAF_I2Cclient, &g_AF_SpinLock, &g_s4AF_Opened);
 		#endif
 	}
 }
@@ -134,14 +148,13 @@ static long AF_SetMotorName(__user struct stAF_MotorName *pstMotorName)
 	if (copy_from_user(&stMotorName, pstMotorName, sizeof(struct stAF_MotorName)))
 		LOG_INF("copy to user failed when getting motor information\n");
 
-	LOG_INF("Set Motor Name : %s\n", stMotorName.uMotorName);
-
 	for (i = 0; i < MAX_NUM_OF_LENS; i++) {
 		if (g_stAF_DrvList[i].uEnable != 1)
 			break;
 
-		LOG_INF("Search Motor Name : %s\n", g_stAF_DrvList[i].uDrvName);
+		/* LOG_INF("Search Motor Name : %s\n", g_stAF_DrvList[i].uDrvName); */
 		if (strcmp(stMotorName.uMotorName, g_stAF_DrvList[i].uDrvName) == 0) {
+			LOG_INF("Set Motor Name : %s (%d)\n", stMotorName.uMotorName, i);
 			g_pstAF_CurDrv = &g_stAF_DrvList[i];
 			i4RetValue = g_pstAF_CurDrv->pAF_SetI2Cclient(g_pstAF_I2Cclient,
 								&g_AF_SpinLock, &g_s4AF_Opened);
@@ -314,9 +327,6 @@ static int AF_Open(struct inode *a_pstInode, struct file *a_pstFile)
 	/* OIS/EIS Timer & Workqueue */
 	/* init work queue */
 	INIT_WORK(&ois_work, ois_pos_polling);
-
-	if (ois_workqueue == NULL)
-		ois_workqueue = create_singlethread_workqueue("ois_polling");
 
 	/* init timer */
 	hrtimer_init(&ois_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);

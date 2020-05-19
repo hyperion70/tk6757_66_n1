@@ -38,6 +38,7 @@
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/sd.h>
 #include <linux/mmc/slot-gpio.h>
+#include <mt-plat/mtk_io_boost.h>
 
 #include "core.h"
 #include "bus.h"
@@ -234,6 +235,18 @@ static void mmc_discard_cmdq(struct mmc_host *host)
 static void mmc_post_req(struct mmc_host *host, struct mmc_request *mrq, int err);
 static int mmc_reset_for_cmdq(struct mmc_host *host);
 
+static void mmc_reset_cq(struct mmc_host *host)
+{
+	while (mmc_reset_for_cmdq(host)) {
+		pr_notice("[CQ] reinit fail\n");
+		WARN_ON(1);
+	}
+	mmc_clr_dat_list(host);
+	mmc_restore_tasks(host);
+	atomic_set(&host->cq_wait_rdy, 0);
+	atomic_set(&host->cq_rdy_cnt, 0);
+}
+
 /*
  *	check CMDQ QSR
  */
@@ -264,14 +277,7 @@ void mmc_do_check(struct mmc_host *host)
 			 * otherwise timing issue will occur
 			 */
 			msleep(2000);
-			while (mmc_reset_for_cmdq(host)) {
-				pr_notice("[CQ] reinit fail\n");
-				WARN_ON(1);
-			}
-			mmc_clr_dat_list(host);
-			mmc_restore_tasks(host);
-			atomic_set(&host->cq_wait_rdy, 0);
-			atomic_set(&host->cq_rdy_cnt, 0);
+			mmc_reset_cq(host);
 		}
 
 		if (!host->que_mrq.cmd->error ||
@@ -419,6 +425,8 @@ static int mmc_check_write(struct mmc_host *host, struct mmc_request *mrq)
 	return ret;
 }
 
+/* Sleep when polling cmd13' for over 1ms */
+#define CMD13_TMO_NS (1000 * 1000)
 
 int mmc_run_queue_thread(void *data)
 {
@@ -431,10 +439,20 @@ int mmc_run_queue_thread(void *data)
 	bool is_done = false;
 
 	int err;
+	u64 chk_time = 0;
+	struct sched_param scheduler_params = {0};
+
+	/* Set as RT priority */
+	scheduler_params.sched_priority = 1;
+	sched_setscheduler(current, SCHED_FIFO, &scheduler_params);
 
 	pr_err("[CQ] start cmdq thread\n");
 	mt_bio_queue_alloc(current, NULL);
+
+	mtk_iobst_register_tid(current->pid);
+
 	while (1) {
+
 		set_current_state(TASK_RUNNING);
 		mt_biolog_cmdq_check();
 
@@ -458,10 +476,11 @@ int mmc_run_queue_thread(void *data)
 
 				if (host->ops->execute_tuning) {
 					err = host->ops->execute_tuning(host, MMC_SEND_TUNING_BLOCK_HS200);
-					if (err)
-						pr_err("[CQ] tuning failed\n");
-					else
-						pr_err("[CQ] tuning pass\n");
+					pr_notice("%s: tuning err: %d\n",
+						mmc_hostname(host), err);
+					/* reset device if tune fail */
+					if (err && mmc_reset_for_cmdq(host))
+						pr_notice("[CQ] reinit fail\n");
 				}
 
 				host->cur_rw_task = 99;
@@ -553,14 +572,7 @@ int mmc_run_queue_thread(void *data)
 					 * otherwise timing issue will occur
 					 */
 					msleep(2000);
-					while (mmc_reset_for_cmdq(host)) {
-						pr_notice("[CQ] reinit fail\n");
-						WARN_ON(1);
-					}
-					mmc_clr_dat_list(host);
-					mmc_restore_tasks(host);
-					atomic_set(&host->cq_wait_rdy, 0);
-					atomic_set(&host->cq_rdy_cnt, 0);
+					mmc_reset_cq(host);
 				} else
 					atomic_inc(&host->cq_wait_rdy);
 				spin_lock_irq(&host->cmd_que_lock);
@@ -569,11 +581,7 @@ int mmc_run_queue_thread(void *data)
 			}
 		}
 
-		/* Send Command 13' */
-		if (atomic_read(&host->cq_wait_rdy) > 0
-			&& atomic_read(&host->cq_rdy_cnt) == 0)
-			mmc_do_check(host);
-		else if (atomic_read(&host->cq_rw)) {
+		if (atomic_read(&host->cq_rw)) {
 			/* wait for event to wakeup */
 			/* wake up when new request arrived and dma done */
 			areq_cnt_chk = atomic_read(&host->areq_cnt);
@@ -593,6 +601,26 @@ int mmc_run_queue_thread(void *data)
 					atomic_read(&host->cq_wait_rdy),
 					atomic_read(&host->cq_rdy_cnt));
 			}
+			/* DMA time should not count in polling time */
+			chk_time = 0;
+		}
+
+		/* Send Command 13' */
+		if (atomic_read(&host->cq_wait_rdy) > 0
+			&& atomic_read(&host->cq_rdy_cnt) == 0) {
+			if (!chk_time)
+				/* set check time */
+				chk_time = sched_clock();
+
+			/* send cmd13' */
+			mmc_do_check(host);
+
+			if (atomic_read(&host->cq_rdy_cnt))
+				/* clear when got ready task */
+				chk_time = 0;
+			else if (sched_clock() - chk_time > CMD13_TMO_NS)
+				/* sleep when TMO */
+				usleep_range(2000, 5000);
 		}
 
 		/* Sleep when nothing to do */
@@ -621,6 +649,10 @@ void mmc_wait_cmdq_done(struct mmc_request *mrq)
 
 	/* error - request done */
 	if (cmd->error) {
+		pr_notice("%s: cmd%d arg:%x error:%d\n",
+			mmc_hostname(host),
+			cmd->opcode, cmd->arg,
+			cmd->error);
 		if ((cmd->opcode == MMC_READ_REQUESTED_QUEUE) ||
 			(cmd->opcode == MMC_WRITE_REQUESTED_QUEUE)) {
 			atomic_set(&host->cq_tuning_now, 1);
@@ -631,6 +663,10 @@ void mmc_wait_cmdq_done(struct mmc_request *mrq)
 
 	/* data error */
 	if (mrq->data && mrq->data->error) {
+		pr_notice("%s: cmd%d arg:%x data error:%d\n",
+			mmc_hostname(host),
+			cmd->opcode, cmd->arg,
+			mrq->data->error);
 		atomic_set(&host->cq_tuning_now, 1);
 		goto clear_end;
 	}
@@ -659,7 +695,23 @@ void mmc_wait_cmdq_done(struct mmc_request *mrq)
 					i++;
 					continue;
 				}
-				WARN_ON(!host->areq_que[i]);
+
+				if (!host->areq_que[i]) {
+					pr_notice("%s: task %d not exist!,QSR:%x\n",
+						mmc_hostname(host), i, cmd->resp[0]);
+					pr_notice("%s: task_idx:%08lx\n",
+						mmc_hostname(host),
+						host->task_id_index);
+					pr_notice("%s: cnt:%d,wait:%d,rdy:%d\n",
+						mmc_hostname(host),
+						atomic_read(&host->areq_cnt),
+						atomic_read(&host->cq_wait_rdy),
+						atomic_read(&host->cq_rdy_cnt));
+					/* reset eMMC flow */
+					cmd->error = (unsigned int)-ETIMEDOUT;
+					cmd->retries = 0;
+					goto request_end;
+				}
 				atomic_dec(&host->cq_wait_rdy);
 				atomic_inc(&host->cq_rdy_cnt);
 				mmc_prep_areq_que(host, host->areq_que[i]);
@@ -723,7 +775,7 @@ int mmc_blk_cmdq_switch(struct mmc_card *card, int enable)
 		mmc_wait_cmdq_empty(card->host);
 
 	ret = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
-		EXT_CSD_CMDQ_MODE_EN, enable,
+		EXT_CSD_CMDQ_MODE_EN, !!enable,
 		card->ext_csd.generic_cmd6_time);
 
 	if (ret) {
@@ -734,11 +786,11 @@ int mmc_blk_cmdq_switch(struct mmc_card *card, int enable)
 		return ret;
 	}
 
-	card->ext_csd.cmdq_mode_en = enable;
+	card->ext_csd.cmdq_mode_en = !!enable;
 
-	pr_err("%s: set ext_csd.cmdq_mode_en = %d\n",
+	pr_notice("%s: set cmdq %s\n",
 		mmc_hostname(card->host),
-		card->ext_csd.cmdq_mode_en);
+		enable ? "on":"off");
 
 	return 0;
 }
@@ -857,9 +909,10 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 				completion = ktime_get();
 				delta_us = ktime_us_delta(completion,
 							  mrq->io_start);
-				blk_update_latency_hist(&host->io_lat_s,
-					(mrq->data->flags & MMC_DATA_READ),
-					delta_us);
+				blk_update_latency_hist(
+					(mrq->data->flags & MMC_DATA_READ) ?
+					&host->io_lat_read :
+					&host->io_lat_write, delta_us);
 			}
 #endif
 			trace_mmc_blk_rw_end(cmd->opcode, cmd->arg, mrq->data);
@@ -3607,6 +3660,14 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 		if (!err)
 			break;
 
+		if (!mmc_card_is_removable(host)) {
+			dev_warn(mmc_dev(host),
+				 "pre_suspend failed for non-removable host: "
+				 "%d\n", err);
+			/* Avoid removing non-removable hosts */
+			break;
+		}
+
 		/* Calling bus_ops->remove() with a claimed host can deadlock */
 		host->bus_ops->remove(host);
 		mmc_claim_host(host);
@@ -3701,8 +3762,14 @@ static ssize_t
 latency_hist_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct mmc_host *host = cls_dev_to_mmc_host(dev);
+	size_t written_bytes;
 
-	return blk_latency_hist_show(&host->io_lat_s, buf);
+	written_bytes = blk_latency_hist_show("Read", &host->io_lat_read,
+			buf, PAGE_SIZE);
+	written_bytes += blk_latency_hist_show("Write", &host->io_lat_write,
+			buf + written_bytes, PAGE_SIZE - written_bytes);
+
+	return written_bytes;
 }
 
 /*
@@ -3720,9 +3787,10 @@ latency_hist_store(struct device *dev, struct device_attribute *attr,
 
 	if (kstrtol(buf, 0, &value))
 		return -EINVAL;
-	if (value == BLK_IO_LAT_HIST_ZERO)
-		blk_zero_latency_hist(&host->io_lat_s);
-	else if (value == BLK_IO_LAT_HIST_ENABLE ||
+	if (value == BLK_IO_LAT_HIST_ZERO) {
+		memset(&host->io_lat_read, 0, sizeof(host->io_lat_read));
+		memset(&host->io_lat_write, 0, sizeof(host->io_lat_write));
+	} else if (value == BLK_IO_LAT_HIST_ENABLE ||
 		 value == BLK_IO_LAT_HIST_DISABLE)
 		host->latency_hist_enabled = value;
 	return count;

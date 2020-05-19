@@ -17,7 +17,9 @@ ccflags-y += -I$(srctree)/drivers/misc/mediatek/eccci/inc/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/eccci/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/$(MTK_PLATFORM)
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/power/$(MTK_PLATFORM)
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/pmic/
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/pmic/include/
+subdir-ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6355)+= -I$(srctree)/drivers/misc/mediatek/pmic/include/mt6355
 
 obj-$(CONFIG_MTK_ECCCI_DRIVER) := ccci.o
 

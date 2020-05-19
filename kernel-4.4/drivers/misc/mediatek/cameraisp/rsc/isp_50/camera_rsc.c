@@ -60,6 +60,12 @@
 #include <cmdq_record.h>
 #include <smi_public.h>
 #include "../engine_request.h"
+
+#define RSC_PMQOS_EN
+#if defined(RSC_PMQOS_EN) && defined(CONFIG_MTK_QOS_SUPPORT)
+#include <linux/pm_qos.h>
+#endif
+
 /* Measure the kernel performance
  * #define __RSC_KERNEL_PERFORMANCE_MEASURE__
  */
@@ -250,6 +256,8 @@ static void ISP_TaskletFunc_RSC(unsigned long data);
 static struct Tasklet_table RSC_tasklet[RSC_IRQ_TYPE_AMOUNT] = {
 	{ISP_TaskletFunc_RSC, &Rsctkt[RSC_IRQ_TYPE_INT_RSC_ST]},
 };
+static struct work_struct logWork;
+static void logPrint(struct work_struct *data);
 
 struct wake_lock RSC_wake_lock;
 
@@ -371,6 +379,7 @@ struct RSC_INFO_STRUCT {
 	spinlock_t SpinLockIrq[RSC_IRQ_TYPE_AMOUNT];
 	wait_queue_head_t WaitQueueHead;
 	struct work_struct ScheduleRscWork;
+	struct workqueue_struct *wkqueue;
 	unsigned int UserCount;	/* User Count */
 	unsigned int DebugMask;	/* Debug Mask */
 	signed int IrqNum;
@@ -382,6 +391,10 @@ struct RSC_INFO_STRUCT {
 
 
 static struct RSC_INFO_STRUCT RSCInfo;
+
+#if defined(RSC_PMQOS_EN) && defined(CONFIG_MTK_QOS_SUPPORT)
+struct pm_qos_request rsc_pm_qos_request;
+#endif
 
 enum eLOG_TYPE {
 	_LOG_DBG = 0,/* currently, only used at ipl_buf_ctrl for critical section */
@@ -1217,6 +1230,10 @@ signed int CmdqRSCHW(struct frame *frame)
 #if 1
 	struct cmdqRecStruct *handle;
 	uint64_t engineFlag = (uint64_t)(1LL << CMDQ_ENG_RSC);
+#if defined(RSC_PMQOS_EN) && defined(CONFIG_MTK_QOS_SUPPORT)
+	unsigned int w_imgi, h_imgi, w_mvio, h_mvio, w_bvo, h_bvo;
+	unsigned int dma_bandwidth, trig_num;
+#endif
 #endif
 	if (frame == NULL || frame->data == NULL)
 		return -1;
@@ -1238,6 +1255,8 @@ signed int CmdqRSCHW(struct frame *frame)
 	LOG_DBG("RSC_BVO_STRIDE_REG:0x%x!\n", pRscConfig->RSC_BVO_STRIDE);
 	LOG_DBG("RSC_APLI_C_BASE_ADDR_REG:0x%x!\n", pRscConfig->RSC_APLI_C_BASE_ADDR);
 	LOG_DBG("RSC_APLI_P_BASE_ADDR_REG:0x%x!\n", pRscConfig->RSC_APLI_P_BASE_ADDR);
+
+
 #if 1
 	cmdqRecCreate(CMDQ_SCENARIO_KERNEL_CONFIG_GENERAL, &handle);
 
@@ -1279,11 +1298,29 @@ signed int CmdqRSCHW(struct frame *frame)
 	cmdqRecWrite(handle, RSC_RAND_PNLTY_GAIN_CTRL_0_HW, pRscConfig->RSC_RAND_PNLTY_GAIN_CTRL0, CMDQ_REG_MASK);
 	cmdqRecWrite(handle, RSC_RAND_PNLTY_GAIN_CTRL_1_HW, pRscConfig->RSC_RAND_PNLTY_GAIN_CTRL1, CMDQ_REG_MASK);
 #endif
+	cmdqRecWrite(handle, RSC_DCM_CTL_HW, 0x1111, CMDQ_REG_MASK);
+
 	cmdqRecWrite(handle, RSC_START_HW, 0x1, CMDQ_REG_MASK);	/* RSC Interrupt read-clear mode */
 
 	cmdqRecWait(handle, CMDQ_EVENT_RSC_EOF);
 	cmdqRecWrite(handle, RSC_START_HW, 0x0, CMDQ_REG_MASK);	/* RSC Interrupt read-clear mode */
 
+#if defined(RSC_PMQOS_EN) && defined(CONFIG_MTK_QOS_SUPPORT)
+	trig_num = (pRscConfig->RSC_CTRL & 0x00000F00) >> 8;
+	w_imgi = pRscConfig->RSC_SIZE & 0x000001FF;
+	h_imgi = (pRscConfig->RSC_SIZE & 0x01FF0000) >> 16;
+
+	w_mvio = ((w_imgi + 1) >> 1) - 1;
+	w_mvio = ((w_mvio / 7) << 4) + (((((w_mvio % 7) + 1) * 18) + 7) >> 3);
+	h_mvio = (h_imgi + 1) >> 1;
+
+	w_bvo =  (w_imgi + 1) >> 1;
+	h_bvo =  (h_imgi + 1) >> 1;
+
+	dma_bandwidth = ((w_imgi * h_imgi) * 2 + (w_mvio * h_mvio) * 2 * 16 + (w_bvo * h_bvo))
+								* trig_num * 30 / 1000000;
+	cmdq_task_update_property(handle, &dma_bandwidth, sizeof(unsigned int));
+#endif
 	/* non-blocking API, Please  use cmdqRecFlushAsync() */
 	cmdqRecFlushAsync(handle);
 	cmdqRecReset(handle);	/* if you want to re-use the handle, please reset the handle */
@@ -1439,6 +1476,24 @@ static signed int ConfigRSCHW(struct RSC_Config *pRscConfig)
 }
 #endif
 
+#if defined(RSC_PMQOS_EN) && defined(CONFIG_MTK_QOS_SUPPORT)
+void cmdq_pm_qos_start(struct TaskStruct *task, struct TaskStruct *task_list[], u32 size)
+{
+	unsigned int dma_bandwidth;
+
+	dma_bandwidth = *(unsigned int *) task->prop_addr;
+	pm_qos_update_request(&rsc_pm_qos_request, dma_bandwidth);
+	LOG_INF("+ PMQOS Bandwidth : %d MB/sec\n", dma_bandwidth);
+}
+
+void cmdq_pm_qos_stop(struct TaskStruct *task, struct TaskStruct *task_list[], u32 size)
+{
+	pm_qos_update_request(&rsc_pm_qos_request, 0);
+	LOG_DBG("- PMQOS Bandwidth : %d\n", 0);
+}
+#endif
+
+
 #define RSC_IS_BUSY    0x2
 
 #ifndef RSC_USE_GCE
@@ -1537,6 +1592,15 @@ static signed int RSC_DumpReg(void)
 		(unsigned int)RSC_RD32(RSC_DMA_REQ_STATUS_REG));
 	LOG_INF("[0x%08X %08X]\n", (unsigned int)(RSC_DMA_RDY_STATUS_HW),
 		(unsigned int)RSC_RD32(RSC_DMA_RDY_STATUS_REG));
+
+	LOG_INF("[0x%08X %08X]\n", (unsigned int)(RSC_DMA_DMA_ERR_CTRL_HW),
+		(unsigned int)RSC_RD32(RSC_DMA_DMA_ERR_CTRL_REG));
+	LOG_INF("[0x%08X %08X]\n", (unsigned int)(RSC_DMA_RSCI_ERR_STAT_HW),
+		(unsigned int)RSC_RD32(RSC_DMA_RSCI_ERR_STAT_REG));
+	LOG_INF("[0x%08X %08X]\n", (unsigned int)(RSC_DMA_RSCO_ERR_STAT_HW),
+		(unsigned int)RSC_RD32(RSC_DMA_RSCO_ERR_STAT_REG));
+	LOG_INF("[0x%08X %08X]\n", (unsigned int)(RSC_DCM_STAUS_HW),
+		(unsigned int)RSC_RD32(RSC_DCM_STAUS_REG));
 
 #ifndef ENGINE
 	LOG_INF("RSC:HWProcessIdx:%d, WriteIdx:%d, ReadIdx:%d\n", g_RSC_ReqRing.HWProcessIdx,
@@ -1782,7 +1846,8 @@ static signed int RSC_ReadReg(struct RSC_REG_IO_STRUCT *pRegIo)
 		/* pData++; */
 		/*  */
 		if ((ISP_RSC_BASE + reg.Addr >= ISP_RSC_BASE)
-		    && (ISP_RSC_BASE + reg.Addr < (ISP_RSC_BASE + RSC_REG_RANGE))) {
+		    && (ISP_RSC_BASE + reg.Addr < (ISP_RSC_BASE + RSC_REG_RANGE))
+			&& ((reg.Addr & 0x3) == 0)) {
 			reg.Val = RSC_RD32(ISP_RSC_BASE + reg.Addr);
 		} else {
 			LOG_ERR("Wrong address(0x%p)", (ISP_RSC_BASE + reg.Addr));
@@ -1832,7 +1897,8 @@ static signed int RSC_WriteRegToHw(struct RSC_REG_STRUCT *pReg, unsigned int Cou
 				(unsigned int) (pReg[i].Val));
 		}
 
-		if (((ISP_RSC_BASE + pReg[i].Addr) < (ISP_RSC_BASE + RSC_REG_RANGE))) {
+		if (((ISP_RSC_BASE + pReg[i].Addr) < (ISP_RSC_BASE + RSC_REG_RANGE))
+			&& ((pReg[i].Addr & 0x3) == 0)) {
 			RSC_WR32(ISP_RSC_BASE + pReg[i].Addr, pReg[i].Val);
 		} else {
 			LOG_ERR("wrong address(0x%lx)\n",
@@ -2984,6 +3050,7 @@ static signed int RSC_open(struct inode *pInode, struct file *pFile)
 	set_engine_ops(&rsc_reqs, &rsc_ops);
 #endif
 
+
 EXIT:
 
 
@@ -3034,6 +3101,7 @@ static signed int RSC_release(struct inode *pInode, struct file *pFile)
 #ifdef ENGINE
 	unregister_requests(&rsc_reqs);
 #endif
+
 
 EXIT:
 
@@ -3367,9 +3435,13 @@ static signed int RSC_probe(struct platform_device *pDev)
 		/*  */
 		init_waitqueue_head(&RSCInfo.WaitQueueHead);
 		INIT_WORK(&RSCInfo.ScheduleRscWork, RSC_ScheduleWork);
+		RSCInfo.wkqueue = create_singlethread_workqueue("RSC-CMDQ-WQ");
+		if (!RSCInfo.wkqueue)
+			LOG_ERR("NULL RSC-CMDQ-WQ\n");
 
 		wake_lock_init(&RSC_wake_lock, WAKE_LOCK_SUSPEND, "rsc_lock_wakelock");
 
+		INIT_WORK(&logWork, logPrint);
 		for (i = 0; i < RSC_IRQ_TYPE_AMOUNT; i++)
 			tasklet_init(RSC_tasklet[i].pRSC_tkt, RSC_tasklet[i].tkt_cb, 0);
 
@@ -3382,6 +3454,11 @@ static signed int RSC_probe(struct platform_device *pDev)
 		spin_unlock(&(RSCInfo.SpinLockRSCRef));
 		/*  */
 		RSCInfo.IrqInfo.Mask[RSC_IRQ_TYPE_INT_RSC_ST] = INT_ST_MASK_RSC;
+
+#if defined(RSC_PMQOS_EN) && defined(CONFIG_MTK_QOS_SUPPORT)
+		pm_qos_add_request(&rsc_pm_qos_request, PM_QOS_MM_MEMORY_BANDWIDTH, PM_QOS_DEFAULT_VALUE);
+		cmdqCoreRegisterTaskCycleCB(CMDQ_GROUP_RSC, cmdq_pm_qos_start, cmdq_pm_qos_stop);
+#endif
 
 	}
 
@@ -3405,6 +3482,11 @@ static signed int RSC_remove(struct platform_device *pDev)
 	int i;
 	/*  */
 	LOG_DBG("- E.");
+
+	/* wait for unfinished works in the workqueue. */
+	destroy_workqueue(RSCInfo.wkqueue);
+	RSCInfo.wkqueue = NULL;
+
 	/* unregister char driver. */
 	RSC_UnregCharDev();
 
@@ -3452,6 +3534,11 @@ static signed int RSC_remove(struct platform_device *pDev)
 	class_destroy(pRSCClass);
 	pRSCClass = NULL;
 	/*  */
+
+#if defined(RSC_PMQOS_EN) && defined(CONFIG_MTK_QOS_SUPPORT)
+	pm_qos_remove_request(&rsc_pm_qos_request);
+#endif
+
 	return 0;
 }
 
@@ -3500,7 +3587,7 @@ int RSC_pm_suspend(struct device *device)
 
 	WARN_ON(pdev == NULL);
 
-	pr_debug("calling %s()\n", __func__);
+	LOG_DBG("calling %s()\n", __func__);
 
 	return RSC_suspend(pdev, PMSG_SUSPEND);
 }
@@ -3511,7 +3598,7 @@ int RSC_pm_resume(struct device *device)
 
 	WARN_ON(pdev == NULL);
 
-	pr_debug("calling %s()\n", __func__);
+	LOG_DBG("calling %s()\n", __func__);
 
 	return RSC_resume(pdev);
 }
@@ -3754,7 +3841,8 @@ static ssize_t rsc_reg_write(struct file *file, const char __user *buffer, size_
 			}
 		}
 
-		if ((addr >= RSC_BASE_HW) && (addr <= RSC_DMA_RDY_STATUS_HW)) {
+		if ((addr >= RSC_BASE_HW) && (addr <= RSC_DMA_RDY_STATUS_HW)
+			&& ((addr & 0x3) == 0)) {
 			LOG_INF("Write Request - addr:0x%x, value:0x%x\n", addr, val);
 			RSC_WR32((ISP_RSC_BASE + (addr - RSC_BASE_HW)), val);
 		} else {
@@ -3782,7 +3870,8 @@ static ssize_t rsc_reg_write(struct file *file, const char __user *buffer, size_
 			}
 		}
 
-		if ((addr >= RSC_BASE_HW) && (addr <= RSC_DMA_RDY_STATUS_HW)) {
+		if ((addr >= RSC_BASE_HW) && (addr <= RSC_DMA_RDY_STATUS_HW)
+			&& ((addr & 0x3) == 0)) {
 			val = RSC_RD32((ISP_RSC_BASE + (addr - RSC_BASE_HW)));
 			LOG_INF("Read Request - addr:0x%x,value:0x%x\n", addr, val);
 		} else {
@@ -3828,6 +3917,7 @@ int32_t RSC_DumpCallback(uint64_t engineFlag, int level)
 	LOG_DBG("RSC_DumpCallback");
 
 	RSC_DumpReg();
+	request_dump(&rsc_reqs);
 
 	return 0;
 }
@@ -4020,10 +4110,12 @@ static irqreturn_t ISP_Irq_RSC(signed int Irq, void *DeviceId)
 		/* ConfigRSC(); */
 		if (bResulst == MTRUE) {
 			#ifndef ENGINE
-			schedule_work(&RSCInfo.ScheduleRscWork);
+			/* schedule_work(&RSCInfo.ScheduleRscWork); */
+			queue_work(RSCInfo.wkqueue, &RSCInfo.ScheduleRscWork);
 			#else
 			#if REQUEST_REGULATION == REQUEST_BASE_REGULATION
-			schedule_work(&RSCInfo.ScheduleRscWork);
+			/* schedule_work(&RSCInfo.ScheduleRscWork); */
+			queue_work(RSCInfo.wkqueue, &RSCInfo.ScheduleRscWork);
 			#endif
 			#endif
 #ifdef RSC_USE_GCE
@@ -4067,12 +4159,16 @@ static irqreturn_t ISP_Irq_RSC(signed int Irq, void *DeviceId)
 	*  DpeDveSta0:0x%x\n", DveStatus, RscStatus, DpeDveSta0);
 	*/
 	#if defined(ENGINE) && (REQUEST_REGULATION == FRAME_BASE_REGULATION)
-	schedule_work(&RSCInfo.ScheduleRscWork);
+	/* schedule_work(&RSCInfo.ScheduleRscWork); */
+	queue_work(RSCInfo.wkqueue, &RSCInfo.ScheduleRscWork);
 	#endif
 
 	if (RscStatus & RSC_INT_ST)
+#if 1
+		schedule_work(&logWork);
+#else
 		tasklet_schedule(RSC_tasklet[RSC_IRQ_TYPE_INT_RSC_ST].pRSC_tkt);
-
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -4084,6 +4180,12 @@ static void ISP_TaskletFunc_RSC(unsigned long data)
 
 }
 
+static void logPrint(struct work_struct *data)
+{
+	unsigned long arg = 0;
+
+	ISP_TaskletFunc_RSC(arg);
+}
 
 /*******************************************************************************
 *

@@ -19,17 +19,20 @@
 #include <linux/interrupt.h>
 #include "vpu_drv.h"
 
+#define VPU_MET_READY
 #define VPU_PORT_OF_IOMMU M4U_PORT_VPU1
 
 /* Common Structure */
 struct vpu_device {
 	struct proc_dir_entry *proc_dir;
-	struct device *dev[MTK_VPU_CORE+2];
+	struct device *dev[MTK_VPU_CORE+3];
+	bool vpu_hw_support[MTK_VPU_CORE];
 	struct dentry *debug_root;
 	unsigned long vpu_syscfg_base;
 	unsigned long vpu_adlctrl_base;
 	unsigned long vpu_vcorecfg_base;
 	unsigned long vpu_base[MTK_VPU_CORE];
+	unsigned long smi_common_base;
 	unsigned long bin_base;
 	unsigned long bin_pa;
 	unsigned int bin_size;
@@ -57,7 +60,7 @@ struct vpu_user {
 	unsigned long *id;
 	/* to enque/deque must have mutex protection */
 	struct mutex data_mutex;
-	bool running;
+	bool running[MTK_VPU_CORE];
 	bool deleting;
 	bool flushing;
 	bool locked;
@@ -65,6 +68,7 @@ struct vpu_user {
 	struct list_head enque_list;
 	struct list_head deque_list;
 	wait_queue_head_t deque_wait;
+	wait_queue_head_t delete_wait;
 	uint8_t power_mode;
 	uint8_t power_opp;
 };
@@ -84,12 +88,33 @@ struct vpu_shared_memory {
 };
 
 enum vpu_power_param {
-	VPU_POWER_PARAM_DYNAMIC,
+	VPU_POWER_PARAM_FIX_OPP,
 	VPU_POWER_PARAM_DVFS_DEBUG,
 	VPU_POWER_PARAM_JTAG,
 	VPU_POWER_PARAM_LOCK,
 	VPU_POWER_PARAM_VOLT_STEP,
 };
+
+enum vpu_debug_algo_param {
+	VPU_DEBUG_ALGO_PARAM_DUMP_ALGO,
+};
+
+/* enum & structure */
+enum VpuCoreState {
+	VCT_SHUTDOWN	= 1,
+	VCT_BOOTUP		= 2,
+	VCT_EXECUTING	= 3,
+	VCT_IDLE		= 4,
+	VCT_VCORE_CHG	= 5,
+	VCT_NONE		= -1,
+};
+
+enum VpuPowerOnType {
+	VPT_PRE_ON		= 1,	/* power on previously by setPower */
+	VPT_ENQUE_ON	= 2,	/* power on by enque */
+	VPT_IMT_OFF		= 3,	/* power on by enque, but want to immediately off(when exception) */
+};
+
 
 #define DECLARE_VLIST(type) \
 struct type ## _list { \
@@ -130,6 +155,7 @@ struct type ## _list { \
 DECLARE_VLIST(vpu_user);
 DECLARE_VLIST(vpu_algo);
 DECLARE_VLIST(vpu_request);
+DECLARE_VLIST(vpu_dev_debug_info);
 
 
 /* =============================== define in vpu_emu.c  =============================== */
@@ -228,6 +254,12 @@ void vpu_hw_lock(struct vpu_user *user);
 void vpu_hw_unlock(struct vpu_user *user);
 
 /**
+ * vpu_quick_suspend - suspend operation.
+ */
+int vpu_quick_suspend(int core);
+
+
+/**
  * vpu_alloc_shared_memory - allocate a memory, which shares with VPU
  * @shmem:      return the pointer of struct memory
  * @param:      the pointer to the parameters of memory allocation
@@ -244,6 +276,13 @@ void vpu_free_shared_memory(struct vpu_shared_memory *shmem);
  * vpu_ext_be_busy - change VPU's status to busy for 5 sec.
  */
 int vpu_ext_be_busy(void);
+
+/**
+ * vpu_debug_func_core_state - change VPU's status(only for debug function use).
+ * @core:		core index of vpu.
+ * @state:		 expetected state.
+ */
+int vpu_debug_func_core_state(int core, enum VpuCoreState state);
 
 /**
  * vpu_dump_register - dump the register table, and show the content of all fields.
@@ -288,12 +327,26 @@ int vpu_dump_power(struct seq_file *s);
 int vpu_dump_vpu(struct seq_file *s);
 
 /**
+ * vpu_dump_device_dbg - dump the remaining user information to debug fd leak
+ * @s:          the pointer to seq_file.
+ */
+int vpu_dump_device_dbg(struct seq_file *s);
+
+/**
  * vpu_set_power_parameter - set the specific power parameter
  * @param:      the sepcific parameter to update
  * @argc:       the number of arguments
  * @args:       the pointer of arryf of arguments
  */
 int vpu_set_power_parameter(uint8_t param, int argc, int *args);
+
+/**
+ * vpu_set_algo_parameter - set the specific algo parameter
+ * @param:      the sepcific parameter to update
+ * @argc:       the number of arguments
+ * @args:       the pointer of arryf of arguments
+ */
+int vpu_set_algo_parameter(uint8_t param, int argc, int *args);
 
 /* =============================== define in vpu_drv.c  =============================== */
 
@@ -302,6 +355,13 @@ int vpu_set_power_parameter(uint8_t param, int argc, int *args);
  * @ruser:      return the created user.
  */
 int vpu_create_user(struct vpu_user **ruser);
+
+/**
+ * vpu_set_power - set the power mode by a user
+ * @user:       the pointer to user.
+ * @power:      the user's power mode.
+ */
+int vpu_set_power(struct vpu_user *user, struct vpu_power *power);
 
 /**
  * vpu_delete_user - delete vpu user, and remove it from user list
@@ -405,6 +465,24 @@ int vpu_init_debug(struct vpu_device *vpu_dev);
  */
 int vpu_init_reg(int core, struct vpu_device *vpu_dev);
 
+/* =============================== define in vpu_profile.c  =============================== */
+
+/**
+ * vpu_init_profile - init profiling
+ * @device:     the pointer of vpu_device.
+ */
+#define MET_POLLING_MODE
+int vpu_init_profile(int core, struct vpu_device *vpu_dev);
+int vpu_uninit_profile(void);
+int vpu_profile_state_set(int core, int val);
+int vpu_profile_state_get(void);
+void vpu_met_event_enter(int core, int algo_id, int dsp_freq);
+void vpu_met_event_leave(int core, int algo_id);
+void vpu_met_packet(long long wclk, char action, int core, int pid,
+	int sessid, char *str_desc, int val);
+void vpu_met_event_dvfs(int vcore_opp,
+	int dsp_freq, int ipu_if_freq, int dsp1_freq, int dsp2_freq);
+
 
 /* LOG & AEE */
 #define VPU_TAG "[vpu]"
@@ -442,6 +520,11 @@ int vpu_init_reg(int core, struct vpu_device *vpu_dev);
 		aee_kernel_exception("VPU", "\nCRDISPATCH_KEY:" key "\n" format, ##args); \
 	} while (0)
 
+#define vpu_aee_warn(key, format, args...) \
+	do { \
+		LOG_ERR(format, ##args); \
+		aee_kernel_warning("VPU", "\nCRDISPATCH_KEY:" key "\n" format, ##args); \
+	} while (0)
 
 /* Performance Measure */
 #ifdef VPU_TRACE_ENABLED
@@ -464,9 +547,18 @@ static unsigned long __read_mostly vpu_tracing_writer;
 		event_trace_printk(vpu_tracing_writer, "E\n"); \
 		preempt_enable(); \
 	}
+
+#define vpu_trace_dump(format, args...) \
+	{ \
+		preempt_disable(); \
+		event_trace_printk(vpu_tracing_writer, "MET_DUMP|" format "\n", ##args); \
+		preempt_enable(); \
+	}
+
 #else
 #define vpu_trace_begin(...)
 #define vpu_trace_end()
+#define vpu_trace_dump(...)
 #endif
 
 #endif

@@ -4198,8 +4198,6 @@ int ddp_dsi_power_off(enum DISP_MODULE_ENUM module, void *cmdq_handle)
 	int ret = 0;
 	unsigned int value = 0;
 #endif
-	unsigned int try_cnt = 1;
-
 	DISPFUNC();
 	/* DSI_DumpRegisters(module,1); */
 
@@ -4220,18 +4218,9 @@ int ddp_dsi_power_off(enum DISP_MODULE_ENUM module, void *cmdq_handle)
 			mdelay(1);
 			value = INREG32(&DSI_REG[0]->DSI_STATE_DBG1);
 			value = value >> 24;
-			if (value == 0x20) {
-				if (try_cnt > 1)
-					DDPMSG("dsi in ulps mode, try_cnt(%u)\n", try_cnt);
+			if (value == 0x20)
 				break;
-			}
-
-			if (try_cnt == 1)
-				DDPERR("dsi not in ulps mode, try again...(%u)\n", try_cnt);
-			else if (!(try_cnt & 0x3FF))
-				DDPMSG("dsi not in ulps mode, try again...(%u)\n", try_cnt);
-
-			try_cnt++;
+			DDPMSG("dsi not in ulps mode, try again...\n");
 		}
 		/* clear lane_num when enter ulps */
 		for (i = DSI_MODULE_BEGIN(module); i <= DSI_MODULE_END(module); i++)

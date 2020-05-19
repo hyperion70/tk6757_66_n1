@@ -271,6 +271,8 @@ void __reset_page_owner(struct page *page, unsigned int order)
 #endif
 	for (i = 0; i < (1 << order); i++) {
 		page_ext = lookup_page_ext(page + i);
+		if (unlikely(!page_ext))
+			continue;
 		__clear_bit(PAGE_EXT_OWNER, &page_ext->flags);
 	}
 }
@@ -296,6 +298,9 @@ void __set_page_owner(struct page *page, unsigned int order, gfp_t gfp_mask)
 	};
 #endif
 
+	if (unlikely(!page_ext))
+		return;
+
 	save_stack_trace(&trace);
 
 #ifdef CONFIG_PAGE_OWNER_SLIM
@@ -313,8 +318,70 @@ void __set_page_owner(struct page *page, unsigned int order, gfp_t gfp_mask)
 gfp_t __get_page_owner_gfp(struct page *page)
 {
 	struct page_ext *page_ext = lookup_page_ext(page);
+	if (unlikely(!page_ext))
+		/*
+		 * The caller just returns 0 if no valid gfp
+		 * So return 0 here too.
+		 */
+		return 0;
 
 	return page_ext->gfp_mask;
+}
+
+int __dump_pfn_backtrace(unsigned long pfn)
+{
+	struct page *page = pfn_to_page(pfn);
+	struct page_ext *page_ext = lookup_page_ext(page);
+	int pageblock_mt, page_mt;
+
+	/* Check for holes within a MAX_ORDER area */
+	if (!pfn_valid_within(pfn))
+		return -2;
+	if (page_ext) {
+		if (test_bit(PAGE_EXT_OWNER, &page_ext->flags)) {
+#ifdef CONFIG_PAGE_OWNER_SLIM
+			BtEntry *entry = page_ext->entry;
+			struct stack_trace trace = {
+				.nr_entries = entry->nr_entries,
+				.entries = &entry->backtrace[0],
+			};
+#else
+			struct stack_trace trace = {
+				.nr_entries = page_ext->nr_entries,
+				.entries = &page_ext->trace_entries[0],
+			};
+#endif
+
+			pr_info("Page allocated via order %u, mask 0x%x, (%d:%d)\n",
+					page_ext->order, page_ext->gfp_mask,
+					atomic_read(&page->_count), atomic_read(&page->_mapcount));
+
+			pageblock_mt = get_pfnblock_migratetype(page, pfn);
+			page_mt  = gfpflags_to_migratetype(page_ext->gfp_mask);
+			pr_info("PFN %lu Block %lu type %d %s Flags %s%s%s%s%s%s%s%s%s%s%s%s\n",
+					pfn,
+					pfn >> pageblock_order,
+					pageblock_mt,
+					pageblock_mt != page_mt ? "Fallback" : "        ",
+					PageLocked(page)	? "K" : " ",
+					PageError(page)		? "E" : " ",
+					PageReferenced(page)	? "R" : " ",
+					PageUptodate(page)	? "U" : " ",
+					PageDirty(page)		? "D" : " ",
+					PageLRU(page)		? "L" : " ",
+					PageActive(page)	? "A" : " ",
+					PageSlab(page)		? "S" : " ",
+					PageWriteback(page)	? "W" : " ",
+					PageCompound(page)	? "C" : " ",
+					PageSwapCache(page)	? "B" : " ",
+					PageMappedToDisk(page)	? "M" : " ");
+
+			print_stack_trace(&trace, 0);
+
+			return 0;
+		}
+	}
+	return -1;
 }
 
 static ssize_t
@@ -436,6 +503,8 @@ read_page_owner(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 		}
 
 		page_ext = lookup_page_ext(page);
+		if (unlikely(!page_ext))
+			continue;
 
 		/*
 		 * Some pages could be missed by concurrent allocation or free,
@@ -499,6 +568,8 @@ static void init_pages_in_zone(pg_data_t *pgdat, struct zone *zone)
 				continue;
 
 			page_ext = lookup_page_ext(page);
+			if (unlikely(!page_ext))
+				continue;
 
 			/* Maybe overraping zone */
 			if (test_bit(PAGE_EXT_OWNER, &page_ext->flags))

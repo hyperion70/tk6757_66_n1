@@ -129,16 +129,17 @@
         <module name="gpio">
             <count>194</count>
             <gpio0>
-                <eint_mode>true</eint_mode>
-                <def_mode>0</def_mode>
-                <mode_arr>10000000</mode_arr>
-                <inpull_en>true</inpull_en>
+                <eint_mode>false</eint_mode>
+                <def_mode>6</def_mode>
+                <mode_arr>11101111</mode_arr>
+                <inpull_en>false</inpull_en>
                 <inpull_selhigh>false</inpull_selhigh>
                 <def_dir>IN</def_dir>
                 <in>true</in>
-                <out>false</out>
+                <out>true</out>
                 <out_high>false</out_high>
-                <smt>true</smt>
+                <varName0>GPIO_ACCDET_EINT_PIN</varName0>
+                <smt>false</smt>
                 <ies>true</ies>
             </gpio0>
             <gpio1>
@@ -753,20 +754,6 @@
                 <smt>false</smt>
                 <ies>true</ies>
             </gpio44>
-            <gpio45>
-                <eint_mode>false</eint_mode>
-                <def_mode>1</def_mode>
-                <mode_arr>11000000</mode_arr>
-                <inpull_en>true</inpull_en>
-                <inpull_selhigh>true</inpull_selhigh>
-                <def_dir>IN</def_dir>
-                <in>true</in>
-                <out>true</out>
-                <out_high>false</out_high>
-                <varName0>GPIO_SIM2_HOT_PLUG</varName0>
-                <smt>false</smt>
-                <ies>true</ies>
-            </gpio45>
             <gpio46>
                 <eint_mode>false</eint_mode>
                 <def_mode>1</def_mode>
@@ -2249,27 +2236,17 @@
             </device23>
         </module>
         <module name="md1_eint">
-            <count>8</count>
+            <count>4</count>
             <eint0>
                 <varName>MD1_SIM1_HOT_PLUG_EINT</varName>
                 <debounce_time>100</debounce_time>
-                <polarity>Low</polarity>
+                <polarity>High</polarity>
                 <sensitive_level>Level</sensitive_level>
                 <debounce_en>Enable</debounce_en>
                 <dedicated_en>Disable</dedicated_en>
                 <srcPin ref_gpio="GPIO46">PAD_INT_SIM1</srcPin>
                 <socketType>0</socketType>
             </eint0>
-            <eint1>
-                <varName>MD1_SIM2_HOT_PLUG_EINT</varName>
-                <debounce_time>100</debounce_time>
-                <polarity>Low</polarity>
-                <sensitive_level>Level</sensitive_level>
-                <debounce_en>Enable</debounce_en>
-                <dedicated_en>Disable</dedicated_en>
-                <srcPin ref_gpio="GPIO45">PAD_INT_SIM2</srcPin>
-                <socketType>0</socketType>
-            </eint1>
         </module>
         <module name="pmic">
             <chip>PMIC_MT6355PMUMP</chip>

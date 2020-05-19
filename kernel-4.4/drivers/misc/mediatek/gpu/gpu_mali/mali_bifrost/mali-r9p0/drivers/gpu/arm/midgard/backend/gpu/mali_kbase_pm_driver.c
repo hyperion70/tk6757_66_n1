@@ -37,7 +37,7 @@
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include <backend/gpu/mali_kbase_irq_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
-
+#include <backend/gpu/mali_kbase_jm_internal.h>
 #include <linux/of.h>
 
 #if MALI_MOCK_TEST
@@ -1439,6 +1439,7 @@ static int kbase_pm_do_reset(struct kbase_device *kbdev)
 	 * reset */
 	dev_err(kbdev->dev, "Failed to soft-reset GPU (timed out after %d ms), now attempting a hard reset\n",
 								RESET_TIMEOUT);
+
 	KBASE_TRACE_ADD(kbdev, CORE_GPU_HARD_RESET, NULL, NULL, 0u, 0);
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND),
 						GPU_COMMAND_HARD_RESET, NULL);

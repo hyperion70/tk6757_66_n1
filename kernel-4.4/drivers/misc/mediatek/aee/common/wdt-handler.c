@@ -36,6 +36,10 @@
 #include <smp.h>
 #endif
 #include "aee-common.h"
+#include <ipanic.h>
+#ifdef CONFIG_MTK_RAM_CONSOLE
+#include <mt-plat/mtk_ram_console.h>
+#endif
 #include <mrdump_private.h>
 
 #undef WDT_DEBUG_VERBOSE
@@ -466,7 +470,7 @@ void aee_wdt_irq_info(void)
 	/* avoid lock prove to dump_stack in __debug_locks_off() */
 	xchg(&debug_locks, 0);
 	aee_rr_rec_fiq_step(AEE_FIQ_STEP_WDT_IRQ_DONE);
-	aee_rr_rec_exp_type(1);
+	aee_rr_rec_exp_type(AEE_EXP_TYPE_HWT);
 	aee_exception_reboot();
 }
 
@@ -518,6 +522,9 @@ void aee_wdt_fiq_info(void *arg, void *regs, void *svc_sp)
 
 	/* FIXME: correct mrdump function if necessary */
 	__mrdump_create_oops_dump(AEE_REBOOT_MODE_WDT, regs, "WDT/HWT");
+
+	/* add info for minidump */
+	mrdump_mini_ke_cpu_regs(regs);
 
 	aee_wdt_irq_info();
 }

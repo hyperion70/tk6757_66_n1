@@ -573,7 +573,8 @@ struct TGPD *_ex_mu3d_hal_prepare_tx_gpd(struct TGPD *gpd, dma_addr_t pBuf, unsi
 {
 	qmu_printk(K_DEBUG,
 		   "[TX] %s gpd=%p, epnum=%d, len=%d, zlp=%d, size(TGPD)=%lld, pBuf=%llx\n",
-		   __func__, gpd, ep_num, data_len, zlp, (u64) sizeof(struct TGPD), pBuf);
+		   __func__, gpd, ep_num, data_len, zlp, (u64) sizeof(struct TGPD),
+		   (unsigned long long)pBuf);
 	/*Set actual data point to "DATA Buffer" */
 	TGPD_SET_DATA(gpd, (unsigned long)pBuf);
 
@@ -831,7 +832,7 @@ struct TGPD *_ex_mu3d_hal_prepare_rx_gpd(struct TGPD *gpd, dma_addr_t pBuf, unsi
 				  unsigned char ioc, unsigned char bps, unsigned int cMaxPacketSize)
 {
 	qmu_printk(K_DEBUG, "[RX] %s gpd=%p, epnum=%d, len=%d, pBuf=%llx\n", __func__,
-		   gpd, ep_num, data_len, pBuf);
+		   gpd, ep_num, data_len, (unsigned long long)pBuf);
 
 	/*Set actual data point to "DATA Buffer" */
 	TGPD_SET_DATA(gpd, (unsigned long)pBuf);
@@ -1209,7 +1210,7 @@ void mu3d_hal_stop_qmu(int q_num, enum USB_DIR dir)
 		} else {
 			os_writel(USB_QMU_TQCSR(q_num), QMU_Q_STOP);
 			mb(); /* avoid context switch */
-			if (wait_for_value(USB_QMU_TQCSR(q_num), QMU_Q_ACTIVE, 0, 10, 100) == RET_SUCCESS)
+			if (wait_for_value_us(USB_QMU_TQCSR(q_num), QMU_Q_ACTIVE, 0, 10, 100) == RET_SUCCESS)
 				qmu_printk(K_DEBUG, "Tx%d stop Now! CSR=0x%x\n",
 					   q_num, os_readl(USB_QMU_TQCSR(q_num)));
 			else {
@@ -1231,7 +1232,7 @@ void mu3d_hal_stop_qmu(int q_num, enum USB_DIR dir)
 		} else {
 			os_writel(USB_QMU_RQCSR(q_num), QMU_Q_STOP);
 			mb(); /* avoid context switch */
-			if (wait_for_value(USB_QMU_RQCSR(q_num), QMU_Q_ACTIVE, 0, 10, 100) == RET_SUCCESS)
+			if (wait_for_value_us(USB_QMU_RQCSR(q_num), QMU_Q_ACTIVE, 0, 10, 100) == RET_SUCCESS)
 				qmu_printk(K_DEBUG, "Rx%d stop Now! CSR=0x%x\n",
 					   q_num, os_readl(USB_QMU_RQCSR(q_num)));
 			else {

@@ -18,6 +18,7 @@ ccflags-y  += -I$(srctree)/drivers/misc/mediatek/gpu/hal/
 ccflags-y  += -I$(srctree)/drivers/misc/mediatek/thermal/fakeHeader/
 ccflags-y  += -I$(srctree)/drivers/misc/mediatek/thermal/common/inc/
 ccflags-y  += -I$(srctree)/drivers/misc/mediatek/base/power/eem_v1/inc/
+ccflags-y  += -I$(srctree)/drivers/misc/mediatek/vpu/$(MTK_PLATFORM)
 
 ifneq (,$(filter $(CONFIG_MTK_PLATFORM), "mt6735"))
 ifeq ($(CONFIG_ARCH_MT6735),y)
@@ -41,6 +42,7 @@ endif
 
 obj-$(CONFIG_THERMAL) += mtk_thermal_platform.o
 obj-$(CONFIG_THERMAL) += ap_thermal_limit.o
+obj-$(CONFIG_THERMAL) += mtk_change_policy.o
 
 
 obj-y += thermal_zones/

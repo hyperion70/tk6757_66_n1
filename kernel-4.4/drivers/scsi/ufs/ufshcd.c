@@ -115,7 +115,7 @@ static u32 ufs_query_desc_max_size[] = {
 	QUERY_DESC_RFU_MAX_SIZE,
 	QUERY_DESC_GEOMETRY_MAX_SIZE,
 	QUERY_DESC_POWER_MAX_SIZE,
-	QUERY_DESC_RFU_MAX_SIZE,
+	QUERY_DESC_HEALTH_MAX_SIZE,
 };
 
 enum {
@@ -189,8 +189,6 @@ const int ufs_pm_lvl_states_size = ARRAY_SIZE(ufs_pm_lvl_states);
 #ifdef CONFIG_MTK_UFS_DEBUG
 struct ufs_hba *g_ufs_hba_p;	/* for debugging only */
 static int ufs_trace_en = 1;
-#else
-static int ufs_trace_en;
 #endif
 
 static inline enum ufs_dev_pwr_mode
@@ -395,7 +393,7 @@ void ufshcd_print_trs(struct ufs_hba *hba, unsigned long bitmap, bool pr_prdt)
 	}
 }
 
-void ufshcd_print_host_state(struct ufs_hba *hba, u32 mphy_info, struct seq_file *m)
+void ufshcd_print_host_state(struct ufs_hba *hba, u32 mphy_info, struct seq_file *m, char **buff, unsigned long *size)
 {
 	int err = 0;
 	u32 val;
@@ -403,32 +401,32 @@ void ufshcd_print_host_state(struct ufs_hba *hba, u32 mphy_info, struct seq_file
 	if (!(hba->ufshcd_dbg_print & UFSHCD_DBG_PRINT_HOST_STATE_EN))
 		return;
 
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "UFS Host state=%d\n", hba->ufshcd_state);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "req r=%d w=%d map=0x%lx\n",
+	SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "UFS Host state=%d\n", hba->ufshcd_state);
+	SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "req r=%d w=%d map=0x%lx\n",
 		hba->req_r_cnt, hba->req_w_cnt, hba->req_tag_map);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "lrb in use=0x%lx, outstanding reqs=0x%lx tasks=0x%lx\n",
+	SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "lrb in use=0x%lx, outstanding reqs=0x%lx tasks=0x%lx\n",
 		hba->lrb_in_use, hba->outstanding_tasks, hba->outstanding_reqs);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "saved_err=0x%x, saved_uic_err=0x%x\n",
+	SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "saved_err=0x%x, saved_uic_err=0x%x\n",
 		hba->saved_err, hba->saved_uic_err);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "Device power mode=%d, UIC link state=%d\n",
+	SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "Device power mode=%d, UIC link state=%d\n",
 		hba->curr_dev_pwr_mode, hba->uic_link_state);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "PM in progress=%d, sys. suspended=%d\n",
+	SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "PM in progress=%d, sys. suspended=%d\n",
 		hba->pm_op_in_progress, hba->is_sys_suspended);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "Auto BKOPS=%d, Host self-block=%d\n",
+	SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "Auto BKOPS=%d, Host self-block=%d\n",
 		hba->auto_bkops_enabled, hba->host->host_self_blocked);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "error handling flags=0x%x, req. abort count=%d\n",
+	SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "error handling flags=0x%x, req. abort count=%d\n",
 		hba->eh_flags, hba->req_abort_count);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "Host capabilities=0x%x, caps=0x%x\n",
+	SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "Host capabilities=0x%x, caps=0x%x\n",
 		hba->capabilities, hba->caps);
-	UFS_DEVINFO_PROC_MSG(m, hba->dev, "quirks=0x%x, dev. quirks=0x%x\n", hba->quirks,
+	SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "quirks=0x%x, dev. quirks=0x%x\n", hba->quirks,
 		hba->dev_quirks);
 
 	if (mphy_info) {
 		err = ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(TX_FSM_STATE, 0), &val);
 		if (err)
-			UFS_DEVINFO_PROC_MSG(m, hba->dev, "get TX_FSM_STATE fail\n");
+			SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "get TX_FSM_STATE fail\n");
 		else
-			UFS_DEVINFO_PROC_MSG(m, hba->dev, "TX_FSM_STATE: %u\n", val);
+			SPREAD_DEV_PRINTF(buff, size, m, hba->dev, "TX_FSM_STATE: %u\n", val);
 	}
 }
 
@@ -3347,6 +3345,8 @@ static int ufshcd_slave_alloc(struct scsi_device *sdev)
 	/* REPORT SUPPORTED OPERATION CODES is not supported */
 	sdev->no_report_opcodes = 1;
 
+	/* WRITE_SAME command is not supported */
+	sdev->no_write_same = 1;
 
 	ufshcd_set_queue_depth(sdev);
 
@@ -3676,10 +3676,10 @@ static void ufshcd_transfer_req_compl(struct ufs_hba *hba)
 					completion = ktime_get();
 					delta_us = ktime_us_delta(completion,
 						  req->lat_hist_io_start);
-					/* rq_data_dir() => true if WRITE */
-					blk_update_latency_hist(&hba->io_lat_s,
-						(rq_data_dir(req) == READ),
-						delta_us);
+					blk_update_latency_hist(
+						(rq_data_dir(req) == READ) ?
+						&hba->io_lat_read :
+						&hba->io_lat_write, delta_us);
 				}
 			}
 
@@ -3868,18 +3868,25 @@ out:
 }
 
 /**
- * ufshcd_force_reset_auto_bkops - force enable of auto bkops
+ * ufshcd_force_reset_auto_bkops - force reset auto bkops state
  * @hba: per adapter instance
  *
  * After a device reset the device may toggle the BKOPS_EN flag
  * to default value. The s/w tracking variables should be updated
- * as well. Do this by forcing enable of auto bkops.
+ * as well. This function would change the auto-bkops state based on
+ * UFSHCD_CAP_KEEP_AUTO_BKOPS_ENABLED_EXCEPT_SUSPEND.
  */
-static void  ufshcd_force_reset_auto_bkops(struct ufs_hba *hba)
+static void ufshcd_force_reset_auto_bkops(struct ufs_hba *hba)
 {
-	hba->auto_bkops_enabled = false;
-	hba->ee_ctrl_mask |= MASK_EE_URGENT_BKOPS;
-	ufshcd_enable_auto_bkops(hba);
+	if (ufshcd_keep_autobkops_enabled_except_suspend(hba)) {
+		hba->auto_bkops_enabled = false;
+		hba->ee_ctrl_mask |= MASK_EE_URGENT_BKOPS;
+		ufshcd_enable_auto_bkops(hba);
+	} else {
+		hba->auto_bkops_enabled = true;
+		hba->ee_ctrl_mask &= ~MASK_EE_URGENT_BKOPS;
+		ufshcd_disable_auto_bkops(hba);
+	}
 }
 
 static inline int ufshcd_get_bkops_status(struct ufs_hba *hba, u32 *status)
@@ -3966,6 +3973,7 @@ static void ufshcd_exception_event_handler(struct work_struct *work)
 	hba = container_of(work, struct ufs_hba, eeh_work);
 
 	pm_runtime_get_sync(hba->dev);
+	scsi_block_requests(hba->host);
 	err = ufshcd_get_ee_status(hba, &status);
 	if (err) {
 		dev_err(hba->dev, "%s: failed to get exception status %d\n",
@@ -3981,6 +3989,7 @@ static void ufshcd_exception_event_handler(struct work_struct *work)
 					__func__, err);
 	}
 out:
+	scsi_unblock_requests(hba->host);
 	pm_runtime_put_sync(hba->dev);
 	return;
 }
@@ -4541,7 +4550,7 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 	scsi_print_command(cmd);
 	if (!hba->req_abort_count) {
 		ufshcd_print_host_regs(hba);
-		ufshcd_print_host_state(hba, 1, NULL);
+		ufshcd_print_host_state(hba, 1, NULL, NULL, NULL);
 		ufshcd_print_pwr_info(hba);
 		ufshcd_print_trs(hba, 1 << tag, true);
 		ufs_mtk_dbg_dump_scsi_cmd(hba, cmd, UFSHCD_DBG_PRINT_ABORT_CMD_EN);
@@ -5475,11 +5484,14 @@ static int ufshcd_config_vreg(struct device *dev,
 		struct ufs_vreg *vreg, bool on)
 {
 	int ret = 0;
-	struct regulator *reg = vreg->reg;
-	const char *name = vreg->name;
+	struct regulator *reg;
+	const char *name;
 	int min_uV, uA_load;
 
 	BUG_ON(!vreg);
+
+	reg = vreg->reg;
+	name = vreg->name;
 
 	if (regulator_count_voltages(reg) > 0) {
 		min_uV = on ? vreg->min_uV : 0;
@@ -6323,11 +6335,15 @@ static int ufshcd_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 			goto set_old_link_state;
 	}
 
-	/*
-	 * If BKOPs operations are urgently needed at this moment then
-	 * keep auto-bkops enabled or else disable it.
-	 */
-	ufshcd_urgent_bkops(hba);
+	if (ufshcd_keep_autobkops_enabled_except_suspend(hba))
+		ufshcd_enable_auto_bkops(hba);
+	else
+		/*
+		 * If BKOPs operations are urgently needed at this moment then
+		 * keep auto-bkops enabled or else disable it.
+		 */
+		ufshcd_urgent_bkops(hba);
+
 	hba->clk_gating.is_suspended = false;
 
 	if (ufshcd_is_clkscaling_enabled(hba))
@@ -6588,9 +6604,10 @@ latency_hist_store(struct device *dev, struct device_attribute *attr,
 
 	if (kstrtol(buf, 0, &value))
 		return -EINVAL;
-	if (value == BLK_IO_LAT_HIST_ZERO)
-		blk_zero_latency_hist(&hba->io_lat_s);
-	else if (value == BLK_IO_LAT_HIST_ENABLE ||
+	if (value == BLK_IO_LAT_HIST_ZERO) {
+		memset(&hba->io_lat_read, 0, sizeof(hba->io_lat_read));
+		memset(&hba->io_lat_write, 0, sizeof(hba->io_lat_write));
+	} else if (value == BLK_IO_LAT_HIST_ENABLE ||
 		 value == BLK_IO_LAT_HIST_DISABLE)
 		hba->latency_hist_enabled = value;
 	return count;
@@ -6601,8 +6618,14 @@ latency_hist_show(struct device *dev, struct device_attribute *attr,
 		  char *buf)
 {
 	struct ufs_hba *hba = dev_get_drvdata(dev);
+	size_t written_bytes;
 
-	return blk_latency_hist_show(&hba->io_lat_s, buf);
+	written_bytes = blk_latency_hist_show("Read", &hba->io_lat_read,
+			buf, PAGE_SIZE);
+	written_bytes += blk_latency_hist_show("Write", &hba->io_lat_write,
+			buf + written_bytes, PAGE_SIZE - written_bytes);
+
+	return written_bytes;
 }
 
 static DEVICE_ATTR(latency_hist, S_IRUGO | S_IWUSR,

@@ -34,6 +34,10 @@
 #include <linux/uaccess.h>
 #include <linux/compat.h>
 #endif
+#if IS_ENABLED(CONFIG_MACH_MT6771)
+#include <linux/delay.h>
+#include <linux/sched.h>
+#endif
 
 /* Define SMI_INTERNAL_CCF_SUPPORT when CCF needs to be enabled */
 #if !defined(CONFIG_MTK_CLKMGR) && !defined(SMI_DUMMY) && !defined(CONFIG_FPGA_EARLY_PORTING)
@@ -120,6 +124,8 @@ unsigned int *g_mmdvfs_scen_log_mask = &mmdvfs_scen_log_mask;
 #if defined(SMI_WHI)
 #define SMI_MMSYS_REG_INDX (SMI_COMMON_REG_INDX + 1)
 static unsigned long long mmsys_reg;
+#elif IS_ENABLED(CONFIG_MACH_MT6771)
+void __iomem *mmsys_config_reg;
 #endif
 
 #define SMI_MMIT_PORTING 0
@@ -460,12 +466,42 @@ static int smi_bus_disable_unprepare(const unsigned int reg_indx,
 	const char *user_name, const bool enable_mtcmos)
 {
 	int i;
-
+#if IS_ENABLED(CONFIG_MACH_MT6771)
+	unsigned int comm_ref_cnt, larb_ref_cnt;
+	unsigned long comm_val, larb_val;
+#endif
 	if (reg_indx >= SMI_REG_REGION_MAX) {
 		SMIMSG("Invalid reg_indx %d: smi_bus_disable_unprepare(%d, %s, %d)\n",
 			reg_indx, reg_indx, user_name, enable_mtcmos);
 		return -EINVAL;
 	}
+#if IS_ENABLED(CONFIG_MACH_MT6771)
+	comm_ref_cnt = smi_clk_get_ref_count(SMI_COMMON_REG_INDX);
+	larb_ref_cnt = smi_clk_get_ref_count(reg_indx);
+
+	comm_val = M4U_ReadReg32(get_common_base_addr(), 0x440);
+	larb_val = M4U_ReadReg32(get_larb_base_addr(reg_indx), 0x0);
+	if (reg_indx != SMI_LARB0_REG_INDX && reg_indx != SMI_COMMON_REG_INDX
+		&& (larb_ref_cnt - 1 == 0) && larb_val != 0x0) {
+		pr_info("%s(%d, %s, %d): delay for 1 msec\n",
+			__func__, reg_indx, user_name, enable_mtcmos ? 1 : 0);
+		smi_latest_mdelay_sec = sched_clock();
+		smi_latest_mdelay_nsec = do_div(smi_latest_mdelay_sec, 1000000000);
+		smi_latest_mdelay_larb = reg_indx;
+		mdelay(1); /* delay for 1 msec */
+	}
+
+	comm_val = M4U_ReadReg32(get_common_base_addr(), 0x440);
+	larb_val = M4U_ReadReg32(get_larb_base_addr(reg_indx), 0x0);
+	if (reg_indx != SMI_LARB0_REG_INDX && reg_indx != SMI_COMMON_REG_INDX
+		&& (larb_ref_cnt - 1 == 0) && larb_val != 0x0) {
+		smi_debug_bus_hanging_detect_ext2(0x1ff, 1, 0, 1);
+		SMIMSG("%s(%d, %s, %d): %s want turn off larb%d CG%s(%d) but larb%d is busy %#lx\n",
+			__func__, reg_indx, user_name, enable_mtcmos ? 1 : 0,
+			user_name, reg_indx, enable_mtcmos ? "/MTCMOS" : "", larb_ref_cnt, reg_indx, larb_val);
+	}
+#endif
+
 	/* turn off larb clocks and mtcmos & common clocks and mtcmos */
 	if (reg_indx < SMI_COMMON_REG_INDX) { /* larb */
 		for (i = nr_mtcmos_clks[reg_indx] - 1; i >= 0; i--) {
@@ -487,6 +523,42 @@ static int smi_bus_disable_unprepare(const unsigned int reg_indx,
 	return 0;
 }
 #endif /* defined(SMI_INTERNAL_CCF_SUPPORT) */
+
+#if IS_ENABLED(CONFIG_MACH_MT6771)
+DEFINE_SPINLOCK(smi_mon_act_cnt_spinlock);
+void smi_larb_mon_act_cnt(void)
+{
+	unsigned long comm_base = get_common_base_addr(), larb0_base = get_larb_base_addr(0);
+	unsigned long comm_val = 0, larb0_val = 0;
+
+	spin_lock(&smi_mon_act_cnt_spinlock);
+	/* DIS_EN */
+	comm_val = M4U_ReadReg32(comm_base, 0x1a0);
+	M4U_WriteReg32(comm_base, 0x1a0, comm_val | 0x0);
+	larb0_val = M4U_ReadReg32(larb0_base, 0x400);
+	M4U_WriteReg32(larb0_base, 0x400, larb0_val | 0x0);
+	/* MON_ACT_CNT */
+	comm_val = M4U_ReadReg32(comm_base, 0x1c0);
+	larb0_val = M4U_ReadReg32(larb0_base, 0x410);
+
+	if (((comm_val > larb0_val) && (comm_val - larb0_val > 0x400)) ||
+		((larb0_val > comm_val) && (larb0_val - comm_val > 0x400)))
+		pr_notice("active count: comm=%#lx, larb0=%#lx\n",
+			comm_val, larb0_val);
+	/* CLR */
+	comm_val = M4U_ReadReg32(comm_base, 0x1a4);
+	M4U_WriteReg32(comm_base, 0x1a4, comm_val | 0x1);
+	larb0_val = M4U_ReadReg32(larb0_base, 0x404);
+	M4U_WriteReg32(larb0_base, 0x404, larb0_val | 0x1);
+	/* EN */
+	comm_val = M4U_ReadReg32(comm_base, 0x1a0);
+	M4U_WriteReg32(comm_base, 0x1a0, comm_val | 0x1);
+	larb0_val = M4U_ReadReg32(larb0_base, 0x400);
+	M4U_WriteReg32(larb0_base, 0x400, larb0_val | 0x1);
+
+	spin_unlock(&smi_mon_act_cnt_spinlock);
+}
+#endif
 
 /*
  * prepare and enable CG/MTCMOS of specific LARB and COMMON
@@ -855,14 +927,10 @@ static char *smi_get_scenario_name(enum MTK_SMI_BWC_SCEN scen)
 		return "SMI_BWC_SCEN_HDMI4K";
 	case SMI_BWC_SCEN_VPMJC:
 		return "SMI_BWC_SCEN_VPMJC";
-	case SMI_BWC_SCEN_N3D:
-		return "SMI_BWC_SCEN_N3D";
 	case SMI_BWC_SCEN_CAM_PV:
 		return "SMI_BWC_SCEN_CAM_PV";
 	case SMI_BWC_SCEN_CAM_CP:
 		return "SMI_BWC_SCEN_CAM_CP";
-	case SMI_BWC_SCEN_CAM_ZSD:
-		return "SMI_BWC_SCEN_CAM_ZSD";
 	default:
 		return "unknown scenario";
 	}
@@ -968,8 +1036,6 @@ static int smi_bwc_config(struct MTK_SMI_BWC_CONFIG *p_conf, unsigned int *pu4Lo
 		eFinalScen = SMI_BWC_SCEN_VR_SLOW;
 	else if ((1 << SMI_BWC_SCEN_VR) & u4Concurrency)
 		eFinalScen = SMI_BWC_SCEN_VR;
-	else if ((1 << SMI_BWC_SCEN_CAM_ZSD) & u4Concurrency)
-		eFinalScen = SMI_BWC_SCEN_CAM_ZSD;
 	else if ((1 << SMI_BWC_SCEN_CAM_PV) & u4Concurrency)
 		eFinalScen = SMI_BWC_SCEN_CAM_PV;
 	else if ((1 << SMI_BWC_SCEN_CAM_CP) & u4Concurrency)
@@ -1392,6 +1458,14 @@ static int smi_probe(struct platform_device *pdev)
 		} else {
 			mmsys_reg = (unsigned long) smi_dev->mmsys;
 			SMIMSG("DT, mmsys_config, map_addr=0x%p, mmsys_reg=0x%llx\n", smi_dev->mmsys, mmsys_reg);
+		}
+#elif IS_ENABLED(CONFIG_MACH_MT6771)
+		of_node = of_parse_phandle(pdev->dev.of_node, "mmsys_config", 0);
+		mmsys_config_reg = (void *)of_iomap(of_node, 0);
+		of_node_put(of_node);
+		if (!mmsys_config_reg) {
+			SMIERR("Unable to iomap mmsys\n");
+			return -ENOMEM;
 		}
 #endif
 		smi_mmdvfs_clks_init();

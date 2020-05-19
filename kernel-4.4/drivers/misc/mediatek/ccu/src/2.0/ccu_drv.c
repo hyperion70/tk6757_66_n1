@@ -69,6 +69,7 @@
 #include "ccu_i2c_hw.h"
 #include "ccu_imgsensor.h"
 #include "kd_camera_feature.h"/*for IMGSENSOR_SENSOR_IDX*/
+#include "ccu_mva.h"
 
 /*******************************************************************************
 *
@@ -85,6 +86,8 @@ static uint32_t ccu_hw_base;
 
 static wait_queue_head_t wait_queue_deque;
 static wait_queue_head_t wait_queue_enque;
+
+static struct ion_handle *import_buffer_handle[CCU_IMPORT_BUF_NUM];
 
 #ifdef CONFIG_PM_WAKELOCKS
 struct wakeup_source ccu_wake_lock;
@@ -401,6 +404,18 @@ int ccu_unlock_user_mutex(void)
 	return 0;
 }
 
+int ccu_lock_ion_client_mutex(void)
+{
+	mutex_lock(&g_ccu_device->ion_client_mutex);
+	return 0;
+}
+
+int ccu_unlock_ion_client_mutex(void)
+{
+	mutex_unlock(&g_ccu_device->ion_client_mutex);
+	return 0;
+}
+
 /*---------------------------------------------------------------------------*/
 /* IOCTL: implementation                                                     */
 /*---------------------------------------------------------------------------*/
@@ -411,7 +426,7 @@ int ccu_set_power(struct ccu_power_s *power)
 
 static int ccu_open(struct inode *inode, struct file *flip)
 {
-	int ret = 0;
+	int ret = 0, i;
 
 	struct ccu_user_s *user;
 
@@ -422,6 +437,10 @@ static int ccu_open(struct inode *inode, struct file *flip)
 	}
 
 	flip->private_data = user;
+	ccu_ion_init();
+
+	for (i = 0; i < CCU_IMPORT_BUF_NUM; i++)
+		import_buffer_handle[i] = (struct ion_handle *)CCU_IMPORT_BUF_UNDEF;
 
 	return ret;
 }
@@ -574,6 +593,7 @@ void ccu_clock_disable(void)
 static long ccu_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
+	int i = 0;
 	int powert_stat;
 	struct CCU_WAIT_IRQ_STRUCT IrqInfo;
 	struct ccu_user_s *user = flip->private_data;
@@ -690,37 +710,14 @@ static long ccu_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
 					IrqInfo.EventInfo.St_type,
 					IrqInfo.EventInfo.Status);
 
-				ret = ccu_AFwaitirq(&IrqInfo, CCU_CAM_TG_1);
-
-				if (copy_to_user((void *)arg, &IrqInfo, sizeof(struct CCU_WAIT_IRQ_STRUCT))
-				    != 0) {
-					LOG_ERR("copy_to_user failed\n");
-					ret = -EFAULT;
-				}
-			} else {
-				LOG_ERR("copy_from_user failed\n");
-				ret = -EFAULT;
-			}
-
-			break;
-		}
-	case CCU_IOCTL_WAIT_AFB_IRQ:
-		{
-			if (copy_from_user(&IrqInfo, (void *)arg, sizeof(struct CCU_WAIT_IRQ_STRUCT)) == 0) {
-				if ((IrqInfo.Type >= CCU_IRQ_TYPE_AMOUNT) || (IrqInfo.Type < 0)) {
-					ret = -EFAULT;
-					LOG_ERR("invalid type(%d)\n", IrqInfo.Type);
+				if (IrqInfo.bDumpReg == CCU_CAM_TG_1)
+					ret = ccu_AFwaitirq(&IrqInfo, CCU_CAM_TG_1);
+				else if (IrqInfo.bDumpReg == CCU_CAM_TG_2)
+					ret = ccu_AFwaitirq(&IrqInfo, CCU_CAM_TG_2);
+				else {
+					LOG_ERR("invalid CCU_CAM_TG:%d\n", IrqInfo.bDumpReg);
 					goto EXIT;
 				}
-
-				LOG_DBG("AFBIRQ type(%d), userKey(%d), timeout(%d), sttype(%d), st(%d)\n",
-					IrqInfo.Type,
-					IrqInfo.EventInfo.UserKey,
-					IrqInfo.EventInfo.Timeout,
-					IrqInfo.EventInfo.St_type,
-					IrqInfo.EventInfo.Status);
-
-				ret = ccu_AFwaitirq(&IrqInfo, CCU_CAM_TG_2);
 
 				if (copy_to_user((void *)arg, &IrqInfo, sizeof(struct CCU_WAIT_IRQ_STRUCT))
 				    != 0) {
@@ -847,6 +844,31 @@ static long ccu_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
 
 			return ccu_read_info_reg(regToRead);
 		}
+	case CCU_IOCTL_IMPORT_MEM:
+		{
+			struct import_mem_s import_mem;
+
+			ret = copy_from_user(&import_mem, (void *)arg, sizeof(struct import_mem_s));
+			if (ret != 0) {
+				LOG_ERR("CCU_IOCTL_IMPORT_MEM copy_to_user failed: %d\n", ret);
+				break;
+			}
+
+			for (i = 0; i < CCU_IMPORT_BUF_NUM; i++) {
+				if (import_mem.memID[i] == CCU_IMPORT_BUF_UNDEF) {
+					LOG_INF_MUST("imported buffer count: %d\n", i);
+					break;
+				}
+				import_buffer_handle[i] = ccu_ion_import_handle(import_mem.memID[i]);
+				if (!import_buffer_handle[i]) {
+					ret = -EFAULT;
+					LOG_ERR("CCU ccu_ion_import_handle failed: %d\n", ret);
+					break;
+				}
+			}
+
+			break;
+		}
 	default:
 		LOG_WARN("ioctl:No such command!\n");
 		ret = -EINVAL;
@@ -865,12 +887,24 @@ EXIT:
 static int ccu_release(struct inode *inode, struct file *flip)
 {
 	struct ccu_user_s *user = flip->private_data;
+	int i = 0;
 
 	LOG_INF_MUST("ccu_release +");
 
+	ccu_force_powerdown();
+
+	for (i = 0; i < CCU_IMPORT_BUF_NUM; i++) {
+		if (import_buffer_handle[i] == (struct ion_handle *)CCU_IMPORT_BUF_UNDEF) {
+			LOG_INF_MUST("freed buffer count: %d\n", i);
+			break;
+		}
+
+		ccu_ion_free_import_handle(import_buffer_handle[i]);/*can't in spin_lock*/
+	}
+
 	ccu_delete_user(user);
 
-	ccu_force_powerdown();
+	ccu_ion_uninit();
 
 	LOG_INF_MUST("ccu_release -");
 
@@ -1250,6 +1284,7 @@ static int __init CCU_INIT(void)
 
 	INIT_LIST_HEAD(&g_ccu_device->user_list);
 	mutex_init(&g_ccu_device->user_mutex);
+	mutex_init(&g_ccu_device->ion_client_mutex);
 	init_waitqueue_head(&g_ccu_device->cmd_wait);
 
 	/* Register M4U callback */

@@ -83,10 +83,6 @@
 int sysctl_ip_default_ttl __read_mostly = IPDEFTTL;
 EXPORT_SYMBOL(sysctl_ip_default_ttl);
 
-static int
-ip_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
-	    unsigned int mtu,
-	    int (*output)(struct net *, struct sock *, struct sk_buff *));
 
 /* Generate a checksum for an outgoing IP datagram. */
 void ip_send_check(struct iphdr *iph)
@@ -480,6 +476,8 @@ static void ip_copy_metadata(struct sk_buff *to, struct sk_buff *from)
 	to->dev = from->dev;
 	to->mark = from->mark;
 
+	skb_copy_hash(to, from);
+
 	/* Copy the flags to each fragment. */
 	IPCB(to)->flags = IPCB(from)->flags;
 
@@ -493,9 +491,9 @@ static void ip_copy_metadata(struct sk_buff *to, struct sk_buff *from)
 	skb_copy_secmark(to, from);
 }
 
-static int ip_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
-		       unsigned int mtu,
-		       int (*output)(struct net *, struct sock *, struct sk_buff *))
+int ip_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
+		unsigned int mtu,
+		int (*output)(struct net *, struct sock *, struct sk_buff *))
 {
 	struct iphdr *iph = ip_hdr(skb);
 
@@ -1062,7 +1060,8 @@ alloc_new_skb:
 		if (copy > length)
 			copy = length;
 
-		if (!(rt->dst.dev->features&NETIF_F_SG)) {
+		if (!(rt->dst.dev->features&NETIF_F_SG) &&
+		    skb_tailroom(skb) >= copy) {
 			unsigned int off;
 
 			off = skb->len;

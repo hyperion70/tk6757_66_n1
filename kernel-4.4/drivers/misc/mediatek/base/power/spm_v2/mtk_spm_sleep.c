@@ -695,7 +695,9 @@ int spm_set_sleep_wakesrc(u32 wakesrc, bool enable, bool replace)
 	if (spm_is_wakesrc_invalid(wakesrc))
 		return -EINVAL;
 
+	lockdep_off();
 	spin_lock_irqsave(&__spm_lock, flags);
+	lockdep_on();
 	if (enable) {
 		if (replace)
 			__spm_suspend.pwrctrl->wake_src = wakesrc;
@@ -707,7 +709,9 @@ int spm_set_sleep_wakesrc(u32 wakesrc, bool enable, bool replace)
 		else
 			__spm_suspend.pwrctrl->wake_src &= ~wakesrc;
 	}
+	lockdep_off();
 	spin_unlock_irqrestore(&__spm_lock, flags);
+	lockdep_on();
 
 	return 0;
 }
@@ -812,7 +816,9 @@ unsigned int spm_go_to_sleep(u32 spm_flags, u32 spm_data)
 
 	spm_suspend_pre_process(pwrctrl);
 
+	lockdep_off();
 	spin_lock_irqsave(&__spm_lock, flags);
+	lockdep_on();
 
 	mt_irq_mask_all(&mask);
 	mt_irq_unmask_for_sleep_ex(SPM_IRQ0_ID);
@@ -908,7 +914,9 @@ RESTORE_IRQ:
 
 	mt_irq_mask_restore(&mask);
 
+	lockdep_off();
 	spin_unlock_irqrestore(&__spm_lock, flags);
+	lockdep_on();
 
 	spm_suspend_post_process(pwrctrl);
 
@@ -1136,9 +1144,11 @@ u32 spm_get_last_wakeup_src(void)
 {
 	return spm_wakesta.r12;
 }
+EXPORT_SYMBOL(spm_get_last_wakeup_src);
 
 u32 spm_get_last_wakeup_misc(void)
 {
 	return spm_wakesta.wake_misc;
 }
+EXPORT_SYMBOL(spm_get_last_wakeup_misc);
 MODULE_DESCRIPTION("SPM-Sleep Driver v0.1");

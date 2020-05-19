@@ -150,7 +150,7 @@ void mt_gpio_self_test(void)
 		/*mode control */
 		/* if((i<=GPIOEXT6) || (i >= GPIOEXT9)){ */
 		old = mt_get_gpio_mode(i);
-		if ((old >= GPIO_MODE_00) && (val < GPIO_MODE_MAX)) {
+		if ((old >= GPIO_MODE_00) && (old < GPIO_MODE_MAX)) {
 			GPIOLOG(" mode old = %d\n", old);
 		} else {
 			GPIOERR(" get mode fail: %d\n", old);
@@ -206,10 +206,13 @@ void mt_gpio_load_base(GPIO_REGS *regs)
 	GPIO_REGS *pReg = (GPIO_REGS *) (GPIO_BASE);
 	int idx;
 
-	if (!regs)
+	if (!regs) {
 		GPIOERR("%s: null pointer\n", __func__);
+		return;
+	}
+
 	memset(regs, 0x00, sizeof(*regs));
-	for (idx = 0; idx < ARRAY_SIZE(pReg->dir) / sizeof(pReg->dir[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(pReg->dir); idx++)
 		regs->dir[idx].val = __raw_readl(&pReg->dir[idx]);
 	/* for (idx = 0; idx < sizeof(pReg->ies)/sizeof(pReg->ies[0]); idx++) */
 	/* regs->ies[idx].val = __raw_readl(&pReg->ies[idx]); */
@@ -219,11 +222,11 @@ void mt_gpio_load_base(GPIO_REGS *regs)
 	/* regs->pullsel[idx].val =__raw_readl(&pReg->pullsel[idx]); */
 	/* for (idx = 0; idx < sizeof(pReg->dinv)/sizeof(pReg->dinv[0]); idx++) */
 	/* regs->dinv[idx].val =__raw_readl(&pReg->dinv[idx]); */
-	for (idx = 0; idx < ARRAY_SIZE(pReg->dout) / sizeof(pReg->dout[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(pReg->dout); idx++)
 		regs->dout[idx].val = __raw_readl(&pReg->dout[idx]);
-	for (idx = 0; idx < ARRAY_SIZE(pReg->mode) / sizeof(pReg->mode[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(pReg->mode); idx++)
 		regs->mode[idx].val = __raw_readl(&pReg->mode[idx]);
-	for (idx = 0; idx < ARRAY_SIZE(pReg->din) / sizeof(pReg->din[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(pReg->din); idx++)
 		regs->din[idx].val = __raw_readl(&pReg->din[idx]);
 }
 
@@ -255,7 +258,7 @@ void mt_gpio_dump_base(GPIO_REGS *regs)
 #else
 	GPIOMSG("Offset 0x%04X\n", (void *)(&regs->dir[0]) - (void *)regs);
 #endif
-	for (idx = 0; idx < ARRAY_SIZE(regs->dir) / sizeof(regs->dir[0]); idx++) {
+	for (idx = 0; idx < ARRAY_SIZE(regs->dir); idx++) {
 		GPIOMSG("0x%04X ", regs->dir[idx].val);
 		if (7 == (idx % 8))
 			GPIOMSG("\n");
@@ -290,7 +293,7 @@ void mt_gpio_dump_base(GPIO_REGS *regs)
 #else
 	GPIOMSG("Offset 0x%04X\n", (void *)(&regs->dout[0]) - (void *)regs);
 #endif
-	for (idx = 0; idx < ARRAY_SIZE(regs->dout) / sizeof(regs->dout[0]); idx++) {
+	for (idx = 0; idx < ARRAY_SIZE(regs->dout); idx++) {
 		GPIOMSG("0x%04X ", regs->dout[idx].val);
 		if (7 == (idx % 8))
 			GPIOMSG("\n");
@@ -301,7 +304,7 @@ void mt_gpio_dump_base(GPIO_REGS *regs)
 #else
 	GPIOMSG("Offset 0x%04X\n", (void *)(&regs->din[0]) - (void *)regs);
 #endif
-	for (idx = 0; idx < ARRAY_SIZE(regs->din) / sizeof(regs->din[0]); idx++) {
+	for (idx = 0; idx < ARRAY_SIZE(regs->din); idx++) {
 		GPIOMSG("0x%04X ", regs->din[idx].val);
 		if (7 == (idx % 8))
 			GPIOMSG("\n");
@@ -312,7 +315,7 @@ void mt_gpio_dump_base(GPIO_REGS *regs)
 #else
 	GPIOMSG("Offset 0x%04X\n", (void *)(&regs->mode[0]) - (void *)regs);
 #endif
-	for (idx = 0; idx < ARRAY_SIZE(regs->mode) / sizeof(regs->mode[0]); idx++) {
+	for (idx = 0; idx < ARRAY_SIZE(regs->mode); idx++) {
 		GPIOMSG("0x%04X ", regs->mode[idx].val);
 		if (7 == (idx % 8))
 			GPIOMSG("\n");
@@ -402,7 +405,7 @@ static ssize_t mt_gpio_dump_addr_base(void)
 	GPIO_REGS *reg = (GPIO_REGS *) GPIO_BASE;
 
 	GPIOMSG("# direction\n");
-	for (idx = 0; idx < ARRAY_SIZE(reg->dir) / sizeof(reg->dir[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(reg->dir); idx++)
 		GPIOMSG("val[%2d] %p\nset[%2d] %p\nrst[%2d] %p\n", idx, &reg->dir[idx].val, idx,
 			&reg->dir[idx].set, idx, &reg->dir[idx].rst);
 	/* GPIOMSG("# ies\n"); */
@@ -426,14 +429,14 @@ static ssize_t mt_gpio_dump_addr_base(void)
    *idx, &reg->dinv[idx].set, idx, &reg->dinv[idx].rst);
    */
 	GPIOMSG("# data output\n");
-	for (idx = 0; idx < ARRAY_SIZE(reg->dout) / sizeof(reg->dout[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(reg->dout); idx++)
 		GPIOMSG("val[%2d] %p\nset[%2d] %p\nrst[%2d] %p\n", idx, &reg->dout[idx].val, idx,
 			&reg->dout[idx].set, idx, &reg->dout[idx].rst);
 	GPIOMSG("# data input\n");
-	for (idx = 0; idx < ARRAY_SIZE(reg->din) / sizeof(reg->din[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(reg->din); idx++)
 		GPIOMSG("val[%2d] %p\n", idx, &reg->din[idx].val);
 	GPIOMSG("# mode\n");
-	for (idx = 0; idx < ARRAY_SIZE(reg->mode) / sizeof(reg->mode[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(reg->mode); idx++)
 		GPIOMSG("val[%2d] %p\nset[%2d] %p\nrst[%2d] %p\n", idx, &reg->mode[idx].val, idx,
 			&reg->mode[idx].set, idx, &reg->mode[idx].rst);
 	return 0;
@@ -486,7 +489,7 @@ static ssize_t mt_gpio_compare_base(void)
 		return 0;
 
 	mt_gpio_load_base(cur);
-	for (idx = 0; idx < ARRAY_SIZE(reg->dir) / sizeof(reg->dir[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(reg->dir); idx++)
 		if (reg->dir[idx].val != cur->dir[idx].val)
 			GPIOERR("mismatch dir[%2d]: %x <> %x\n", idx, reg->dir[idx].val,
 				cur->dir[idx].val);
@@ -499,15 +502,15 @@ static ssize_t mt_gpio_compare_base(void)
 	/* for (idx = 0; idx < sizeof(reg->dinv)/sizeof(reg->dinv[0]); idx++) */
 	/* if (reg->dinv[idx].val != cur->dinv[idx].val) */
 	/* GPIOERR("mismatch dinv[%2d]: %x <> %x\n", idx, reg->dinv[idx].val, cur->dinv[idx].val); */
-	for (idx = 0; idx < ARRAY_SIZE(reg->dout) / sizeof(reg->dout[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(reg->dout); idx++)
 		if (reg->dout[idx].val != cur->dout[idx].val)
 			GPIOERR("mismatch dout[%2d]: %x <> %x\n", idx, reg->dout[idx].val,
 				cur->dout[idx].val);
-	for (idx = 0; idx < ARRAY_SIZE(reg->din) / sizeof(reg->din[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(reg->din); idx++)
 		if (reg->din[idx].val != cur->din[idx].val)
 			GPIOERR("mismatch din[%2d]: %x <> %x\n", idx, reg->din[idx].val,
 				cur->din[idx].val);
-	for (idx = 0; idx < ARRAY_SIZE(reg->mode) / sizeof(reg->mode[0]); idx++)
+	for (idx = 0; idx < ARRAY_SIZE(reg->mode); idx++)
 		if (reg->mode[idx].val != cur->mode[idx].val)
 			GPIOERR("mismatch mode[%2d]: %x <> %x\n", idx, reg->mode[idx].val,
 				cur->mode[idx].val);

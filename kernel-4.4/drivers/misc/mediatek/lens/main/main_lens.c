@@ -104,6 +104,9 @@ static struct stAF_DrvList g_stAF_DrvList[MAX_NUM_OF_LENS] = {
 	{1, AFDRV_DW9714AF, DW9714AF_SetI2Cclient, DW9714AF_Ioctl, DW9714AF_Release, NULL},
 	{1, AFDRV_DW9718SAF, DW9718SAF_SetI2Cclient, DW9718SAF_Ioctl, DW9718SAF_Release, NULL},
 	{1, AFDRV_DW9719TAF, DW9719TAF_SetI2Cclient, DW9719TAF_Ioctl, DW9719TAF_Release, NULL},
+	#ifdef CONFIG_MTK_LENS_DW9800WAF_SUPPORT
+		{1, AFDRV_DW9800WAF, DW9800WAF_SetI2Cclient, DW9800WAF_Ioctl, DW9800WAF_Release, NULL},
+	#endif
 	{1, AFDRV_LC898212XDAF, LC898212XDAF_SetI2Cclient, LC898212XDAF_Ioctl, LC898212XDAF_Release, NULL},
 	{1, AFDRV_LC898212XDAF_TVC700, LC898212XD_TVC700_SetI2Cclient,
 		LC898212XD_TVC700_Ioctl, LC898212XD_TVC700_Release, NULL},
@@ -117,6 +120,9 @@ static struct stAF_DrvList g_stAF_DrvList[MAX_NUM_OF_LENS] = {
 	{1, AFDRV_LC898217AFB, LC898217AFB_SetI2Cclient, LC898217AF_Ioctl, LC898217AF_Release, NULL},
 	{1, AFDRV_LC898217AFC, LC898217AFC_SetI2Cclient, LC898217AF_Ioctl, LC898217AF_Release, NULL},
 	{1, AFDRV_LC898122AF, LC898122AF_SetI2Cclient, LC898122AF_Ioctl, LC898122AF_Release, NULL},
+	#ifdef CONFIG_MTK_LENS_OV5645AF_SUPPORT
+	{1, AFDRV_OV5645AF, OV5645AF_SetI2Cclient, OV5645AF_Ioctl, OV5645AF_Release, NULL},
+	#endif
 	{1, AFDRV_AD5820AF, AD5820AF_SetI2Cclient, AD5820AF_Ioctl, AD5820AF_Release, NULL},
 	{1, AFDRV_WV511AAF, WV511AAF_SetI2Cclient, WV511AAF_Ioctl, WV511AAF_Release, NULL},
 };
@@ -154,7 +160,11 @@ void AFRegulatorCtrl(int Stage)
 				kd_node = lens_device->of_node;
 				lens_device->of_node = node;
 
-				regVCAMAF = regulator_get(lens_device, "vcamaf");
+				if (strncmp(CONFIG_ARCH_MTK_PROJECT, "k71v1_64_bsp_fhdp", 17) == 0)
+					regVCAMAF = regulator_get(lens_device, "vldo28");
+				else
+					regVCAMAF = regulator_get(lens_device, "vcamaf");
+
 				LOG_INF("[Init] regulator_get %p\n", regVCAMAF);
 
 				lens_device->of_node = kd_node;
@@ -224,6 +234,10 @@ void AF_PowerDown(void)
 		AK7371AF_PowerDown();
 		#endif
 
+		#ifdef CONFIG_MTK_LENS_DW9800WAF_SUPPORT
+		DW9800WAF_SetI2Cclient(g_pstAF_I2Cclient, &g_AF_SpinLock, &g_s4AF_Opened);
+		#endif
+
 		#ifdef CONFIG_MACH_MT6758
 		AK7371AF_SetI2Cclient(g_pstAF_I2Cclient, &g_AF_SpinLock, &g_s4AF_Opened);
 		AK7371AF_PowerDown();
@@ -245,14 +259,14 @@ static long AF_SetMotorName(__user struct stAF_MotorName *pstMotorName)
 	if (copy_from_user(&stMotorName, pstMotorName, sizeof(struct stAF_MotorName)))
 		LOG_INF("copy to user failed when getting motor information\n");
 
-	LOG_INF("Set Motor Name : %s\n", stMotorName.uMotorName);
+	/* LOG_INF("Set Motor Name : %s\n", stMotorName.uMotorName); */
 
 	for (i = 0; i < MAX_NUM_OF_LENS; i++) {
 		if (g_stAF_DrvList[i].uEnable != 1)
 			break;
 
-		LOG_INF("Search Motor Name : %s\n", g_stAF_DrvList[i].uDrvName);
 		if (strcmp(stMotorName.uMotorName, g_stAF_DrvList[i].uDrvName) == 0) {
+			LOG_INF("Set Motor Name : %s (%d)\n", stMotorName.uMotorName, i);
 			g_pstAF_CurDrv = &g_stAF_DrvList[i];
 			i4RetValue = g_pstAF_CurDrv->pAF_SetI2Cclient(g_pstAF_I2Cclient,
 								&g_AF_SpinLock, &g_s4AF_Opened);
@@ -431,8 +445,10 @@ static int AF_Open(struct inode *a_pstInode, struct file *a_pstFile)
 	/* init work queue */
 	INIT_WORK(&ois_work, ois_pos_polling);
 
+#if 0
 	if (ois_workqueue == NULL)
 		ois_workqueue = create_singlethread_workqueue("ois_polling");
+#endif
 
 	/* init timer */
 	hrtimer_init(&ois_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);

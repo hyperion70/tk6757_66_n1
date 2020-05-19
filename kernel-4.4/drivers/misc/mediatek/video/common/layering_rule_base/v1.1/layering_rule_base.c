@@ -30,6 +30,7 @@
 #include <mt-plat/mtk_meminfo.h>
 #endif
 #include "layering_rule.h"
+#include "debug.h"
 
 static struct disp_layer_info layering_info;
 static int debug_resolution_level;
@@ -143,6 +144,16 @@ inline bool has_layer_cap(struct layer_config *layer_info, enum LAYERING_CAPS l_
 
 static int is_overlap_on_yaxis(struct layer_config *lhs, struct layer_config *rhs)
 {
+	/**
+	 * HWC may adjust the offset of yuv layer due to alignment limitation after
+	 * querying layering rule. So it have chance to make yuv layer overlap with
+	 * other extended layer. We add the workaround here to avoid the yuv as the
+	 * base layer of extended layer and will remove it once the HWC correct the
+	 * problem.
+	 */
+	if (is_yuv(lhs->src_fmt))
+		return 1;
+
 	if ((lhs->dst_offset_y + lhs->dst_height <= rhs->dst_offset_y) ||
 			(rhs->dst_offset_y + rhs->dst_height <= lhs->dst_offset_y))
 		return 0;
@@ -171,7 +182,8 @@ static inline bool is_extended_layer(struct layer_config *layer_info)
 
 static bool is_extended_base_layer_valid(struct layer_config *configs, int layer_idx)
 {
-	if (layer_idx == 0 && has_layer_cap(configs, DISP_RSZ_LAYER))
+	if ((layer_idx == 0 && configs->src_fmt == DISP_FORMAT_DIM) ||
+	    has_layer_cap(configs, DISP_RSZ_LAYER))
 		return false;
 
 	/**
@@ -1178,7 +1190,7 @@ static int _calc_hrt_num(struct disp_layer_info *disp_info, int disp_index,
  */
 	if (sum_overlap_w > overlap_lower_bound ||
 		has_hrt_limit(disp_info, HRT_SECONDARY) ||
-		force_scan_y) {
+		force_scan_y || hrt_show_flag == 1) {
 		sum_overlap_w = scan_y_overlap(disp_info, disp_index, overlap_lower_bound);
 		/* Add overlap weight of Gles layer and Assert layer. */
 		if (has_gles)
@@ -1219,6 +1231,16 @@ static int calc_larb_hrt_level(struct disp_layer_info *disp_info)
 }
 #endif
 
+void overlap_statistic_for_debug(int sum)
+{
+	hrt_high = sum;
+	hrt_low = do_div(hrt_high, 240);
+	if (hrt_low == 120)
+		hrt_low = 5;
+	else
+		hrt_low = 0;
+}
+
 static int calc_hrt_num(struct disp_layer_info *disp_info)
 {
 	int emi_hrt_level;
@@ -1234,6 +1256,9 @@ static int calc_hrt_num(struct disp_layer_info *disp_info)
 
 
 	emi_hrt_level = get_hrt_level(sum_overlap_w, false);
+
+	if (hrt_show_flag == 1)
+		overlap_statistic_for_debug(sum_overlap_w);
 /**
  * The larb bound always meet the limit for HRT_LEVEL2 in 8+4 ovl architecture.
  * So calculate larb bound only for HRT_LEVEL2.
@@ -1704,6 +1729,10 @@ int layering_rule_start(struct disp_layer_info *disp_info_user, int debug_mode)
 		layering_info.hrt_num = 0;
 
 	ret = dispatch_ovl_id(&layering_info);
+
+	if (l_rule_ops->adjust_hrt_level != NULL)
+		l_rule_ops->adjust_hrt_level(&layering_info);
+
 	check_layering_result(&layering_info);
 
 	HRT_SET_PATH_SCENARIO(layering_info.hrt_num, l_rule_info->disp_path);
@@ -1716,7 +1745,7 @@ int layering_rule_start(struct disp_layer_info *disp_info_user, int debug_mode)
 	mmprofile_log_ex(ddp_mmp_get_events()->hrt, MMPROFILE_FLAG_PULSE,
 		layering_info.hrt_num,
 		(layering_info.gles_head[0] << 24) | (layering_info.gles_tail[0] << 16) |
-		(layering_info.layer_num[1] << 16) | (layering_info.layer_num[0] << 16));
+		(layering_info.layer_num[0] << 8) | layering_info.layer_num[1]);
 
 	ret = copy_layer_info_to_user(disp_info_user, debug_mode);
 	return ret;

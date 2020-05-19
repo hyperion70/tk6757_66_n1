@@ -15,7 +15,7 @@ config MTK_FINGERPRINT_SUPPORT
 if MTK_FINGERPRINT_SUPPORT
 config MTK_FINGERPRINT_SELECT
 	string "sensor type"
-	default "GF318M"
+	default "GF5216"
 
 
 if MTK_FINGERPRINT_SELECT = "FPC1145"
@@ -30,12 +30,12 @@ config GX556_FINGERPRINT
 	tristate "goodix gx556 Fingerprint"
 	default n
 
-if MTK_FINGERPRINT_SELECT = "GF318M" ||  MTK_FINGERPRINT_SELECT = "GF5216"
-config GOODIX_FINGERPRINT
+if MTK_FINGERPRINT_SELECT = "GFX1XM"
+config FINGERPRINT_MTK_GFX1XM
 	bool "Goodix Fingerprint"
-	default n
+	default y
 	---help---
-	Goodix Fingerprint chip GF316M/GF318M/GF3118M/GF518M/GF5118M/GF516M/GF816M/GF3208/GF3206/GF3266/GF3288/GF5206/GF5216/GF5208 TEE driver
+	Goodix Fingerprint chip GFX1XM TEE driver
 
 config GOODIX_SENSOR_TYPE
 	string "SENSOR_TYPE"
@@ -44,4 +44,5 @@ config GOODIX_SENSOR_TYPE
 	Must input sensor type, or default is GF316M GF318M GF3118M GF518M GF5118M GF516M GF816M GF3208 GF3206 GF3266 GF3288 GF5206 GF5216 GF5208
 endif
 endif
+source "drivers/input/fingerprint/gfx1xm/Kconfig"
 endmenu

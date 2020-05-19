@@ -31,17 +31,15 @@ ccflags-y += -DCMDQ_AEE_READY
 # Enable MET
 ccflags-y += -DMET_USER_EVENT_SUPPORT
 
-ifneq ($(TARGET_BUILD_VARIANT),eng)
-ccflags-y += -D_MTK_USER_
-endif
-
-ifneq ($(TARGET_BUILD_VARIANT),user)
+ifeq ($(CONFIG_MTK_ENG_BUILD),y)
 ccflags-y += -D_CMDQ_TEST_PROC_
 ccflags-y += -DCMDQ_PROFILE_LOCK
+ccflags-y += -D_CMDQ_DEBUG_
 endif
 
 # secure path
-ifeq ($(strip $(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)),y)
+ifeq ($(or $(strip $(CONFIG_TRUSTONIC_TEE_SUPPORT)), $(strip $(CONFIG_MICROTRUST_TEE_SUPPORT))),y)
+ifeq ($(or $(strip $(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)), $(strip $(CONFIG_MTK_CAM_SECURITY_SUPPORT))),y)
 
 ifeq ($(CONFIG_TRUSTONIC_TEE_SUPPORT),y)
 include $(srctree)/drivers/misc/mediatek/gud/Makefile.include
@@ -61,7 +59,8 @@ ccflags-y += -DCMDQ_GP_SUPPORT
 endif
 
 ccflags-y += -DCMDQ_EVENT_SVP_BACKUP
-endif	# end of CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
+endif	# end of CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT or CONFIG_MTK_CAM_SECURITY_SUPPORT
+endif	# end of CONFIG_TRUSTONIC_TEE_SUPPORT or CONFIG_MICROTRUST_TEE_SUPPORT
 
 # platform dependent definition
 ccflags-$(CONFIG_MTK_SMI_EXT) += -DCMDQ_CONFIG_SMI
@@ -91,7 +90,7 @@ ifeq ($(platformdir_exists), y)
 obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM))/
 endif
 
-ifeq ($(strip $(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)),y)
+ifeq ($(or $(strip $(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)), $(strip $(CONFIG_MTK_CAM_SECURITY_SUPPORT))),y)
 
 ifeq ($(strip $(CONFIG_MTK_TEE_GP_SUPPORT)),y)
 obj-y += cmdq_sec_gp.o
@@ -99,5 +98,5 @@ else ifeq ($(CONFIG_TRUSTONIC_TEE_SUPPORT),y)
 obj-y += cmdq_sec_trustonic.o
 endif
 
-endif	# end of CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
+endif	# end of CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT or CONFIG_MTK_CAM_SECURITY_SUPPORT
 

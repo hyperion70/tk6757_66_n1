@@ -37,6 +37,7 @@ struct accelhub_ipi_data {
 	atomic_t trace;
 	atomic_t suspend;
 	int32_t static_cali[ACCELHUB_AXES_NUM];
+	uint8_t static_cali_status;
 	int32_t dynamic_cali[ACCELHUB_AXES_NUM];
 	int direction;
 	struct work_struct init_done_work;
@@ -197,7 +198,6 @@ static int accelhub_ReadSensorData(char *buf, int bufsize)
 {
 	struct accelhub_ipi_data *obj = obj_ipi_data;
 	uint64_t time_stamp = 0;
-	uint64_t time_stamp_gpt = 0;
 	struct data_unit_t data;
 	int acc[ACCELHUB_AXES_NUM];
 	int err = 0;
@@ -214,7 +214,6 @@ static int accelhub_ReadSensorData(char *buf, int bufsize)
 		return err;
 	}
 	time_stamp = data.time_stamp;
-	time_stamp_gpt = data.time_stamp_gpt;
 	acc[ACCELHUB_AXIS_X] = data.accelerometer_t.x;
 	acc[ACCELHUB_AXIS_Y] = data.accelerometer_t.y;
 	acc[ACCELHUB_AXIS_Z] = data.accelerometer_t.z;
@@ -428,12 +427,12 @@ static int gsensor_recv_data(struct data_unit_t *event, void *reserved)
 		data.y = event->accelerometer_t.y;
 		data.z = event->accelerometer_t.z;
 		data.status = event->accelerometer_t.status;
-		data.timestamp = (int64_t)(event->time_stamp + event->time_stamp_gpt);
+		data.timestamp = (int64_t)event->time_stamp;
 		data.reserved[0] = event->reserve[0];
 
-	if (event->flush_action == DATA_ACTION && READ_ONCE(obj->android_enable) == true)
+	if (event->flush_action == DATA_ACTION)
 		err = acc_data_report(&data);
-	else if (event->flush_action == FLUSH_ACTION && READ_ONCE(obj->android_enable) == true)
+	else if (event->flush_action == FLUSH_ACTION)
 		err = acc_flush_report();
 	else if (event->flush_action == BIAS_ACTION) {
 		data.x = event->accelerometer_t.x_bias;
@@ -449,11 +448,13 @@ static int gsensor_recv_data(struct data_unit_t *event, void *reserved)
 		data.x = event->accelerometer_t.x_bias;
 		data.y = event->accelerometer_t.y_bias;
 		data.z = event->accelerometer_t.z_bias;
-		err = acc_cali_report(&data);
+		if (event->accelerometer_t.status == 0)
+			err = acc_cali_report(&data);
 		spin_lock(&calibration_lock);
 		obj->static_cali[ACCELHUB_AXIS_X] = event->accelerometer_t.x_bias;
 		obj->static_cali[ACCELHUB_AXIS_Y] = event->accelerometer_t.y_bias;
 		obj->static_cali[ACCELHUB_AXIS_Z] = event->accelerometer_t.z_bias;
+		obj->static_cali_status = (uint8_t)event->accelerometer_t.status;
 		spin_unlock(&calibration_lock);
 		complete(&obj->calibration_done);
 	}
@@ -526,6 +527,7 @@ static int gsensor_factory_get_cali(int32_t data[3])
 	int err = 0;
 #ifndef MTK_OLD_FACTORY_CALIBRATION
 	struct accelhub_ipi_data *obj = obj_ipi_data;
+	uint8_t status = 0;
 #endif
 
 #ifdef MTK_OLD_FACTORY_CALIBRATION
@@ -536,7 +538,7 @@ static int gsensor_factory_get_cali(int32_t data[3])
 	}
 #else
 	init_completion(&obj->calibration_done);
-	err = wait_for_completion_timeout(&obj->calibration_done, msecs_to_jiffies(2000));
+	err = wait_for_completion_timeout(&obj->calibration_done, msecs_to_jiffies(3000));
 	if (!err) {
 		GSE_PR_ERR("gsensor_factory_get_cali fail!\n");
 		return -1;
@@ -545,7 +547,12 @@ static int gsensor_factory_get_cali(int32_t data[3])
 	data[ACCELHUB_AXIS_X] = obj->static_cali[ACCELHUB_AXIS_X];
 	data[ACCELHUB_AXIS_Y] = obj->static_cali[ACCELHUB_AXIS_Y];
 	data[ACCELHUB_AXIS_Z] = obj->static_cali[ACCELHUB_AXIS_Z];
+	status = obj->static_cali_status;
 	spin_unlock(&calibration_lock);
+	if (status != 0) {
+		GSE_LOG("gsensor static cali detect shake!\n");
+		return -2;
+	}
 #endif
 	return 0;
 }

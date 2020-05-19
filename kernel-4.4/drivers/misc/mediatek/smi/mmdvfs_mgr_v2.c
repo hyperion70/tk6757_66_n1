@@ -224,10 +224,6 @@ struct MTK_MMDVFS_CMD *cmd)
 	/* HIGH level scenarios */
 	switch (scenario) {
 	case SMI_BWC_SCEN_VR:
-	case SMI_BWC_SCEN_VSS:
-	case SMI_BWC_SCEN_CAM_PV:
-	case SMI_BWC_SCEN_CAM_CP:
-	case SMI_BWC_SCEN_CAM_ZSD:
 		if (is_force_max_mmsys_clk())
 			step = MMSYS_CLK_HIGH;
 
@@ -283,9 +279,6 @@ struct MTK_MMDVFS_CMD *cmd)
 
 	case SMI_BWC_SCEN_VR:
 	case SMI_BWC_SCEN_VSS:
-	case SMI_BWC_SCEN_CAM_PV:
-	case SMI_BWC_SCEN_CAM_CP:
-	case SMI_BWC_SCEN_CAM_ZSD:
 			step = query_vr_step(cmd);
 		break;
 	case SMI_BWC_SCEN_VR_SLOW:
@@ -334,13 +327,10 @@ int mmdvfs_get_stable_isp_clk(void)
 	/* Common case: Check if it is in HPM mode for any ISP scenarios */
 	#if defined(MMDVFS_O1) || defined(MMDVFS_E1)
 	int cam_scen = ((1 << SMI_BWC_SCEN_ICFP) |
-			(1 << SMI_BWC_SCEN_VSS) |
-			(1 << SMI_BWC_SCEN_VR) |
-			(1 << SMI_BWC_SCEN_CAM_PV) |
-			(1 << SMI_BWC_SCEN_CAM_CP) |
-			(1 << SMI_BWC_SCEN_CAM_ZSD) |
-			(1 << SMI_BWC_SCEN_VR_SLOW) |
-			(1 << SMI_BWC_SCEN_MM_GPU));
+									(1 << SMI_BWC_SCEN_VSS) |
+									(1 << SMI_BWC_SCEN_VR) |
+									(1 << SMI_BWC_SCEN_VR_SLOW) |
+									(1 << SMI_BWC_SCEN_MM_GPU));
 
 	if ((concurrency_hpm & cam_scen) != 0)
 		final_clk = MMSYS_CLK_HIGH;
@@ -511,8 +501,7 @@ static void mmdvfs_start_cam_monitor(int scen, int delay_hz)
 	if (is_force_max_mmsys_clk())
 		delayed_mmsys_state = MMSYS_CLK_HIGH;
 	if ((scen == SMI_BWC_SCEN_ICFP || scen == SMI_BWC_SCEN_VR_SLOW || scen == SMI_BWC_SCEN_VR ||
-		scen == SMI_BWC_SCEN_VSS || scen == SMI_BWC_SCEN_CAM_PV ||
-		scen == SMI_BWC_SCEN_CAM_CP || scen == SMI_BWC_SCEN_CAM_ZSD) &&
+			scen == SMI_BWC_SCEN_VSS) &&
 			(g_mmdvfs_cmd.camera_mode & (MMDVFS_CAMERA_MODE_FLAG_PIP | MMDVFS_CAMERA_MODE_FLAG_STEREO)))
 		delayed_mmsys_state = MMSYS_CLK_HIGH;
 	else if (current_mmsys_clk == MMSYS_CLK_LOW)
@@ -1285,8 +1274,7 @@ void mmdvfs_notify_scenario_exit(enum MTK_SMI_BWC_SCEN scen)
 
 	if ((scen == SMI_BWC_SCEN_VR) || (scen == SMI_BWC_SCEN_VR_SLOW) ||
 		(scen == SMI_BWC_SCEN_ICFP) || (scen == SMI_BWC_SCEN_VSS) ||
-		(scen == SMI_BWC_SCEN_CAM_PV) || (scen == SMI_BWC_SCEN_CAM_CP) ||
-		(scen == SMI_BWC_SCEN_CAM_ZSD) || (scen == SMI_BWC_SCEN_VENC))
+		(scen == SMI_BWC_SCEN_VENC))
 		mmdvfs_start_cam_monitor(scen, 8);
 
 	/* reset scenario voltage to default when it exits */
@@ -1315,9 +1303,8 @@ void mmdvfs_notify_scenario_enter(enum MTK_SMI_BWC_SCEN scen)
 
 	/* Boost for ISP related scenario */
 	if ((scen == SMI_BWC_SCEN_VR) || (scen == SMI_BWC_SCEN_VR_SLOW) ||
-		(scen == SMI_BWC_SCEN_ICFP) || (scen == SMI_BWC_SCEN_VSS) ||
-		(scen == SMI_BWC_SCEN_CAM_PV) || (scen == SMI_BWC_SCEN_CAM_CP) ||
-		(scen == SMI_BWC_SCEN_CAM_ZSD) || (scen == SMI_BWC_SCEN_VENC))
+			(scen == SMI_BWC_SCEN_ICFP) || (scen == SMI_BWC_SCEN_VSS) ||
+			(scen == SMI_BWC_SCEN_VENC))
 		mmdvfs_start_cam_monitor(scen, 8);
 
 	switch (scen) {
@@ -1338,9 +1325,6 @@ void mmdvfs_notify_scenario_enter(enum MTK_SMI_BWC_SCEN scen)
 		break;
 	case SMI_BWC_SCEN_VR:
 	case SMI_BWC_SCEN_VSS:
-	case SMI_BWC_SCEN_CAM_PV:
-	case SMI_BWC_SCEN_CAM_CP:
-	case SMI_BWC_SCEN_CAM_ZSD:
 		{
 			enum mmdvfs_voltage_enum vr_step = MMDVFS_VOLTAGE_LOW;
 			enum mmdvfs_voltage_enum venc_step = MMDVFS_VOLTAGE_LOW;
@@ -1470,8 +1454,7 @@ void mmdvfs_notify_scenario_concurrency(unsigned int u4Concurrency)
 	 * make sure vcore stay MMDVFS level as long as possible
 	 */
 	if (u4Concurrency & ((1 << SMI_BWC_SCEN_VP) | (1 << SMI_BWC_SCEN_VR)
-	| (1 << SMI_BWC_SCEN_VSS) | (1 << SMI_BWC_SCEN_CAM_PV) | (1 << SMI_BWC_SCEN_CAM_CP)
-	| (1 << SMI_BWC_SCEN_CAM_ZSD) | (1 << SMI_BWC_SCEN_VR_SLOW))) {
+	| (1 << SMI_BWC_SCEN_VR_SLOW))) {
 #if defined(MMDVFS_ENABLE) && defined(MMDVFS_USE_FLIPER)
 		MMDVFSMSG("fliper high\n");
 		/* fliper_set_bw(BW_THRESHOLD_HIGH); */
@@ -1659,12 +1642,6 @@ static int notify_cb_func_checked(clk_switch_cb func, int ori_mmsys_clk_mode, in
 
 /* Only for DDR 800 */
 #ifdef MMDVFS_O1
-#define MMDVFS_BASIC_CAMERA ((1 << SMI_BWC_SCEN_VR) |	\
-			(1 << SMI_BWC_SCEN_VSS) |	\
-			(1 << SMI_BWC_SCEN_CAM_PV) |	\
-			(1 << SMI_BWC_SCEN_CAM_CP) |	\
-			(1 << SMI_BWC_SCEN_CAM_ZSD))
-
 static int check_if_enter_low_low(int low_low_request, int final_step, int current_scenarios, int lcd_resolution,
 int venc_resolution, struct mmdvfs_context_struct *mmdvfs_mgr_cntx, int is_ui_idle){
 
@@ -1685,7 +1662,8 @@ int venc_resolution, struct mmdvfs_context_struct *mmdvfs_mgr_cntx, int is_ui_id
 	if (!g_mmdvfs_mgr->is_lpddr4) {
 		/* LPDDR 3: Only allow VP, VR or UI idle*/
 		/* Return if vp or vr are not selected */
-		if ((current_scenarios & ((1 << SMI_BWC_SCEN_VP) | MMDVFS_BASIC_CAMERA)) == 0) {
+		if ((current_scenarios & ((1 << SMI_BWC_SCEN_VP) | (1 << SMI_BWC_SCEN_VR) |
+			 (1 << SMI_BWC_SCEN_VSS))) == 0) {
 			MMDVFSMSG("Didn't enter low low step, only allow VP, VR with LPDDR 3: 0x%x, %d\n",
 			current_scenarios, is_ui_idle);
 			return 0;
@@ -1693,7 +1671,7 @@ int venc_resolution, struct mmdvfs_context_struct *mmdvfs_mgr_cntx, int is_ui_id
 	}
 
 	/* If it is camera VR, check resolution and venc size*/
-	if (current_scenarios & MMDVFS_BASIC_CAMERA) {
+	if (current_scenarios & ((1 << SMI_BWC_SCEN_VR) | (1 << SMI_BWC_SCEN_VSS))) {
 
 		/* Can't enter low_low in preview and capture scenario */
 		if ((current_scenarios & (1 << SMI_BWC_SCEN_VENC)) == 0) {

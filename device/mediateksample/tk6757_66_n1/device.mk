@@ -20,7 +20,7 @@ endif
 #PRODUCT_COPY_FILES += $(LOCAL_PATH)/MBR:MBR
 #PRODUCT_COPY_FILES += $(LOCAL_PATH)/MT6757_Android_scatter.txt:MT6757_Android_scatter.txt
 
-
+PRODUCT_PROPERTY_OVERRIDES += ro.sf.lcd_density=480
 
 ifeq ($(TARGET_BUILD_VARIANT),eng)
     PRODUCT_COPY_FILES += $(LOCAL_PATH)/thermal.eng.conf:$(TARGET_COPY_OUT_VENDOR)/etc/.tp/thermal.conf:mtk
@@ -80,8 +80,6 @@ PRODUCT_COPY_FILES += $(LOCAL_PATH)/android.hardware.telephony.gsm.xml:$(TARGET_
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += persist.service.acm.enable=0
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.mount.fs=EXT4
 
-#PRODUCT_PROPERTY_OVERRIDES += dalvik.vm.heapgrowthlimit=256m
-#PRODUCT_PROPERTY_OVERRIDES += dalvik.vm.heapsize=512m
 
 # meta tool
 PRODUCT_PROPERTY_OVERRIDES += ro.mediatek.chip_ver=S01
@@ -89,8 +87,8 @@ PRODUCT_PROPERTY_OVERRIDES += ro.mediatek.platform=MT6757
 
 # set Telephony property - SIM count
 SIM_COUNT := 2
-PRODUCT_PROPERTY_OVERRIDES += ro.telephony.sim.count=$(SIM_COUNT)
-PRODUCT_PROPERTY_OVERRIDES += persist.radio.default.sim=0
+PRODUCT_SYSTEM_DEFAULT_PROPERTIES += ro.telephony.sim.count=$(SIM_COUNT)
+PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.radio.default.sim=0
 
 # Audio Related Resource
 PRODUCT_COPY_FILES += vendor/mediatek/proprietary/custom/tk6757_66_n1/factory/res/sound/testpattern1.wav:$(TARGET_COPY_OUT_VENDOR)/res/sound/testpattern1.wav:mtk
@@ -159,18 +157,8 @@ PRODUCT_FULL_TREBLE_OVERRIDE := true
 
 $(call inherit-product-if-exists, vendor/mediatek/libs/$(MTK_TARGET_PROJECT)/device-vendor.mk)
 
-# Fingerprint
-ifeq ($(strip $(MTK_FINGERPRINT_SUPPORT)), yes) 
-
-PRODUCT_PACKAGES += android.hardware.biometrics.fingerprint@2.1-etservice
-PRODUCT_PACKAGES += android.hardware.biometrics.fingerprint@2.1
-PRODUCT_PACKAGES += android.hardware.biometrics.fingerprint@2.1-service
-PRODUCT_PACKAGES += fingerprint.default
-PRODUCT_COPY_FILES +=frameworks/native/data/etc/android.hardware.fingerprint.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.fingerprint.xml
-DEVICE_MANIFEST_FILE += device/mediatek/common/project_manifest/manifest_fingerprint.xml
-PRODUCT_COPY_FILES += $(LOCAL_PATH)/fingerprint/lib64/hw/gxfingerprint.default.so:$(TARGET_COPY_OUT_VENDOR)/lib64/hw/gxfingerprint.default.so
-
-endif
+#fingerprint
+$(call inherit-product,device/mediateksample/tk6757_66_n1/fingerprint.mk)
 
 # VANZO_OVERSEAS_CUSTOM_APPS
 $(call inherit-product-if-exists, vanzo/cross-platform-packages.mk)

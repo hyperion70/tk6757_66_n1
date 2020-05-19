@@ -179,7 +179,8 @@ enum spm_suspend_step {
 static inline void spm_suspend_footprint(enum spm_suspend_step step)
 {
 #ifdef CONFIG_MTK_RAM_CONSOLE
-	aee_rr_rec_spm_suspend_val(step);
+#define CPU_FOOTPRINT_SHIFT	24
+	aee_rr_rec_spm_suspend_val(step | (smp_processor_id() << CPU_FOOTPRINT_SHIFT));
 #endif
 }
 
@@ -438,8 +439,16 @@ static void spm_trigger_wfi_for_sleep(struct pwr_ctrl *pwrctrl)
 {
 	if (is_cpu_pdn(pwrctrl->pcm_flags))
 		spm_dormant_sta = mtk_enter_idle_state(MTK_SUSPEND_MODE);
-	else
+	else {
+		#if defined(CONFIG_MACH_MT6775)
+		mt_secure_call(MTK_SIP_KERNEL_SPM_ARGS, SPM_ARGS_SUSPEND, 0, 0);
+		mt_secure_call(MTK_SIP_KERNEL_SPM_LEGACY_SLEEP, 0, 0, 0);
+		mt_secure_call(MTK_SIP_KERNEL_SPM_ARGS, SPM_ARGS_SUSPEND_FINISH, 0, 0);
+		spm_dormant_sta = 0;
+		#else
 		spm_dormant_sta = mtk_enter_idle_state(MTK_LEGACY_SUSPEND_MODE);
+		#endif
+        }
 
 	if (spm_dormant_sta < 0)
 		spm_crit2("spm_dormant_sta %d", spm_dormant_sta);
@@ -459,15 +468,13 @@ static void spm_set_sysclk_settle(void)
 	/* md_settle is keyword for suspend status */
 	spm_crit2("md_settle = %u, settle = %u\n", SPM_SYSCLK_SETTLE, settle);
 }
-#if !defined(CONFIG_MACH_MT6759) && !defined(CONFIG_MACH_MT6758) && \
-	!defined(CONFIG_MACH_MT6775)
+#if !defined(CONFIG_MACH_MT6759) && !defined(CONFIG_MACH_MT6758)
 static int mt_power_gs_dump_suspend_count = 2;
 #endif
 static void spm_suspend_pre_process(struct pwr_ctrl *pwrctrl)
 {
 #if !defined(CONFIG_MACH_MT6759) \
-	&& !defined(CONFIG_MACH_MT6758) \
-	&& !defined(CONFIG_MACH_MT6775)
+	&& !defined(CONFIG_MACH_MT6758)
 #if !defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT)
 
 	mt_spm_pmic_wrap_set_cmd(PMIC_WRAP_PHASE_ALLINONE,
@@ -493,7 +500,7 @@ static void spm_suspend_pre_process(struct pwr_ctrl *pwrctrl)
 #endif
 
 	if (slp_dump_golden_setting || --mt_power_gs_dump_suspend_count >= 0)
-		mt_power_gs_dump_suspend(GS_PMIC);
+		mt_power_gs_dump_suspend(slp_dump_golden_setting_type);
 #endif
 
 #if defined(CONFIG_MACH_MT6759) || defined(CONFIG_MACH_MT6758)
@@ -979,9 +986,11 @@ u32 spm_get_last_wakeup_src(void)
 {
 	return spm_wakesta.r12;
 }
+EXPORT_SYMBOL(spm_get_last_wakeup_src);
 
 u32 spm_get_last_wakeup_misc(void)
 {
 	return spm_wakesta.wake_misc;
 }
+EXPORT_SYMBOL(spm_get_last_wakeup_misc);
 MODULE_DESCRIPTION("SPM-Sleep Driver v0.1");

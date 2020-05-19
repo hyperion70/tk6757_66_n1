@@ -2074,10 +2074,6 @@ static int TSF_reg_read(struct seq_file *m, void *v)
 				   (unsigned int)TSF_RD32(TSF_START_REG + i));
 		}
 
-		for (i = 0xC0; i <= 0xE4; i = i + 4) {
-			seq_printf(m, "[0x%08X 0x%08X]\n", (unsigned int)(TSF_BASE_HW + i),
-				   (unsigned int)TSF_RD32(TSF_START_REG + i));
-		}
 	}
 
 	return 0;
@@ -2331,15 +2327,15 @@ static irqreturn_t ISP_Irq_TSF(signed int Irq, void *DeviceId)
 	wake_up_interruptible(&TSFInfo.WaitQueueHead);
 
 	/* dump log, use tasklet */
-	IRQ_LOG_KEEPER(TSF_IRQ_TYPE_INT_TSF_ST, m_CurrentPPB, _LOG_INF,
-		       "ISP_Irq_TSF:%d, reg 0x%x : 0x%x\n", Irq, TSF_INT_HW, TSFIntStatus);
+	/* IRQ_LOG_KEEPER(TSF_IRQ_TYPE_INT_TSF_ST, m_CurrentPPB, _LOG_INF, */
+	/*	       "ISP_Irq_TSF:%d, reg 0x%x : 0x%x\n", Irq, TSF_INT_HW, TSFIntStatus); */
 
 	/* IRQ_LOG_KEEPER(TSF_IRQ_TYPE_INT_TSF_ST, m_CurrentPPB, _LOG_INF, "DveHWSta:0x%x, WmfeHWSta:0x%x,
 	**TSFDveSta0:0x%x\n", DveStatus, WmfeStatus, TSFDveSta0);
 	*/
 
-	if (TSFIntStatus & TSF_INT_ST)
-		tasklet_schedule(TSF_tasklet[TSF_IRQ_TYPE_INT_TSF_ST].pTSF_tkt);
+	/* if (TSFIntStatus & TSF_INT_ST) */
+	/*	tasklet_schedule(TSF_tasklet[TSF_IRQ_TYPE_INT_TSF_ST].pTSF_tkt); */
 
 	return IRQ_HANDLED;
 }

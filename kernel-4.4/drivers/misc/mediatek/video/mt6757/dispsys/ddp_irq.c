@@ -353,7 +353,7 @@ irqreturn_t disp_irq_handler(int irq, void *dev_id)
 			mmprofile_log_ex(ddp_mmp_get_events()->SCREEN_UPDATE[index], MMPROFILE_FLAG_PULSE,
 				       reg_val, 1);
 
-			DDPERR("rdma%d, pix(%d,%d,%d,%d)\n",
+			DDPMSG("rdma%d, pix(%d,%d,%d,%d)\n",
 			       index,
 			       DISP_REG_GET(DISP_REG_RDMA_IN_P_CNT +
 					    DISP_RDMA_INDEX_OFFSET * index),

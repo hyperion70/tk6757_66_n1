@@ -14,21 +14,23 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
-FPSGO_TOP = $(srctree)/drivers/misc/mediatek/performance/fpsgo_v2/
+FPSGO_TOP = $(srctree)/drivers/misc/mediatek/performance/fpsgo_v2
 FBT_TOP = $(FPSGO_TOP)/fbt
 COMP_TOP = $(FPSGO_TOP)/composer
-MTK_TOP = $(srctree)/drivers/misc/mediatek/
+MTK_TOP = $(srctree)/drivers/misc/mediatek
+BASE_TOP = $(FPSGO_TOP)/base
+FSTB_TOP = $(FPSGO_TOP)/fstb
 
 ccflags-y += -DNR_FREQ_CPU=16
 
-obj-$(CONFIG_MACH_MT6739) += platform/mt6739/fbt_cpu_platform.o
-obj-$(CONFIG_MACH_MT6758) += platform/mt6758/fbt_cpu_platform.o
-obj-$(CONFIG_MACH_MT6763) += platform/mt6763/fbt_cpu_platform.o
 obj-$(CONFIG_MACH_MT6771) += platform/mt6771/fbt_cpu_platform.o
+obj-$(CONFIG_MACH_MT6775) += platform/mt6775/fbt_cpu_platform.o
 
 obj-$(CONFIG_MTK_FPSGO_FBT_GAME) += \
 	src/fbt_cpu.o \
-	src/xgf.o
+	src/xgf.o \
+	src/mini_top.o \
+	src/fbt_fteh.o
 
 ccflags-y += \
 	-I$(srctree)/include/ \
@@ -36,5 +38,7 @@ ccflags-y += \
 	-I$(FPSGO_TOP)/base/include/ \
 	-I$(COMP_TOP)/include/ \
 	-I$(FBT_TOP)/include/ \
+	-I$(BASE_TOP)/include/ \
 	-I$(MTK_TOP)/base/power/include/ \
 	-I$(MTK_TOP)/base/power/$(MTK_PLATFORM)/ \
+	-I$(FSTB_TOP)/

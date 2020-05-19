@@ -56,6 +56,7 @@ typedef enum {
 struct maghub_ipi_data {
 	int		direction;
 	int32_t dynamic_cali[MAGHUB_AXES_NUM];
+	int32_t parameter_cali[6];
 	atomic_t	trace;
 	atomic_t	suspend;
 	atomic_t	scp_init_done;
@@ -64,6 +65,7 @@ struct maghub_ipi_data {
 	struct data_unit_t m_data_t;
 	bool factory_enable;
 	bool android_enable;
+	struct mag_dev_info_t mag_dev_info;
 };
 static int maghub_m_setPowerMode(bool enable)
 {
@@ -82,7 +84,6 @@ static int maghub_GetMData(char *buf, int size)
 	struct maghub_ipi_data *obj = mag_ipi_data;
 	struct data_unit_t data;
 	uint64_t time_stamp = 0;
-	uint64_t time_stamp_gpt = 0;
 	int mag_m[MAGHUB_AXES_NUM];
 	int err = 0;
 	unsigned int status = 0;
@@ -99,13 +100,12 @@ static int maghub_GetMData(char *buf, int size)
 	}
 
 	time_stamp				= data.time_stamp;
-	time_stamp_gpt			= data.time_stamp_gpt;
 	mag_m[MAGHUB_AXIS_X]	= data.magnetic_t.x;
 	mag_m[MAGHUB_AXIS_Y]	= data.magnetic_t.y;
 	mag_m[MAGHUB_AXIS_Z]	= data.magnetic_t.z;
 	status					= data.magnetic_t.status;
 
-	MAGN_LOG("recv ipi: timestamp: %lld, timestamp_gpt: %lld, x: %d, y: %d, z: %d!\n", time_stamp, time_stamp_gpt,
+	MAGN_LOG("recv ipi: timestamp: %lld, x: %d, y: %d, z: %d!\n", time_stamp,
 		mag_m[MAGHUB_AXIS_X], mag_m[MAGHUB_AXIS_Y], mag_m[MAGHUB_AXIS_Z]);
 
 
@@ -268,21 +268,44 @@ static int maghub_delete_attr(struct device_driver *driver)
 
 static void scp_init_work_done(struct work_struct *work)
 {
-	int32_t cfg_data[3] = {0};
+	int32_t cfg_data[9] = {0};
 	struct maghub_ipi_data *obj = mag_ipi_data;
 	int err = 0;
+	struct mag_libinfo_t mag_libinfo;
 
 	if (atomic_read(&obj->scp_init_done) == 0) {
 		MAGN_PR_ERR("scp is not ready to send cmd\n");
 		return;
 	}
-	if (atomic_xchg(&obj->first_ready_after_boot, 1) == 0)
+	if (atomic_xchg(&obj->first_ready_after_boot, 1) == 0) {
+
+		err = sensor_set_cmd_to_hub(ID_MAGNETIC,
+			CUST_ACTION_GET_SENSOR_INFO, &obj->mag_dev_info);
+		if (err < 0) {
+			pr_err_ratelimited("set_cmd_to_hub fail, (ID: %d),(action: %d)\n",
+				ID_MAGNETIC, CUST_ACTION_GET_SENSOR_INFO);
+		}
+		strlcpy(mag_libinfo.libname,
+			obj->mag_dev_info.libname,
+			sizeof(mag_libinfo.libname));
+		mag_libinfo.layout = obj->mag_dev_info.layout;
+		mag_libinfo.deviceid = obj->mag_dev_info.deviceid;
+
+		err = mag_info_record(&mag_libinfo);
 		return;
+	}
 
 	spin_lock(&calibration_lock);
 	cfg_data[0] = obj->dynamic_cali[0];
 	cfg_data[1] = obj->dynamic_cali[1];
 	cfg_data[2] = obj->dynamic_cali[2];
+
+	cfg_data[3] = obj->parameter_cali[0];
+	cfg_data[4] = obj->parameter_cali[1];
+	cfg_data[5] = obj->parameter_cali[2];
+	cfg_data[6] = obj->parameter_cali[3];
+	cfg_data[7] = obj->parameter_cali[4];
+	cfg_data[8] = obj->parameter_cali[5];
 	spin_unlock(&calibration_lock);
 	err = sensor_cfg_to_hub(ID_MAGNETIC, (uint8_t *)cfg_data, sizeof(cfg_data));
 			if (err < 0)
@@ -298,12 +321,12 @@ static int mag_recv_data(struct data_unit_t *event, void *reserved)
 		data.y = event->magnetic_t.y;
 		data.z = event->magnetic_t.z;
 		data.status = event->magnetic_t.status;
-		data.timestamp = (int64_t)(event->time_stamp + event->time_stamp_gpt);
+		data.timestamp = (int64_t)event->time_stamp;
 		data.reserved[0] = event->reserve[0];
 
-	if (event->flush_action == DATA_ACTION && READ_ONCE(obj->android_enable) == true)
+	if (event->flush_action == DATA_ACTION)
 		err = mag_data_report(&data);
-	else if (event->flush_action == FLUSH_ACTION && READ_ONCE(obj->android_enable) == true)
+	else if (event->flush_action == FLUSH_ACTION)
 		err = mag_flush_report();
 	else if (event->flush_action == BIAS_ACTION) {
 		data.x = event->magnetic_t.x_bias;
@@ -314,6 +337,16 @@ static int mag_recv_data(struct data_unit_t *event, void *reserved)
 		obj->dynamic_cali[MAGHUB_AXIS_X] = event->magnetic_t.x_bias;
 		obj->dynamic_cali[MAGHUB_AXIS_Y] = event->magnetic_t.y_bias;
 		obj->dynamic_cali[MAGHUB_AXIS_Z] = event->magnetic_t.z_bias;
+		spin_unlock(&calibration_lock);
+	} else if (event->flush_action == CALI_ACTION) {
+		err = mag_cali_report(event->data);
+		spin_lock(&calibration_lock);
+		obj->parameter_cali[0] = event->data[0];
+		obj->parameter_cali[1] = event->data[1];
+		obj->parameter_cali[2] = event->data[2];
+		obj->parameter_cali[3] = event->data[3];
+		obj->parameter_cali[4] = event->data[4];
+		obj->parameter_cali[5] = event->data[5];
 		spin_unlock(&calibration_lock);
 	}
 	return err;
@@ -377,6 +410,13 @@ static int maghub_set_cali(uint8_t *data, uint8_t count)
 	obj->dynamic_cali[0] = buf[0];
 	obj->dynamic_cali[1] = buf[1];
 	obj->dynamic_cali[2] = buf[2];
+
+	obj->parameter_cali[0] = buf[3];
+	obj->parameter_cali[1] = buf[4];
+	obj->parameter_cali[2] = buf[5];
+	obj->parameter_cali[3] = buf[6];
+	obj->parameter_cali[4] = buf[7];
+	obj->parameter_cali[5] = buf[8];
 	spin_unlock(&calibration_lock);
 
 	return sensor_cfg_to_hub(ID_MAGNETIC, data, count);
@@ -514,8 +554,6 @@ static int maghub_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, data);
 
-	INIT_WORK(&data->init_done_work, scp_init_work_done);
-	scp_power_monitor_register(&scp_ready_notifier);
 	err = scp_sensorHub_data_registration(ID_MAGNETIC, mag_recv_data);
 	if (err < 0) {
 		MAGN_PR_ERR("scp_sensorHub_data_registration failed\n");
@@ -564,6 +602,14 @@ static int maghub_probe(struct platform_device *pdev)
 	}
 	MAGN_LOG("%s: OK\n", __func__);
 	maghub_init_flag = 1;
+	/*Mointor scp ready notify,
+	 *need monitor at the end of probe for two function:
+	 * 1.read mag_dev_info from sensorhub,
+	 * write to mag context
+	 * 2.set cali to sensorhub
+	 */
+	INIT_WORK(&data->init_done_work, scp_init_work_done);
+	scp_power_monitor_register(&scp_ready_notifier);
 	return 0;
 
 create_attr_failed:
@@ -601,6 +647,11 @@ static int maghub_resume(struct platform_device *pdev)
 {
 	return 0;
 }
+static void maghub_shutdown(struct platform_device *pdev)
+{
+	maghub_enable(0);
+}
+
 static struct platform_device maghub_device = {
 	.name = MAGHUB_DEV_NAME,
 	.id = -1,
@@ -614,6 +665,7 @@ static struct platform_driver maghub_driver = {
 	.remove = maghub_remove,
 	.suspend = maghub_suspend,
 	.resume = maghub_resume,
+	.shutdown = maghub_shutdown,
 };
 
 static int maghub_local_remove(void)

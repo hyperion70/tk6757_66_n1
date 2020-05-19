@@ -205,7 +205,7 @@ static void LSM6DS3H_power(struct gyro_hw *hw, unsigned int on)
 {
 	static unsigned int power_on;
 
-	/*GYRO_LOG("power %s\n", on ? "on" : "off");*/
+	GYRO_LOG("power %s\n", on ? "on" : "off");
 
 #if 0
 	if (hw->power_id != POWER_NONE_MACRO) {	/* have externel LDO*/

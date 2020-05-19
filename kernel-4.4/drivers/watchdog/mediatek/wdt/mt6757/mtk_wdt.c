@@ -501,8 +501,10 @@ int mtk_wdt_request_en_set(int mark_bit, enum wk_req_en en)
 	if (!toprgu_base) {
 		np_rgu = of_find_compatible_node(NULL, NULL, rgu_of_match[0].compatible);
 		toprgu_base = of_iomap(np_rgu, 0);
-		if (!toprgu_base)
+		if (!toprgu_base) {
 			pr_err("RGU iomap failed\n");
+			return -1;
+		}
 		pr_debug("RGU base: 0x%p  RGU irq: %d\n", toprgu_base, wdt_irq_id);
 	}
 
@@ -565,8 +567,10 @@ int mtk_wdt_request_mode_set(int mark_bit, enum wk_req_mode mode)
 	if (!toprgu_base) {
 		np_rgu = of_find_compatible_node(NULL, NULL, rgu_of_match[0].compatible);
 		toprgu_base = of_iomap(np_rgu, 0);
-		if (!toprgu_base)
+		if (!toprgu_base) {
 			pr_err("RGU iomap failed\n");
+			return -1;
+		}
 		pr_debug("RGU base: 0x%p  RGU irq: %d\n", toprgu_base, wdt_irq_id);
 	}
 
@@ -621,8 +625,10 @@ void mtk_wdt_set_c2k_sysrst(unsigned int flag, unsigned int shift)
 
 	if (!toprgu_base) {
 		toprgu_base = of_iomap(np_rgu, 0);
-		if (!toprgu_base)
+		if (!toprgu_base) {
 			pr_err("mtk_wdt_set_c2k_sysrst RGU iomap failed\n");
+			return;
+		}
 		pr_debug("mtk_wdt_set_c2k_sysrst RGU base: 0x%p  RGU irq: %d\n", toprgu_base, wdt_irq_id);
 	}
 #endif
@@ -838,7 +844,7 @@ static int mtk_wdt_probe(struct platform_device *dev)
 		if (!of_property_read_u32_array(node, "debounce", ints, ARRAY_SIZE(ints)))
 			ext_debugkey_io = ints[0];
 		else
-			pr_info("failed to get interrupts in mrdump_ext_rst-eint node\n");
+			pr_info("failed to get ext_rst debounce node\n");
 	}
 	pr_err("mtk_wdt_probe: ext_debugkey_io=%d\n", ext_debugkey_io);
 
@@ -919,8 +925,6 @@ static int mtk_wdt_probe(struct platform_device *dev)
 		__raw_readl(MTK_WDT_MODE), __raw_readl(MTK_WDT_NONRST_REG));
 	pr_debug("mtk_wdt_probe : done MTK_WDT_REQ_MODE(%x)\n", __raw_readl(MTK_WDT_REQ_MODE));
 	pr_debug("mtk_wdt_probe : done MTK_WDT_REQ_IRQ_EN(%x)\n", __raw_readl(MTK_WDT_REQ_IRQ_EN));
-	pr_notice("%s, MTK_WDT_LENGTH = %x, MTK_WDT_DEBUG_5_REG = %x\n", __func__,
-		__raw_readl(MTK_WDT_LENGTH), __raw_readl(MTK_WDT_DEBUG_5_REG));
 
 	return ret;
 }

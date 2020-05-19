@@ -50,6 +50,7 @@
 #include "include/pmic_throttling_dlpt.h"
 #include "include/pmic_irq.h"
 
+#include "include/pmic_lbat_service.h"
 #include <mach/mtk_pmic_wrap.h>
 #include <mt-plat/mtk_rtc.h>
 /*#include <mach/mtk_spm_mtcmos.h>*/
@@ -91,6 +92,7 @@
  * PMIC related define
  ******************************************************************************/
 #define PMIC_THROTTLING_DLPT_UT 0
+#define UNIT_FGCURRENT     (381470)
 /*****************************************************************************
  * PMIC read/write APIs
  ******************************************************************************/
@@ -590,7 +592,7 @@ int do_ptim_internal(bool isSuspend, unsigned int *bat, signed int *cur, bool *i
 	/*PMICLOG("[do_ptim] start\n"); */
 
 
-	pmic_set_register_value(PMIC_AUXADC_SPL_NUM_LARGE, 0x0006);
+	/* pmic_set_register_value(PMIC_AUXADC_SPL_NUM_LARGE, 0x0006); */
 
 	pmic_set_register_value(PMIC_AUXADC_IMP_AUTORPT_PRD, 6);
 #if 0				/* default use hw control, no need to set CK_PDN_HWEN to sw mode */
@@ -1174,7 +1176,7 @@ int get_dlpt_imix(void)
 
 #if defined(CONFIG_MTK_SMART_BATTERY)
 	PMICLOG("[get_dlpt_imix] %d,%d,%d,%d,%d,%d,%d\n", volt_avg, curr_avg, g_lbatInt1,
-		 ptim_rac_val_avg, imix, BMT_status.SOC, bat_get_ui_percentage());
+		 ptim_rac_val_avg, imix, battery_get_soc(), bat_get_ui_percentage());
 #endif
 
 	ptim_imix = imix;

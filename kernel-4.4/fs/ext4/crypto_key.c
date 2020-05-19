@@ -228,11 +228,9 @@ int ext4_get_encryption_info(struct inode *inode)
 	if (ei->i_crypt_info)
 		return 0;
 
-	if (!ext4_read_workqueue) {
-		res = ext4_init_crypto();
-		if (res)
-			return res;
-	}
+	res = ext4_init_crypto();
+	if (res)
+		return res;
 
 	res = ext4_xattr_get(inode, EXT4_XATTR_INDEX_ENCRYPTION,
 				 EXT4_XATTR_NAME_ENCRYPTION_CONTEXT,
@@ -256,8 +254,9 @@ int ext4_get_encryption_info(struct inode *inode)
 	} else if (res != sizeof(ctx)) {
 #ifdef CONFIG_HIE_DEBUG
 		if (dbg)
-			pr_info("HIE: %s: res %d != sizeof(ctx) %ld: ino=%ld, %d\n",
-				__func__, res, sizeof(ctx), inode->i_ino, -EINVAL);
+			pr_info("HIE: %s: res %d != sizeof(ctx) %u: ino=%lu, %d\n",
+			  __func__, res, (unsigned int) sizeof(ctx),
+			  inode->i_ino, -EINVAL);
 #endif
 		return -EINVAL;
 	}
@@ -288,6 +287,12 @@ int ext4_get_encryption_info(struct inode *inode)
 		break;
 	case EXT4_ENCRYPTION_MODE_AES_256_HEH:
 		cipher_str = "heh(aes)";
+		break;
+	case EXT4_ENCRYPTION_MODE_SPECK128_256_XTS:
+		cipher_str = "xts(speck128)";
+		break;
+	case EXT4_ENCRYPTION_MODE_SPECK128_256_CTS:
+		cipher_str = "cts(cbc(speck128))";
 		break;
 	case EXT4_ENCRYPTION_MODE_PRIVATE:
 		cipher_str = "bugon";
@@ -339,10 +344,11 @@ int ext4_get_encryption_info(struct inode *inode)
 	if (ukp->datalen != sizeof(struct ext4_encryption_key)) {
 #ifdef CONFIG_HIE_DEBUG
 		if (dbg)
-			pr_info("HIE: %s: [%s] ukp->datalen %d != sizeof(ext4_encryption_key) %ld: ino=%ld, %d\n",
-				__func__, full_key_descriptor,
-				ukp->datalen, sizeof(struct ext4_encryption_key),
-				inode->i_ino, -EINVAL);
+			pr_info("HIE: %s: [%s] ukp->datalen %d != sizeof(ext4_encryption_key) %u: ino=%lu, %d\n",
+			  __func__, full_key_descriptor,
+			  ukp->datalen,
+			  (unsigned int) sizeof(struct ext4_encryption_key),
+			  inode->i_ino, -EINVAL);
 #endif
 		res = -EINVAL;
 		up_read(&keyring_key->sem);

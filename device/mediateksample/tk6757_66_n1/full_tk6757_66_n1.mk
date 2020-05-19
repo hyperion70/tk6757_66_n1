@@ -26,11 +26,10 @@ PRODUCT_LOCALES:=ru_RU en_US
 # Set those variables here to overwrite the inherited values.
 PRODUCT_MANUFACTURER := Santin
 PRODUCT_NAME := full_tk6757_66_n1
-PRODUCT_DEVICE := tk6757_66_n1
+PRODUCT_DEVICE := $(strip $(MTK_BASE_PROJECT))
 PRODUCT_MODEL := Santin_N1
 PRODUCT_POLICY := android.policy_phone
 PRODUCT_BRAND := Santin
-TARGET_OTA_ASSERT_DEVICE := N1
 
 ifeq ($(TARGET_BUILD_VARIANT), eng)
 KERNEL_DEFCONFIG ?= tk6757_66_n1_debug_defconfig
@@ -41,7 +40,7 @@ PRELOADER_TARGET_PRODUCT ?= tk6757_66_n1
 LK_PROJECT ?= tk6757_66_n1
 TRUSTY_PROJECT ?= tk6757_66_n1
 
-include $(LOCAL_PATH)/twrp.mk
+# include $(LOCAL_PATH)/twrp.mk
 include $(LOCAL_PATH)/nfc_device.mk
 
 ifeq ($(MTK_BUILD_GAPPS),yes)

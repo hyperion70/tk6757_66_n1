@@ -41,6 +41,8 @@
 #endif
 #endif
 
+#include <mt-plat/mtk_blocktag.h>
+
 /*
  * context holding the current state of a multi-part conversion
  */
@@ -873,6 +875,8 @@ static int crypt_convert_block(struct crypt_config *cc,
 	sg_set_page(&dmreq->sg_out, bv_out.bv_page, 1 << SECTOR_SHIFT,
 		    bv_out.bv_offset);
 
+	mtk_btag_pidlog_copy_pid(bv_in.bv_page, bv_out.bv_page);
+
 	bio_advance_iter(ctx->bio_in, &ctx->iter_in, 1 << SECTOR_SHIFT);
 	bio_advance_iter(ctx->bio_out, &ctx->iter_out, 1 << SECTOR_SHIFT);
 
@@ -1122,29 +1126,22 @@ static void crypt_endio(struct bio *clone)
 	unsigned rw = bio_data_dir(clone);
 	int error;
 
-#if defined(CONFIG_MTK_HW_FDE)
-	if (cc->hw_fde == 1)
-		bio_put(clone);
-	else
-#endif
-	{
-		/*
-		 * free the processed pages
-		 */
-		if (rw == WRITE)
-			crypt_free_buffer_pages(cc, clone);
+	/*
+	 * free the processed pages
+	 */
+	if (rw == WRITE)
+		crypt_free_buffer_pages(cc, clone);
 
-		error = clone->bi_error;
-		bio_put(clone);
+	error = clone->bi_error;
+	bio_put(clone);
 
-		if (rw == READ && !error) {
-			kcryptd_queue_crypt(io);
-			return;
-		}
-
-		if (unlikely(error))
-			io->error = error;
+	if (rw == READ && !error) {
+		kcryptd_queue_crypt(io);
+		return;
 	}
+
+	if (unlikely(error))
+		io->error = error;
 
 	crypt_dec_pending(io);
 }
@@ -1178,14 +1175,6 @@ static int kcryptd_io_read(struct dm_crypt_io *io, gfp_t gfp)
 
 	clone_init(io, clone);
 	clone->bi_iter.bi_sector = cc->start + io->sector;
-
-#if defined(CONFIG_MTK_HW_FDE)
-	if (cc->hw_fde == 1) {
-		clone->bi_hw_fde = 1;
-		clone->bi_iter.bi_sector = cc->start + io->sector;
-		clone->bi_key_idx = key_idx;
-	}
-#endif
 
 	generic_make_request(clone);
 	return 0;
@@ -1279,16 +1268,6 @@ static void kcryptd_queue_read(struct dm_crypt_io *io)
 static void kcryptd_io_write(struct dm_crypt_io *io)
 {
 	struct bio *clone = io->ctx.bio_out;
-
-#if defined(CONFIG_MTK_HW_FDE)
-	struct crypt_config *cc = io->cc;
-
-	if (cc->hw_fde == 1) {
-		clone->bi_hw_fde = 1;
-		clone->bi_iter.bi_sector = cc->start + io->sector;
-		clone->bi_key_idx = key_idx;
-	}
-#endif
 
 	generic_make_request(clone);
 }
@@ -1659,15 +1638,17 @@ static void crypt_dtr(struct dm_target *ti)
 	if (!cc)
 		return;
 
-	if (cc->write_thread)
-		kthread_stop(cc->write_thread);
-
-	if (cc->io_queue)
-		destroy_workqueue(cc->io_queue);
+/* MTK PATCH */
 #if defined(CONFIG_MTK_HW_FDE)
 	if (cc->hw_fde == 0)
 #endif
 	{
+		if (cc->write_thread)
+			kthread_stop(cc->write_thread);
+
+		if (cc->io_queue)
+			destroy_workqueue(cc->io_queue);
+
 		if (cc->crypt_queue)
 			destroy_workqueue(cc->crypt_queue);
 	}
@@ -2035,18 +2016,21 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	}
 
 	ret = -ENOMEM;
-	cc->io_queue = alloc_workqueue("kcryptd_io",
-				       WQ_HIGHPRI |
-				       WQ_MEM_RECLAIM,
-				       1);
-	if (!cc->io_queue) {
-		ti->error = "Couldn't create kcryptd io queue";
-		goto bad;
-	}
+
+/* MTK PATCH */
 #if defined(CONFIG_MTK_HW_FDE)
 	if (cc->hw_fde == 0)
 #endif
 	{
+		cc->io_queue = alloc_workqueue("kcryptd_io",
+					       WQ_HIGHPRI |
+					       WQ_MEM_RECLAIM,
+					       1);
+		if (!cc->io_queue) {
+			ti->error = "Couldn't create kcryptd io queue";
+			goto bad;
+		}
+
 		if (test_bit(DM_CRYPT_SAME_CPU, &cc->flags))
 			cc->crypt_queue = alloc_workqueue("kcryptd",
 							  WQ_HIGHPRI |
@@ -2061,19 +2045,21 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 			ti->error = "Couldn't create kcryptd queue";
 			goto bad;
 		}
-	}
 
-	init_waitqueue_head(&cc->write_thread_wait);
-	cc->write_tree = RB_ROOT;
+		init_waitqueue_head(&cc->write_thread_wait);
+		cc->write_tree = RB_ROOT;
 
-	cc->write_thread = kthread_create(dmcrypt_write, cc, "dmcrypt_write");
-	if (IS_ERR(cc->write_thread)) {
-		ret = PTR_ERR(cc->write_thread);
-		cc->write_thread = NULL;
-		ti->error = "Couldn't spawn write thread";
-		goto bad;
+		cc->write_thread = kthread_create(dmcrypt_write,
+							cc,
+							"dmcrypt_write");
+		if (IS_ERR(cc->write_thread)) {
+			ret = PTR_ERR(cc->write_thread);
+			cc->write_thread = NULL;
+			ti->error = "Couldn't spawn write thread";
+			goto bad;
+		}
+		wake_up_process(cc->write_thread);
 	}
-	wake_up_process(cc->write_thread);
 
 	ti->num_flush_bios = 1;
 	ti->discard_zeroes_data_unsupported = true;
@@ -2103,23 +2089,31 @@ static int crypt_map(struct dm_target *ti, struct bio *bio)
 		return DM_MAPIO_REMAPPED;
 	}
 
-	/*
-	 * Check if bio is too large, split as needed.
-	 */
-	if (unlikely(bio->bi_iter.bi_size > (BIO_MAX_PAGES << PAGE_SHIFT)) &&
-	    bio_data_dir(bio) == WRITE)
-		dm_accept_partial_bio(bio, ((BIO_MAX_PAGES << PAGE_SHIFT) >> SECTOR_SHIFT));
-
-	io = dm_per_bio_data(bio, cc->per_bio_data_size);
-	crypt_io_init(io, cc, bio, dm_target_offset(ti, bio->bi_iter.bi_sector));
-	io->ctx.req = (struct ablkcipher_request *)(io + 1);
-
 #if defined(CONFIG_MTK_HW_FDE)
-	if (cc->hw_fde == 1)
-		kcryptd_queue_read(io);
+	if (cc->hw_fde == 1) {
+		/*
+		 * Do what kcryptd_io_read_work() do here directly to
+		 * avoid kworker overhead.
+		 */
+		bio->bi_bdev = cc->dev->bdev;
+		bio->bi_hw_fde = 1;
+		bio->bi_key_idx = key_idx;
+		generic_make_request(bio); /* For Read/Write */
+	}
 	else
 #endif
 	{
+		/*
+		 * Check if bio is too large, split as needed.
+		 */
+		if (unlikely(bio->bi_iter.bi_size > (BIO_MAX_PAGES << PAGE_SHIFT)) &&
+		    bio_data_dir(bio) == WRITE)
+			dm_accept_partial_bio(bio, ((BIO_MAX_PAGES << PAGE_SHIFT) >> SECTOR_SHIFT));
+
+		io = dm_per_bio_data(bio, cc->per_bio_data_size);
+		crypt_io_init(io, cc, bio, dm_target_offset(ti, bio->bi_iter.bi_sector));
+		io->ctx.req = (struct ablkcipher_request *)(io + 1);
+
 		if (bio_data_dir(io->base_bio) == READ) {
 			if (kcryptd_io_read(io, GFP_NOWAIT))
 				kcryptd_queue_read(io);

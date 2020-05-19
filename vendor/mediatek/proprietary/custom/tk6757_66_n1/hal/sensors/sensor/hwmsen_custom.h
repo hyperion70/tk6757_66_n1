@@ -19,6 +19,7 @@
 
 #define MAX_NUM_SENSORS                 1
 #define MSENSOR_AMI_LIB
+#define ACC_GYRO_CALIBRATION_SUPPORT
 
 /*  set sensor .mindelay, ms */
 #define MAGNETOMETER_MINDELAY      20000

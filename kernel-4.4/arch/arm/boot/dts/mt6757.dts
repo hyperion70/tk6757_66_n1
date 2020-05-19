@@ -5,12 +5,15 @@
  *              http://www.mediatek.com
  *
  */
-#include <generated/autoconf.h>
+
+
+
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/mmc/mt6757-msdc.h>
 #include <dt-bindings/clock/mt6757-clk.h>
 #include <dt-bindings/pinctrl/mt6757-pinfunc.h>
+#include <generated/autoconf.h>
 #ifdef CONFIG_MTK_DTBO_FEATURE
 /dts-v1/;
 #endif
@@ -24,7 +27,10 @@
 
 	/* chosen */
 	chosen: chosen {
-		bootargs = "TODO: add bootargs here";
+		bootargs = "console=tty0 console=ttyMT3,921600n1 \
+vmalloc=496M slub_max_order=0 slub_debug=OFZPU \
+androidboot.hardware=mt6757 \
+firmware_class.path=/vendor/firmware loop.max_part=7";
 	};
 
 	/* Do not put any bus before mtk-msdc, because it should be mtk-msdc.0 for partition device node usage */
@@ -84,6 +90,9 @@
 		compatible = "microtrust,utos";
 		interrupts = <GIC_SPI 293 IRQ_TYPE_EDGE_RISING>,
 			<GIC_SPI 294 IRQ_TYPE_EDGE_RISING>;
+	};
+	utos_tester {
+		compatible = "microtrust,tester-v1";
 	};
 
 	cpus {
@@ -302,32 +311,32 @@
 		/* atf-ramdump-memory for ATF debug purpose, for ramdump */
 		/* We use MPU region 1 to protected these 2 sections */
 		/* reserve 64KB at DRAM start + 70MB, for ATF use */
-		atf-reserved-memory@44600000 {
+		atf-reserved-memory@50e00000 {
 			compatible = "mediatek,mt6757-atf-reserved-memory";
 			no-map;
-			reg = <0 0x44600000 0 0x10000>;
+			reg = <0 0x50e00000 0 0x14000>;
 		};
 
 		/* reserve 192KB after atf-reserved-memory, for ATF ramdump */
-		atf-ramdump-memory@44610000 {
+		atf-ramdump-memory@50e14000 {
 			compatible = "mediatek,mt6757-atf-ramdump-memory";
 			no-map;
-			reg = <0 0x44610000 0 0x30000>;
+			reg = <0 0x50e14000 0 0x2c000>;
 		};
 
-		ram_console-reserved-memory@44400000 {
+		ram_console-reserved-memory@47c80000 {
 			compatible = "ram_console-reserve-memory";
-			reg = <0 0x44400000 0 0x10000>;
+			reg = <0 0x47c80000 0 0x10000>;
 		};
 
-		pstore-reserved-memory@44410000 {
+		pstore-reserved-memory@47c90000 {
 			compatible = "mediatek,pstore";
-			reg = <0 0x44410000 0 0xe0000>;
+			reg = <0 0x47c90000 0 0xe0000>;
 		};
 
-		minirdump-reserved-memory@444f0000{
+		minirdump-reserved-memory@47d70000{
 			compatible = "mediatek,minirdump";
-			reg = <0 0x444f0000 0 0x10000>;
+			reg = <0 0x47d70000 0 0x10000>;
 		};
 
 		consys-reserve-memory {
@@ -349,6 +358,14 @@
 		};
 	};
 
+#ifdef CONFIG_MICROTRUST_TEE_SUPPORT
+		soter-shared-mem {
+			compatible = "microtrust,shared_mem";
+			no-map;
+			size = <0 0x200000>;
+			alloc-ranges = <0 0x40000000 0 0x50000000>;
+		};
+#endif
 	plat_sram_flag@0011dbf0 {
 		compatible = "mediatek,plat_sram_flag";
 		reg = <0 0x0011dbf0 0 0x10>;
@@ -433,7 +450,6 @@
 		clock-frequency = <13000000>;
 	};
 
-
 	mtkfb: mtkfb@0 {
 		compatible = "mediatek,mtkfb";
 	};
@@ -449,10 +465,6 @@
 
 	bat_notify {
 		compatible = "mediatek,bat_notify";
-	};
-
-	battery {
-		compatible = "mediatek,battery";
 	};
 
 	bat_metter {
@@ -1256,8 +1268,6 @@
 		alias_name = "MT6355";
 	};
 
-
-
 	gauge_timer {
 		compatible = "mediatek,gauge_timer_service";
 	};
@@ -1276,10 +1286,6 @@
 
 	swtp: swtp {
 		compatible = "mediatek, swtp-eint";
-	};
-
-	gpio_usage_mapping:gpio {
-		compatible = "mediatek,gpio_usage_mapping";
 	};
 
 	pmic_clock_buffer_ctrl:pmic_clock_buffer {
@@ -1459,6 +1465,10 @@
 		pins-are-numbered;
 		gpio-controller;
 		#gpio-cells = <2>;
+	};
+
+	gpio_usage_mapping:gpio {
+		compatible = "mediatek,gpio_usage_mapping";
 	};
 
 	gpio@10005000 {
@@ -2117,6 +2127,22 @@
 		interrupts = <GIC_SPI 82 IRQ_TYPE_LEVEL_LOW>;
 	};
 
+	btif_tx: btif_tx@11000980 {
+		compatible = "mediatek,btif_tx";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		reg = <0 0x11000980 0 0x80>;
+		interrupts = <GIC_SPI 96 IRQ_TYPE_LEVEL_LOW>;
+	};
+
+	btif_rx: btif_rx@11000a00 {
+		compatible = "mediatek,btif_rx";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		reg = <0 0x11000a00 0 0x80>;
+		interrupts = <GIC_SPI 124 IRQ_TYPE_LEVEL_LOW>;
+	};
+
 	auxadc: auxadc@11001000 {
 		compatible = "mediatek,mt6757-auxadc";
 		reg = <0 0x11001000 0 0x1000>;
@@ -2530,6 +2556,22 @@
 	dfp@13020000 {
 		compatible = "mediatek,dfp";
 		reg = <0 0x13020000 0 0x1000>;
+	};
+
+	met_mali: met_mali@13040000 {
+		compatible = "arm,malit860", "arm,mali-t86x", "arm,malit8xx", "arm,mali-midgard";
+			reg = <0 0x13040000 0 0x4000>;
+			interrupts = <GIC_SPI 247 IRQ_TYPE_LEVEL_LOW>,
+					<GIC_SPI 246 IRQ_TYPE_LEVEL_LOW>,
+					<GIC_SPI 245 IRQ_TYPE_LEVEL_LOW>;
+			interrupt-names = "JOB", "MMU", "GPU";
+			clock-frequency = <700000000>;
+			clocks = <&mfgsys MFGCFG_BG3D>, <&topckgen TOP_MUX_F52M_MFG>, <&scpsys SCP_SYS_MFG_ASYNC>,
+				 <&scpsys SCP_SYS_MFG>, <&scpsys SCP_SYS_MFG_CORE0>,
+				 <&scpsys SCP_SYS_MFG_CORE1>;
+			clock-names = "mfg-main", "mfg-f52m-sel", "mtcmos-mfg-async",
+				 "mtcmos-mfg", "mtcmos-mfg-core0",
+				 "mtcmos-mfg-core1";
 	};
 
 	mali@13040000 {
@@ -2989,7 +3031,7 @@
 		compatible = "mediatek,smi_common";
 		reg = <0 0x14028000 0 0x1000>,
 					<0 0x14026000 0 0x1000>,
-					<0 0x16010000 0 0x10000>,
+					<0 0x16010000 0 0x1000>,
 					<0 0x1a001000 0 0x1000>,
 					<0 0x17001000 0 0x1000>,
 					<0 0x14027000 0 0x1000>,
@@ -2999,6 +3041,7 @@
 				<&vdecsys VDEC_LARB1>,
 				<&camsys CAMSYS_LARB2_CGPDN>,
 				<&vencsys VENC_GCON_SET0_LARB>,
+				<&vencsys VENC_GCON_SET1_VENC>,
 				<&mmsys MMSYS_SMI_LARB4>,
 				<&imgsys IMG_LARB5>,
 				<&scpsys SCP_SYS_VEN>,
@@ -3006,7 +3049,7 @@
 				<&scpsys SCP_SYS_ISP>,
 				<&scpsys SCP_SYS_DIS>,
 				<&scpsys SCP_SYS_CAM>;
-			clock-names = "smi-common", "smi-larb0", "smi-larb1", "smi-larb2", "smi-larb3",
+			clock-names = "smi-common", "smi-larb0", "smi-larb1", "smi-larb2", "smi-larb3", "smi-larb3-2",
 			"smi-larb4", "smi-larb5", "mtcmos-ven", "mtcmos-vde", "mtcmos-isp",
 			"mtcmos-dis", "mtcmos-cam";
 	};
@@ -3820,7 +3863,7 @@
 			compatible = "android,firmware";
 			fstab {
 				compatible = "android,fstab";
-#ifndef CONFIG_MTK_AB_OTA_UPDATER
+#if !defined(CONFIG_SYSTEM_AS_ROOT) && !defined(CONFIG_MTK_AB_OTA_UPDATER)
 				system {
 					compatible = "android,system";
 					dev = "/dev/block/platform/mtk-msdc.0/11230000.msdc0/by-name/system";

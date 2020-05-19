@@ -122,6 +122,7 @@ config MTK_GPT_SCHEME_SUPPORT
 source "drivers/misc/mediatek/dum-char/Kconfig"
 source "drivers/misc/mediatek/nand/Kconfig"
 source "drivers/misc/mediatek/partition/Kconfig"
+source "drivers/misc/mediatek/pidmap/Kconfig"
 
 endmenu  # Storage
 
@@ -211,6 +212,7 @@ config MTK_SEC_VIDEO_PATH_SUPPORT
 config MTK_TEE_GP_SUPPORT
 	bool "Enable MTK GlobalPlatform support in TEE related modules"
 	default n
+	depends on (TRUSTONIC_TEE_SUPPORT) || (MICROTRUST_TEE_SUPPORT)
 	help
 	  GlobalPlatform defines common/consistent APIs and this option
 	  enables TEE related modules to use GPAPIs. (depending on
@@ -248,16 +250,24 @@ source "drivers/misc/mediatek/jpeg/Kconfig"
 source "drivers/misc/mediatek/lcm/Kconfig"
 source "drivers/misc/mediatek/lens/Kconfig"
 source "drivers/misc/mediatek/fde_aes/Kconfig"
-source "drivers/misc/mediatek/mjc/Kconfig"
 source "drivers/misc/mediatek/mmp/Kconfig"
 #source "drivers/misc/mediatek/multibridge/Kconfig"
 #source "drivers/misc/mediatek/rrc/Kconfig"
-source "drivers/misc/mediatek/secmem/Kconfig"
+source "drivers/misc/mediatek/trusted_mem/Kconfig"
 source "drivers/misc/mediatek/sync/Kconfig"
 source "drivers/misc/mediatek/videocodec/Kconfig"
 source "drivers/misc/mediatek/video/Kconfig"
 source "drivers/misc/mediatek/vpu/Kconfig"
 source "drivers/misc/mediatek/dfrc/Kconfig"
+
+config MTK_CAM_SECURITY_SUPPORT
+	bool "Secure Camera Infrastructure Support"
+	default n
+	help
+	  This is an option for MTK secure camera infrastructure.
+	  It provides hardware-based security that guarantees the data integrity
+	  form image sensor, ISP DMA port access to secure memory.
+	  If you are not sure about this, do not set it to y.
 
 endmenu  # MM
 
@@ -327,6 +337,7 @@ source "drivers/misc/mediatek/cirq/Kconfig"
 source "drivers/misc/mediatek/debug_latch/Kconfig"
 source "drivers/misc/mediatek/debug_tracer/Kconfig"
 source "drivers/misc/mediatek/devapc/Kconfig"
+source "drivers/misc/mediatek/trng/Kconfig"
 source "drivers/misc/mediatek/dfd/Kconfig"
 source "drivers/misc/mediatek/dramc/Kconfig"
 source "drivers/misc/mediatek/dxcc/Kconfig"
@@ -362,6 +373,7 @@ source "drivers/misc/mediatek/usb_c/Kconfig"
 source "drivers/misc/mediatek/vibrator/Kconfig"
 source "drivers/misc/mediatek/xhci/Kconfig"
 source "drivers/misc/mediatek/pcie_ut/Kconfig"
+
 
 endmenu  # Peripheral
 
@@ -417,6 +429,14 @@ config MTK_FPSGO_FSTB
 	help
 	  Support FPSGO FPS stabilizer for FPS performance and low
 	  power balance.
+	  If you are not sure about this, set n.
+
+config MTK_FPSGO_MULTI_STAGE_RESCUE
+	bool "Support FPSGO FBT multi-stage rescuer"
+	default n
+	depends on MTK_FPSGO
+	help
+	  Support FPSGO FBT milti-stage boost rescuer.
 	  If you are not sure about this, set n.
 
 endmenu  # PPT
@@ -484,6 +504,26 @@ config MTK_AB_OTA_UPDATER
 	bool "Support Android A/B system updates"
 	default n
 
+config MTK_GROUP_ENABLE_VERITY
+	bool "Support enable dm verity for grouped switch"
+	default y
+	select BLK_DEV_MD
+	select MD_LINEAR
+	select DM_ANDROID_VERITY
+	select KEYS
+	select INTEGRITY_SIGNATURES
+	select INTEGRITY_ASYMMETRIC_KEYS
+	select SYSTEM_TRUSTED_KEYRING
+	select DM_VERITY
+	select X509_CERTIFICATE_PARSER
+	select PUBLIC_KEY_ALGO_RSA
+	select ASYMMETRIC_KEY_TYPE
+	select ASYMMETRIC_PUBLIC_KEY_SUBTYPE
+
+config SYSTEM_AS_ROOT
+	bool "Support system-as-root, which merges ramdisk into system image"
+	default y
+
 source "drivers/misc/mediatek/aee/Kconfig"
 source "drivers/misc/mediatek/atf_log/Kconfig"
 source "drivers/misc/mediatek/boot/Kconfig"
@@ -528,8 +568,28 @@ source "drivers/misc/mediatek/fiq_cache/Kconfig"
 source "drivers/misc/mediatek/base/power/mcdi/Kconfig"
 source "drivers/misc/mediatek/geniezone/Kconfig"
 source "drivers/misc/mediatek/timer/Kconfig"
+source "drivers/misc/mediatek/io_boost/Kconfig"
 source "drivers/misc/mediatek/es_reg/Kconfig"
 source "drivers/misc/mediatek/cmo/Kconfig"
+source "drivers/misc/mediatek/tkcore/Kconfig"
+source "drivers/misc/mediatek/Kconfig.default"
+
+config MTK_FD_LEAK_DETECT
+	bool "Enable MTK fd leak detection"
+	help
+	  This feature is for detecting fd leak.
+	  When kernel can not alloc fd, will print error information.
+	  This feature should be enbled only on Engineer load; User/Userdebug
+	  load should be enabled by demand.
+
+config MTK_FD_LEAK_SPECIFIC_DEBUG
+	bool "Specific demand in fd leak debug"
+	default n
+	help
+	  Specific demand in fd leak debug.
+	  Eg,
+	  For some specific processes, may need backtrace, coredump
+	  and other debug information.
 
 config MTK_DM_VERITY_OFF
 	bool "Disable dm-verity"
@@ -538,6 +598,12 @@ config MTK_DM_VERITY_OFF
 config MTK_IRIS_SUPPORT
 	bool "Biometric authentication - iris secure camera"
 	default n
+
+config MTK_DYNAMIC_LOAD_STORE_BYPASS_WA
+	bool "Support Mediatek dynamic workaround for CA75 load-store-bypassing"
+	default n
+	help
+	  Disable load-store-bypassing in user-space
 
 endmenu    # Misc
 

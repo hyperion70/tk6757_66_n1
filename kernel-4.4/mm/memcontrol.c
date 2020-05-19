@@ -996,7 +996,7 @@ static void invalidate_reclaim_iterators(struct mem_cgroup *dead_memcg)
 	int nid, zid;
 	int i;
 
-	while ((memcg = parent_mem_cgroup(memcg))) {
+	for (; memcg; memcg = parent_mem_cgroup(memcg)) {
 		for_each_node(nid) {
 			for (zid = 0; zid < MAX_NR_ZONES; zid++) {
 				mz = &memcg->nodeinfo[nid]->zoneinfo[zid];
@@ -2810,6 +2810,7 @@ out:
 	return retval;
 }
 
+#ifndef CONFIG_MTK_GMO_RAM_OPTIMIZE
 static unsigned long tree_stat(struct mem_cgroup *memcg,
 			       enum mem_cgroup_stat_index idx)
 {
@@ -2839,6 +2840,36 @@ static unsigned long mem_cgroup_usage(struct mem_cgroup *memcg, bool swap)
 	}
 	return val;
 }
+#else
+static unsigned long mem_cgroup_usage(struct mem_cgroup *memcg, bool swap)
+{
+	unsigned long val;
+
+	if (mem_cgroup_is_root(memcg)) {
+		/*
+		 * For root memcg, using the following statistics to
+		 * evaluate "memory" & "memsw". This can help reduce
+		 * the CPU loading when iterating mem_cgroup_tree.
+		 */
+		val = global_page_state(NR_INACTIVE_ANON) +
+		      global_page_state(NR_ACTIVE_ANON) +
+		      global_page_state(NR_INACTIVE_FILE) +
+		      global_page_state(NR_ACTIVE_FILE) +
+		      global_page_state(NR_UNEVICTABLE);
+		if (swap) {
+			val += total_swap_pages -
+			       get_nr_swap_pages() -
+			       total_swapcache_pages();
+		}
+	} else {
+		if (!swap)
+			val = page_counter_read(&memcg->memory);
+		else
+			val = page_counter_read(&memcg->memsw);
+	}
+	return val;
+}
+#endif
 
 enum {
 	RES_USAGE,
@@ -5576,7 +5607,7 @@ static void uncharge_list(struct list_head *page_list)
 		next = page->lru.next;
 
 		VM_BUG_ON_PAGE(PageLRU(page), page);
-		VM_BUG_ON_PAGE(page_count(page), page);
+		VM_BUG_ON_PAGE(!PageHWPoison(page) && page_count(page), page);
 
 		if (!page->mem_cgroup)
 			continue;

@@ -99,6 +99,8 @@
 #include "mtk_musb.h"
 #endif
 
+#define DISABLE_DEBOUNCE
+
 static void (*usb_hal_dpidle_request_fptr)(int);
 void usb_hal_dpidle_request(int mode)
 {
@@ -112,7 +114,7 @@ void register_usb_hal_dpidle_request(void (*function)(int))
 static void (*usb_hal_disconnect_check_fptr)(void);
 void usb_hal_disconnect_check(void)
 {
-	if (usb_hal_disconnect_check_fptr)
+	if (usb_hal_disconnect_check_fptr && musb_force_on)
 		usb_hal_disconnect_check_fptr();
 }
 void register_usb_hal_disconnect_check(void (*function)(void))
@@ -125,14 +127,24 @@ int kernel_init_done;
 int musb_force_on;
 int musb_host_dynamic_fifo = 1;
 int musb_host_dynamic_fifo_usage_msk;
+bool musb_host_db_enable;
+bool musb_host_db_workaround1 = true;
+bool musb_host_db_workaround2;
+long musb_host_db_delay_ns;
+long musb_host_db_workaround_cnt;
 module_param(musb_fake_CDP, int, 0400);
 module_param(kernel_init_done, int, 0644);
 module_param(musb_host_dynamic_fifo, int, 0644);
 module_param(musb_host_dynamic_fifo_usage_msk, int, 0400);
+module_param(musb_host_db_enable, bool, 0644);
+module_param(musb_host_db_workaround1, bool, 0644);
+module_param(musb_host_db_workaround2, bool, 0644);
+module_param(musb_host_db_delay_ns, long, 0644);
+module_param(musb_host_db_workaround_cnt, long, 0644);
 #ifdef CONFIG_MTK_MUSB_QMU_SUPPORT
 int mtk_host_qmu_concurrent = 1;
 int mtk_host_qmu_pipe_msk = (PIPE_ISOCHRONOUS + 1) /* | (PIPE_BULK + 1) | (PIPE_INTERRUPT+ 1) */;
-int mtk_host_qmu_force_isoc_restart = 1;
+int mtk_host_qmu_force_isoc_restart;
 int mtk_host_active_dev_cnt;
 module_param(mtk_host_qmu_concurrent, int, 0400);
 module_param(mtk_host_qmu_pipe_msk, int, 0400);
@@ -1141,9 +1153,17 @@ b_host:
 	 * only host sees babble; only peripheral sees bus reset.
 	 */
 	if (int_usb & MUSB_INTR_RESET) {
+		int otg_state;
 		handled = IRQ_HANDLED;
 
-		DBG(0, "%s:%d MUSB_INTR_RESET (%s)\n", __func__, __LINE__, otg_state_string(musb->xceiv->otg->state));
+		otg_state = musb->xceiv->otg->state;
+		if (otg_state == OTG_STATE_A_HOST)
+			DBG_LIMIT(5, "%s:%d MUSB_INTR_RESET (%s)", __func__, __LINE__,
+				otg_state_string(musb->xceiv->otg->state));
+		else
+			DBG(0, "%s:%d MUSB_INTR_RESET (%s)\n", __func__, __LINE__,
+				otg_state_string(musb->xceiv->otg->state));
+
 		if ((devctl & MUSB_DEVCTL_HM) != 0) {
 			/*
 			 * Looks like non-HS BABBLE can be ignored, but
@@ -1152,7 +1172,8 @@ b_host:
 			 * caused BABBLE. When HS BABBLE happens we can only
 			 * stop the session.
 			 */
-			DBG(0, "Babble\n");
+			DBG_LIMIT(5, "Babble");
+
 			if (devctl & (MUSB_DEVCTL_FSDEV | MUSB_DEVCTL_LSDEV))
 				DBG(2, "BABBLE devctl: %02x\n", devctl);
 			else {
@@ -1263,7 +1284,7 @@ void musb_start(struct musb *musb)
 {
 	void __iomem *regs = musb->mregs;
 	int vbusdet_retry = 5;
-
+	u8 value;
 	u8 intrusbe;
 
 	DBG(0, "start, is_host=%d is_active=%d\n", musb->is_host, musb->is_active);
@@ -1273,6 +1294,16 @@ void musb_start(struct musb *musb)
 
 	intrusbe = musb_readb(regs, MUSB_INTRUSBE);
 	if (musb->is_host) {
+	#ifdef DISABLE_DEBOUNCE
+		value = musb_readb(regs, MUSB_ULPI_BUSCONTROL1);
+		musb_writeb(regs, MUSB_ULPI_BUSCONTROL1, value | 0x40);
+
+		value = musb_readb(regs, OTG20_CSRH);
+		musb_writeb(regs, OTG20_CSRH, value | 0x1);
+		DBG(0, "Disable Debounce, 0x71: 0x%x, 0x731: 0x%x\n",
+			musb_readb(regs, MUSB_ULPI_BUSCONTROL1), musb_readb(regs, OTG20_CSRH));
+	#endif
+
 		musb->intrtxe = 0xffff;
 		musb_writew(regs, MUSB_INTRTXE, musb->intrtxe);
 		musb->intrrxe = 0xfffe;
@@ -1324,6 +1355,10 @@ void musb_start(struct musb *musb)
 		musb->is_active = 0;
 	else
 		musb->is_active = 1;
+
+#ifdef CONFIG_DUAL_ROLE_USB_INTF
+	mt_usb_dual_role_changed(musb);
+#endif
 }
 
 void musb_generic_disable(struct musb *musb)
@@ -1382,6 +1417,65 @@ static void gadget_stop(struct musb *musb)
 	}
 }
 
+void musb_flush_dma_transcation(struct musb *musb)
+{
+	int i = 0;
+
+	/* 1. Stop Queue: Set TXQ_STOP or RXQ_STOP.
+	 * TQCSR0(0xA00) ~ TQCSR7(0xA70)
+	 * RQCSR0(0x810) ~ RQCSR7(0x880)
+	*/
+	for (i = 1; i < musb->nr_endpoints; i++) {
+		mtk_qmu_stop(i, 0);
+		mtk_qmu_stop(i, 1);
+	}
+
+	/* 2. Set DMA_CNTL = 0, DMA_CNT = 0, DMA_ADDRESS = 0
+	 * DMA_CNTL_0(0x204) ~ DMA_CNTL_7(0x274)
+	 * DMA_ADDR_0(0x208) ~ DMA_ADDR_7(0x278)
+	 * DMA_COUNT_0(0x20C) ~ DMA_COUNT_7(0x27C)
+	*/
+	for (i = 0; i < 8; i++) {
+		u32 val = musb_readl(musb->mregs, MUSB_HSDMA_CHANNEL_OFFSET((i), MUSB_HSDMA_CONTROL));
+
+		if (val)
+			pr_notice("CH%d(0x%x)=0x%x\n", i, MUSB_HSDMA_CHANNEL_OFFSET((i), MUSB_HSDMA_CONTROL), val);
+
+		musb_writel(musb->mregs, MUSB_HSDMA_CHANNEL_OFFSET((i), MUSB_HSDMA_CONTROL), 0);
+		musb_writel(musb->mregs, MUSB_HSDMA_CHANNEL_OFFSET((i), MUSB_HSDMA_ADDRESS), 0);
+		musb_writel(musb->mregs, MUSB_HSDMA_CHANNEL_OFFSET((i), MUSB_HSDMA_COUNT), 0);
+
+		val = musb_readl(musb->mregs, MUSB_HSDMA_CHANNEL_OFFSET((i), MUSB_HSDMA_CONTROL));
+		if (val)
+			pr_notice("CH%d(0x%x)=0x%x\n", i, MUSB_HSDMA_CHANNEL_OFFSET((i), MUSB_HSDMA_CONTROL), val);
+	}
+
+	/* 3. For Tx, flush Tx FIFO: set (TXCSR_FLUSH_FIFO | TXCSR_TXPKTRDY)
+	 *    For Rx, flush Rx FIFO: set (RXCSR_FLUSH_FIFO | RXCSR_RXPKTRDY)
+	*/
+	for (i = 1; i < musb->nr_endpoints; i++) {
+		/* void __iomem *mbase = musb->mregs;
+		 *  hw_ep->regs = MUSB_EP_OFFSET(i, 0) + mbase;
+		 *  #define MUSB_INDEXED_OFFSET(_epnum, _offset) (0x10 + (_offset))
+		*/
+		void __iomem *epio = musb->endpoints[i].regs;
+		u16 csr;
+
+		/* INDEX 0x0E*/
+		musb_ep_select(musb->mregs, i);
+
+		/* TXCSR 0x12*/
+		csr = musb_readw(epio, MUSB_TXCSR);
+		csr |= MUSB_TXCSR_FLUSHFIFO | MUSB_TXCSR_TXPKTRDY;
+		musb_writew(epio, MUSB_TXCSR, csr);
+
+		/* RXCSR 0x16*/
+		csr = musb_readw(epio, MUSB_RXCSR);
+		csr |= MUSB_RXCSR_FLUSHFIFO | MUSB_RXCSR_RXPKTRDY;
+		musb_writew(epio, MUSB_RXCSR, csr);
+	}
+}
+
 /*
  * Make the HDRC stop (disable interrupts, etc.);
  * reversible by musb_start
@@ -1393,7 +1487,11 @@ void musb_stop(struct musb *musb)
 {
 	/* stop IRQs, timers, ... */
 	musb_generic_disable(musb);
+
 	gadget_stop(musb);
+
+	musb_flush_dma_transcation(musb);
+
 	musb_platform_disable(musb);
 	musb->is_active = 0;
 	DBG(0, "HDRC disabled\n");
@@ -1406,6 +1504,10 @@ void musb_stop(struct musb *musb)
 	 *  - ...
 	 */
 	musb_platform_try_idle(musb, 0);
+
+#ifdef CONFIG_DUAL_ROLE_USB_INTF
+	mt_usb_dual_role_changed(musb);
+#endif
 }
 
 static void musb_shutdown(struct platform_device *pdev)
@@ -1431,6 +1533,9 @@ static void musb_shutdown(struct platform_device *pdev)
 	spin_lock_irqsave(&musb->lock, flags);
 	#endif
 	musb_generic_disable(musb);
+
+	musb_flush_dma_transcation(musb);
+
 	musb_platform_disable(musb);
 	pr_err("%s, musb has already disable\n", __func__);
 	#ifndef CONFIG_MTK_MUSB_PORT0_LOWPOWER_MODE
@@ -1884,6 +1989,12 @@ irqreturn_t musb_interrupt(struct musb *musb)
 
 	dumpTime(funcInterrupt, 0);
 
+	if (unlikely(!musb->softconnect && !(devctl & MUSB_DEVCTL_HM))) {
+		DBG(0, "!softconnect, IRQ usb%04x tx%04x rx%04x\n",
+			musb->int_usb, musb->int_tx, musb->int_rx);
+		return IRQ_HANDLED;
+	}
+
 	/* the core can interrupt us for multiple reasons; docs have
 	 * a generic interrupt flowchart to follow
 	 */
@@ -1940,9 +2051,31 @@ irqreturn_t musb_interrupt(struct musb *musb)
 			/* musb_ep_select(musb->mregs, ep_num); */
 			/* REVISIT just retval |= ep->tx_irq(...) */
 			retval = IRQ_HANDLED;
-			if (devctl & MUSB_DEVCTL_HM)
-				musb_host_tx(musb, ep_num);
-			else
+			if (devctl & MUSB_DEVCTL_HM) {
+				bool skip_tx = false;
+
+				if (host_tx_refcnt_dec(ep_num) < 0) {
+					static DEFINE_RATELIMIT_STATE(ratelimit, HZ, 2);
+					static int skip_cnt;
+					int ref_cnt;
+
+					musb_host_db_workaround_cnt++;
+					ref_cnt = host_tx_refcnt_inc(ep_num);
+
+					if (__ratelimit(&ratelimit)) {
+						DBG(0, "unexpect TX<%d,%d><%d>\n",
+								ep_num, ref_cnt, skip_cnt);
+						dump_tx_ops(ep_num);
+						skip_cnt = 0;
+					} else
+						skip_cnt++;
+
+					skip_tx = true;
+				}
+
+				if (likely(!skip_tx))
+					musb_host_tx(musb, ep_num);
+			} else
 				musb_g_tx(musb, ep_num);
 		}
 		reg >>= 1;
@@ -2408,6 +2541,13 @@ static int musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl
 #endif
 
 	status = musb_gadget_setup(musb);
+
+	/* only enable on iddig mode */
+#ifndef CONFIG_USB_C_SWITCH
+#ifdef CONFIG_DUAL_ROLE_USB_INTF
+	mt_usb_dual_role_init(musb);
+#endif
+#endif
 
 	/*initial done, turn off usb */
 	musb_platform_disable(musb);

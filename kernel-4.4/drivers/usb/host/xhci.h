@@ -382,6 +382,10 @@ struct xhci_op_regs {
 #define PORT_PLC	(1 << 22)
 /* port configure error change - port failed to configure its link partner */
 #define PORT_CEC	(1 << 23)
+#define PORT_CHANGE_MASK	(PORT_CSC | PORT_PEC | PORT_WRC | PORT_OCC | \
+				 PORT_RC | PORT_PLC | PORT_CEC)
+
+
 /* Cold Attach Status - xHC can set this bit to report device attached during
  * Sx state. Warm port reset should be perfomed to clear this bit and move port
  * to connected state.
@@ -1637,6 +1641,8 @@ struct xhci_hcd {
 #define XHCI_PME_STUCK_QUIRK	(1 << 20)
 #define XHCI_MTK_HOST		(1 << 21)
 #define XHCI_MISSING_CAS	(1 << 24)
+#define XHCI_DEV_WITH_SYNC_EP	(1 << 31)
+
 	unsigned int		num_active_eps;
 	unsigned int		limit_active_eps;
 	/* There are two roothubs to keep track of bus suspend info for */

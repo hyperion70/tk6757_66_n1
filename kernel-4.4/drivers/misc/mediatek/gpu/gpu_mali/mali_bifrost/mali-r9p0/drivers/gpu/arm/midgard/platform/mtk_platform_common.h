@@ -15,12 +15,15 @@
 #define __MTK_PLATFORM_COMMON_H__
 
 #include <linux/platform_device.h>
+#include "mtk_mfg_counter.h"
 
 #ifdef ENABLE_COMMON_DVFS
 /* MTK */
 #include "mtk_gpufreq.h"
 #endif
 
+int mtk_common_init(struct platform_device *pdev, struct kbase_device *kbdev);
+int mtk_common_deinit(struct platform_device *pdev, struct kbase_device *kbdev);
 int mtk_platform_init(struct platform_device *pdev, struct kbase_device *kbdev);
 
 #ifdef ENABLE_MTK_MEMINFO
@@ -37,9 +40,6 @@ extern unsigned int (*mtk_get_gpu_memory_usage_fp)(void);
 * provide the gpu detail memory usage by PID to mlogger module
 */
 extern bool (*mtk_dump_gpu_memory_usage_fp)(void);
-
-extern atomic_t g_mtk_gpu_total_memory_usage_in_pages;
-extern atomic_t g_mtk_gpu_peak_memory_usage_in_pages;
 
 typedef struct {
 	int pid;
@@ -60,8 +60,6 @@ void mtk_kbase_reset_gpu_meminfo(void);
 void mtk_kbase_set_gpu_meminfo(ssize_t index, int pid, int used_pages);
 bool mtk_kbase_dump_gpu_memory_usage(void);
 unsigned int mtk_kbase_report_gpu_memory_usage(void);
-int mtk_kbase_report_gpu_memory_peak(void);
-void mtk_kbase_set_gpu_memory_peak(void);
 extern int g_mtk_gpu_total_memory_usage_in_pages_debugfs;
 #endif /* ENABLE_MTK_MEMINFO */
 

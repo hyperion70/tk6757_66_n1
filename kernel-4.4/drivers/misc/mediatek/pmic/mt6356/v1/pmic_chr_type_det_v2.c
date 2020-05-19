@@ -48,9 +48,11 @@
 #endif
 
 /* #define __FORCE_USB_TYPE__ */
+#ifndef CONFIG_TCPC_CLASS
 #define __SW_CHRDET_IN_PROBE_PHASE__
+#endif
 
-static CHARGER_TYPE g_chr_type;
+static enum charger_type g_chr_type;
 #ifdef __SW_CHRDET_IN_PROBE_PHASE__
 static struct work_struct chr_work;
 #endif
@@ -62,7 +64,7 @@ static bool first_connect = true;
 #endif
 
 static struct power_supply *chrdet_psy;
-static int chrdet_inform_psy_changed(CHARGER_TYPE chg_type, bool chg_online)
+static int chrdet_inform_psy_changed(enum charger_type chg_type, bool chg_online)
 {
 	int ret = 0;
 	union power_supply_propval propval;
@@ -271,7 +273,7 @@ static void hw_bc11_done(void)
 	Charger_Detect_Release();
 }
 
-static void dump_charger_name(CHARGER_TYPE type)
+static void dump_charger_name(enum charger_type type)
 {
 	switch (type) {
 	case CHARGER_UNKNOWN:
@@ -306,7 +308,7 @@ static void dump_charger_name(CHARGER_TYPE type)
 
 int hw_charging_get_charger_type(void)
 {
-	CHARGER_TYPE CHR_Type_num = CHARGER_UNKNOWN;
+	enum charger_type CHR_Type_num = CHARGER_UNKNOWN;
 
 #ifdef CONFIG_MTK_USB2JTAG_SUPPORT
 	if (usb2jtag_mode()) {
@@ -351,30 +353,31 @@ int hw_charging_get_charger_type(void)
 /*****************************************************************************
  * Charger Detection
  ******************************************************************************/
-void do_charger_detect(void)
+void mtk_pmic_enable_chr_type_det(bool en)
 {
+#ifndef CONFIG_TCPC_CLASS
 	if (!mt_usb_is_device()) {
 		g_chr_type = CHARGER_UNKNOWN;
-		pr_err("charger type: UNKNOWN, Now is usb host mode. Skip detection!!!\n");
+		pr_info("charger type: UNKNOWN, Now is usb host mode. Skip detection\n");
 		return;
 	}
-
-	if (is_meta_mode()) {
-		/* Skip charger type detection to speed up meta boot.*/
-		pr_notice("charger type: force Standard USB Host in meta\n");
-		g_chr_type = STANDARD_HOST;
-		chrdet_inform_psy_changed(g_chr_type, 1);
-		return;
-	}
+#endif
 
 	mutex_lock(&chrdet_lock);
 
-	if (pmic_get_register_value(PMIC_RGS_CHRDET)) {
-		pr_err("charger type: charger IN\n");
-		g_chr_type = hw_charging_get_charger_type();
-		chrdet_inform_psy_changed(g_chr_type, 1);
+	if (en) {
+		if (is_meta_mode()) {
+			/* Skip charger type detection to speed up meta boot */
+			pr_notice("charger type: force Standard USB Host in meta\n");
+			g_chr_type = STANDARD_HOST;
+			chrdet_inform_psy_changed(g_chr_type, 1);
+		} else {
+			pr_info("charger type: charger IN\n");
+			g_chr_type = hw_charging_get_charger_type();
+			chrdet_inform_psy_changed(g_chr_type, 1);
+		}
 	} else {
-		pr_err("charger type: charger OUT\n");
+		pr_info("charger type: charger OUT\n");
 		g_chr_type = CHARGER_UNKNOWN;
 		chrdet_inform_psy_changed(g_chr_type, 0);
 	}
@@ -382,6 +385,14 @@ void do_charger_detect(void)
 	mutex_unlock(&chrdet_lock);
 }
 
+/* Charger Detection */
+void do_charger_detect(void)
+{
+	if (pmic_get_register_value(PMIC_RGS_CHRDET))
+		mtk_pmic_enable_chr_type_det(true);
+	else
+		mtk_pmic_enable_chr_type_det(false);
+}
 
 
 /*****************************************************************************
@@ -441,8 +452,10 @@ static int __init pmic_chrdet_init(void)
 	schedule_work(&chr_work);
 #endif
 
+#ifndef CONFIG_TCPC_CLASS
 	pmic_register_interrupt_callback(INT_CHRDET_EDGE, chrdet_int_handler);
 	pmic_enable_interrupt(INT_CHRDET_EDGE, 1, "PMIC");
+#endif
 
 	return 0;
 }

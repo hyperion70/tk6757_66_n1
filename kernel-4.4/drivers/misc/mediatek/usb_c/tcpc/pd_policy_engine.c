@@ -940,7 +940,7 @@ static inline void print_state(
 		vdm_evt ? "VDM" : "PD", pe_state_name[state],
 		pd_port->power_role ? 'P' : 'C',
 		pd_port->data_role ? 'D' : 'U',
-		pd_port->vconn_source ? 'Y' : 'N');
+		pd_port->vconn_role ? 'Y' : 'N');
 #else
 	PE_STATE_INFO("%s-> %s\r\n",
 		vdm_evt ? "VDM" : "PD", pe_state_name[state]);
@@ -960,15 +960,17 @@ static void pe_reset_vdm_state_variable(
 static inline void pd_pe_state_change(
 	struct pd_port *pd_port, struct pd_event *pd_event)
 {
-	void (*prev_exit_action)(struct pd_port *);
-	void (*next_entry_action)(struct pd_port *);
+	void (*prev_exit_action)(struct pd_port *pd_port);
+	void (*next_entry_action)(struct pd_port *pd_port);
 	struct pe_data *pe_data = &pd_port->pe_data;
 
 	uint8_t old_state = pd_port->pe_state_curr;
 	uint8_t new_state = pd_port->pe_state_next;
 
-	PD_BUG_ON(old_state >= PD_NR_PE_STATES);
-	PD_BUG_ON(new_state >= PD_NR_PE_STATES);
+	if (old_state >= PD_NR_PE_STATES || new_state >= PD_NR_PE_STATES) {
+		PD_BUG_ON(1);
+		return;
+	}
 
 	if (new_state < PE_IDLE1)
 		prev_exit_action = pe_get_exit_action(old_state);

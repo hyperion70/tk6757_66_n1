@@ -1,5 +1,6 @@
 # MTK project .rc configure
 
+import /vendor/etc/init/init.gxfingerprint.rc
 
 on init
     mkdir /mnt/media_rw/usbotg 0700 media_rw media_rw
@@ -8,7 +9,7 @@ on init
 on post-fs-data
 
 # nfc-config
-    mkdir /data/nfc 0770 nfc nfc
+    mkdir /data/vendor/nfc 0777 nfc nfc
 
 #Camera
     chmod 0660 /dev/MAINAF
@@ -51,9 +52,6 @@ on post-fs-data
     chmod 0660 /dev/spm
     chown system system /dev/spm
 
-#goodix fingerprint
-    chmod 777 /system/bin/gx_fpd
-    chmod 660 /dev/goodix_fp
 
 on init
     # Refer to http://source.android.com/devices/tech/storage/index.html
@@ -69,18 +67,8 @@ service fuse_usbotg /system/bin/sdcard -u 1023 -g 1023 -w 1023 -d /mnt/media_rw/
     class late_start
     disabled
 
-service spm_script /system/vendor/bin/spm_loader
+service spm_script /vendor/bin/spm_loader
     user system
     group system
     class core
     oneshot
-
-
-service fingerprintd /system/bin/fingerprintd
-    class late_start
-    user system
-
-service gx_fpd /system/bin/gx_fpd
-    class late_start
-    user root
-    group root system

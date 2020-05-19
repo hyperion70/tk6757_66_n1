@@ -294,7 +294,7 @@ void ccci_md_config(struct ccci_modem *md)
 	base_ap_view_phy &= PAGE_MASK;
 	if (!pfn_valid(__phys_to_pfn(base_ap_view_phy)))
 		md->mem_layout.md_bank0.base_ap_view_vir =
-			ioremap_nocache(md->mem_layout.md_bank0.base_ap_view_phy, MD_IMG_DUMP_SIZE);
+			ioremap_wc(md->mem_layout.md_bank0.base_ap_view_phy, MD_IMG_DUMP_SIZE);
 	else {
 		prot = pgprot_noncached(PAGE_KERNEL);
 		md->mem_layout.md_bank0.base_ap_view_vir =
@@ -319,7 +319,7 @@ void ccci_md_config(struct ccci_modem *md)
 		md->mem_layout.md_bank4_noncacheable_total.base_ap_view_phy = md1_md3_smem_phy;
 	md->mem_layout.md_bank4_noncacheable_total.size = md_resv_smem_size + md1_md3_smem_size;
 	md->mem_layout.md_bank4_noncacheable_total.base_ap_view_vir =
-		ioremap_nocache(md->mem_layout.md_bank4_noncacheable_total.base_ap_view_phy,
+		ioremap_wc(md->mem_layout.md_bank4_noncacheable_total.base_ap_view_phy,
 			md->mem_layout.md_bank4_noncacheable_total.size);
 	md->mem_layout.md_bank4_noncacheable_total.base_md_view_phy =
 		0x40000000 + md->mem_layout.md_bank4_noncacheable_total.base_ap_view_phy -
@@ -332,7 +332,7 @@ void ccci_md_config(struct ccci_modem *md)
 	if (md->mem_layout.md_bank4_cacheable_total.base_ap_view_phy &&
 		md->mem_layout.md_bank4_cacheable_total.size)
 		md->mem_layout.md_bank4_cacheable_total.base_ap_view_vir =
-			ioremap_nocache(md->mem_layout.md_bank4_cacheable_total.base_ap_view_phy,
+			ioremap_wc(md->mem_layout.md_bank4_cacheable_total.base_ap_view_phy,
 				md->mem_layout.md_bank4_cacheable_total.size);
 	else
 		CCCI_ERROR_LOG(md->index, TAG, "get ccb info base:%lx size:%x\n",
@@ -533,6 +533,35 @@ void ccci_md_clear_smem(int md_id, int first_boot)
 	}
 }
 
+void __attribute__((weak)) mmdvfs_set_md_on(bool to_on)
+{
+	CCCI_NORMAL_LOG(-1, TAG, "call weak mmdvfs_set_md_on with %d\n", (int)to_on);
+}
+
+void notify_md_on(int md_id)
+{
+	if (md_id == MD_SYS1)
+		mmdvfs_set_md_on(1);
+}
+
+void notify_md_off(int md_id, int off_level)
+{
+	if (md_id != MD_SYS1)
+		return;
+
+	switch (off_level) {
+	case MD_OFF_LVL_0:
+		mmdvfs_set_md_on(0);
+		break;
+	case MD_OFF_LVL_1:
+		mmdvfs_set_md_on(0);
+		break;
+	default:
+		CCCI_NORMAL_LOG(-1, TAG, "invalid off lvl %d\n", off_level);
+		break;
+	}
+}
+
 int ccci_md_pre_stop(unsigned char md_id, unsigned int stop_type)
 {
 	struct ccci_modem *md = ccci_md_get_modem_by_id(md_id);
@@ -567,6 +596,8 @@ int ccci_md_post_start(unsigned char md_id)
 {
 	return md_cd_vcore_config(md_id, 0);
 }
+
+
 int ccci_md_soft_stop(unsigned char md_id, unsigned int sim_mode)
 {
 	struct ccci_modem *md = ccci_md_get_modem_by_id(md_id);
@@ -798,6 +829,8 @@ static void config_ap_side_feature(struct ccci_modem *md, struct md_query_ap_fea
 	ap_side_md_feature->feature_set[MISC_INFO_C2K_MEID].support_mask = CCCI_FEATURE_NOT_SUPPORT;
 #endif
 	ap_side_md_feature->feature_set[SMART_LOGGING_SHARE_MEMORY].support_mask = CCCI_FEATURE_NOT_SUPPORT;
+
+	ap_side_md_feature->feature_set[MD_MTEE_SMEM_ENABLE].support_mask = CCCI_FEATURE_OPTIONAL_SUPPORT;
 }
 
 unsigned int align_to_2_power(unsigned int n)
@@ -1115,6 +1148,12 @@ int ccci_md_prepare_runtime_data(unsigned char md_id, unsigned char *data, int l
 				rt_shm.addr = region->base_md_view_phy;
 				rt_shm.size = region->size;
 				append_runtime_feature(&rt_data, &rt_feature, &rt_shm);
+				break;
+			case MD_MTEE_SMEM_ENABLE:
+				rt_feature.data_len = sizeof(unsigned int);
+				/* use the random_seed as temp_u32 value */
+				random_seed = get_mtee_is_enabled();
+				append_runtime_feature(&rt_data, &rt_feature, &random_seed);
 				break;
 			default:
 				break;

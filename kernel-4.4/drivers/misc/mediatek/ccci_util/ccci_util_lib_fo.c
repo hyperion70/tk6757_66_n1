@@ -656,6 +656,8 @@ static struct _ccb_layout ccb_info;
 static unsigned int md1_phy_cap_size;
 static unsigned int md1_bank4_cache_offset;
 
+static unsigned int md_mtee_support;
+
 static void share_memory_info_parsing(void)
 {
 	struct _smem_layout smem_layout;
@@ -738,6 +740,11 @@ static void share_memory_info_parsing(void)
 				(md_resv_smem_addr[MD_SYS3] +
 				 md_resv_smem_size[MD_SYS3]));
 #endif
+	if (find_ccci_tag_inf("mtee_support", (char *)&md_mtee_support, sizeof(md_mtee_support))
+			!= sizeof(md_mtee_support))
+		CCCI_UTIL_ERR_MSG("using 0 as MTEE support\n");
+	else
+		CCCI_UTIL_INF_MSG("MTEE support: 0x%x\n", md_mtee_support);
 }
 
 static void md_mem_info_parsing(void)
@@ -1134,6 +1141,11 @@ int get_lk_load_md_info(char buf[], int size)
 	}
 
 	return has_write;
+}
+
+unsigned int get_mtee_is_enabled(void)
+{
+	return md_mtee_support;
 }
 
 int get_md_img_raw_size(int md_id)
@@ -1578,6 +1590,26 @@ int get_md_img_type(int md_id)
 	/* Legacy modem support val */
 	if (md_support_val <= LEGACY_UBIN_END_ID)
 		return md_support_val;
+	return 0;
+}
+
+int check_md_type(int data)
+{
+	unsigned int val = (unsigned int)data;
+	int i;
+
+	/* check ap view md type */
+	if (val >= LEGACY_UBIN_START_ID && val <= LEGACY_UBIN_END_ID)
+		return val;
+	/* check md view md type */
+	if ((val >> 8) == (MD_CAP_ENHANCE >> 8)) {
+		val &= MD_CAP_MASK;
+		val = compatible_convert(val);
+		for (i = 0; i < (sizeof(legacy_ubin_rat_map)/sizeof(unsigned int)); i++) {
+			if (val == legacy_ubin_rat_map[i])
+				return LEGACY_UBIN_START_ID + i;
+		}
+	}
 	return 0;
 }
 

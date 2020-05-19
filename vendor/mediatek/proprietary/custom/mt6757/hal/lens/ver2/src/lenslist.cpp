@@ -35,45 +35,63 @@ TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICE
 
 extern PFUNC_GETLENSDEFAULT pDummy_getDefaultData;
 
-#if 1//defined(AK7371AF)
-extern PFUNC_GETLENSDEFAULT pAK7371AF_getDefaultData;
-extern PFUNC_GETLENSDEFAULT pAK7371AF_MAIN2_getDefaultData;
+#if defined(SENSORDRIVE)
+extern PFUNC_GETLENSDEFAULT pSensorDrive_getDefaultData;
 #endif
-
+#if defined(FM50AF)
+extern PFUNC_GETLENSDEFAULT pFM50AF_getDefaultData;
+#endif
+#if defined(AD5820AF)
+//extern PFUNC_GETLENSDEFAULT pAD5820AF_getDefaultData;
+#endif
+#if defined(AK7371AF)
+extern PFUNC_GETLENSDEFAULT pAK7371AF_getDefaultData;
+#endif
+#if defined(DW9714AF)
+extern PFUNC_GETLENSDEFAULT pDW9714AF_getDefaultData;
+#endif
+#if defined(DW9718AF)
+extern PFUNC_GETLENSDEFAULT pDW9718AF_getDefaultData;
+#endif
+#if defined(BU63165AF)
+extern PFUNC_GETLENSDEFAULT pBU63165AF_getDefaultData;
+#endif
+#if defined(BU64745GWZAF)
+extern PFUNC_GETLENSDEFAULT pBU64745GWZAF_getDefaultData;
+#endif
+#if defined(LC898122AF)
+extern PFUNC_GETLENSDEFAULT pLC898122AF_getDefaultData;
+#endif
+#if defined(LC898212XDAF_PDAF)
+extern PFUNC_GETLENSDEFAULT pLC898212XDAF_PDAF_getDefaultData;
+#endif
 #if defined(LC898212XDAF)
 extern PFUNC_GETLENSDEFAULT pLC898212XDAF_getDefaultData;
+extern PFUNC_GETLENSDEFAULT pLC898212XDAF_MVHDR_getDefaultData;
+extern PFUNC_GETLENSDEFAULT pLC898212XDAF_STEREO_getDefaultData;
 extern PFUNC_GETLENSDEFAULT pLC898212XDAF_BAYER_getDefaultData;
 extern PFUNC_GETLENSDEFAULT pLC898212XDAF_MONO_getDefaultData;
 #endif
-
+#if defined(LC898214AF)
+extern PFUNC_GETLENSDEFAULT pLC898214AF_getDefaultData;
+#endif
 #if defined(BU6424AF)
 extern PFUNC_GETLENSDEFAULT pBU6424AF_getDefaultData;
 #endif
-
 #if defined(BU6429AF)
 extern PFUNC_GETLENSDEFAULT pBU6429AF_getDefaultData;
 #endif
-
-#if 1//defined(BU63169AF)
-extern PFUNC_GETLENSDEFAULT pBU63169AF_getDefaultData;
-#endif
-
 MSDK_LENS_INIT_FUNCTION_STRUCT LensList_main[MAX_NUM_OF_SUPPORT_LENS] =
 {
     {DUMMY_SENSOR_ID, DUMMY_LENS_ID, "Dummy", pDummy_getDefaultData},
-    #if 1//defined(BU63169AF)
-        {IMX386_SENSOR_ID, BU63169AF_LENS_ID, "BU63169AF", pBU63169AF_getDefaultData},
-    #endif
-    #if 1//defined(AK7371AF)
-        {IMX258_SENSOR_ID, AK7371AF_LENS_ID, "AK7371AF", pAK7371AF_getDefaultData},
-        //{S5K2L7_SENSOR_ID, AK7371AF_LENS_ID, "AK7371AF", pAK7371AF_getDefaultData},
+    #if defined(AK7371AF)
+        {IMX338_SENSOR_ID, AK7371AF_LENS_ID, "AK7371AF", pAK7371AF_getDefaultData},
+        {S5K2L7_SENSOR_ID, AK7371AF_LENS_ID, "AK7371AF", pAK7371AF_getDefaultData},
     #endif
     #if defined(LC898212XDAF)
-        {S5K2L7_SENSOR_ID, LC898212XDAF_LENS_ID, "LC898212XDAF_TVC700", pLC898212XDAF_getDefaultData},
         {IMX258_SENSOR_ID, LC898212XDAF_LENS_ID, "LC898212XDAF", pLC898212XDAF_BAYER_getDefaultData},
     #endif
     #if defined(BU6429AF)
-        //{IMX386_SENSOR_ID, BU6429AF_LENS_ID, "BU6429AF", pBU6429AF_getDefaultData},
         {S5K2P8_SENSOR_ID, BU6429AF_LENS_ID, "BU6429AF", pBU6429AF_getDefaultData},
     #endif
 };
@@ -87,9 +105,6 @@ MSDK_LENS_INIT_FUNCTION_STRUCT LensList_sub[MAX_NUM_OF_SUPPORT_LENS] =
 MSDK_LENS_INIT_FUNCTION_STRUCT LensList_main2[MAX_NUM_OF_SUPPORT_LENS] =
 {
     {DUMMY_SENSOR_ID, DUMMY_LENS_ID, "Dummy", pDummy_getDefaultData},
-    #if 1//defined(AK7371AF)
-        {S5K3M3_SENSOR_ID, AK7371AF_LENS_ID, "AK7371AF", pAK7371AF_MAIN2_getDefaultData},
-    #endif
     #if defined(LC898212XDAF)
         {IMX258_MONO_SENSOR_ID, LC898212XDAF_LENS_ID, "LC898212XDAF_F", pLC898212XDAF_MONO_getDefaultData},
     #endif

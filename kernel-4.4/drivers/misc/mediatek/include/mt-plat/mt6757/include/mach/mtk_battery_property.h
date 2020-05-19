@@ -1,15 +1,15 @@
 /*
-* Copyright (C) 2016 MediaTek Inc.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
-*/
+ * Copyright (C) 2017 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ */
 
 #ifndef _MTK_BATTERY_PROPERTY_H
 #define _MTK_BATTERY_PROPERTY_H
@@ -17,9 +17,8 @@
 /* customize */
 #define DIFFERENCE_FULLOCV_ITH	200	/* mA */
 #define MTK_CHR_EXIST 1
-#define SHUTDOWN_1_TIME	60
-#define KEEP_100_PERCENT 2
-#define R_FG_VALUE	10				/* mOhm */
+#define KEEP_100_PERCENT 1
+#define R_FG_VALUE	5				/* mOhm */
 #define EMBEDDED_SEL 0
 #define PMIC_SHUTDOWN_CURRENT 20	/* 0.01 mA */
 #define FG_METER_RESISTANCE	75
@@ -28,11 +27,34 @@
 /* NO_BAT_TEMP_COMPENSATE 1 = don't need bat_temper compensate, */
 /* but fg_meter_resistance still use for SWOCV */
 
+/* enable that soc = 0 , shutdown */
 #define SHUTDOWN_GAUGE0 1
+
+/* enable that uisoc = 1 and wait xmins then shutdown */
 #define SHUTDOWN_GAUGE1_XMINS 1
+/* define Xmins to shutdown*/
+#define SHUTDOWN_1_TIME	30
+
+#define SHUTDOWN_GAUGE1_VBAT_EN 0
+#define SHUTDOWN_GAUGE1_VBAT 34000
+
 #define SHUTDOWN_GAUGE0_VOLTAGE 34000
 
 #define POWERON_SYSTEM_IBOOT 500	/* mA */
+
+/*
+ * LOW_TEMP_MODE = 0
+ *	disable LOW_TEMP_MODE
+ * LOW_TEMP_MODE = 1
+ *	if battery temperautre < LOW_TEMP_MODE_TEMP
+ *	when bootup , force C mode
+ * LOW_TEMP_MODE = 2
+ *	if battery temperautre < LOW_TEMP_MODE_TEMP
+ *	force C mode
+ */
+#define LOW_TEMP_MODE 0
+#define LOW_TEMP_MODE_TEMP 0
+
 
 #define D0_SEL 0	/* not implement */
 #define AGING_SEL 0	/* not implement */
@@ -61,7 +83,8 @@
 #define DISCHARGE_TRACKING_TIME 10
 #define CHARGE_TRACKING_TIME 60
 #define DIFFERENCE_FULLOCV_VTH	1000	/* 0.1mV */
-#define CHARGE_PSEUDO_FULL_LEVEL 9000
+#define CHARGE_PSEUDO_FULL_LEVEL 8000
+#define FULL_TRACKING_BAT_INT2_MULTIPLY 6
 
 /* pre tracking */
 #define FG_PRE_TRACKING_EN 1
@@ -76,7 +99,7 @@
 #define CALI_CAR_TUNE_AVG_NUM	60
 
 /* Aging Compensation 1*/
-#define AGING_FACTOR_MIN 75
+#define AGING_FACTOR_MIN 90
 #define AGING_FACTOR_DIFF 10
 #define DIFFERENCE_VOLTAGE_UPDATE 50
 #define AGING_ONE_EN 1
@@ -100,7 +123,11 @@
 #define SWOCV_OLDOCV_DIFF	300
 #define SWOCV_OLDOCV_DIFF_CHR	800
 #define VBAT_OLDOCV_DIFF	1000
-#define SWOCV_OLDOCV_DIFF_EMB	1000
+#define SWOCV_OLDOCV_DIFF_EMB	1000	/* 100mV */
+
+#define VIR_OLDOCV_DIFF_EMB	10000	/* 1000mV */
+#define VIR_OLDOCV_DIFF_EMB_LT	10000	/* 1000mV */
+#define VIR_OLDOCV_DIFF_EMB_TMP	5
 
 #define TNEW_TOLD_PON_DIFF	5
 #define TNEW_TOLD_PON_DIFF2	15
@@ -117,8 +144,9 @@
 #define DIFFERENCE_FGC_FGV_TH_SOC1 7000
 #define DIFFERENCE_FGC_FGV_TH_SOC2 3000
 #define NAFG_TIME_SETTING 10
-#define NAFG_RATIO 80
+#define NAFG_RATIO 100
 #define NAFG_RATIO_EN 0
+#define NAFG_RATIO_TMP_THR 1
 #define NAFG_RESISTANCE 1500
 
 #define PMIC_SHUTDOWN_SW_EN 1
@@ -130,7 +158,7 @@
 
 /* ZCV INTR */
 #define ZCV_SUSPEND_TIME 6
-#define SLEEP_CURRENT_AVG 100 /*0.1mA*/
+#define SLEEP_CURRENT_AVG 200 /*0.1mA*/
 #define ZCV_CAR_GAP_PERCENTAGE 5
 
 /* Additional battery table */
@@ -143,57 +171,54 @@
 
 #define PSEUDO1_SEL	2
 
-#define FG_TRACKING_CURRENT	15000
-#define FG_TRACKING_CURRENT_IBOOT_EN	0
+#define FG_TRACKING_CURRENT	30000	/* not implement */
+#define FG_TRACKING_CURRENT_IBOOT_EN	0	/* not implement */
 #define UI_FAST_TRACKING_EN 0
 #define UI_FAST_TRACKING_GAP 300
 #define KEEP_100_PERCENT_MINSOC 9000
 
-#define UNIT_FGCURRENT     (314331)		/* mt6356 314.331 uA */
-#define UNIT_FGCAR         (89409)		/* charge_lsb 157166 * 2^11 / 3600 */
-#define R_VAL_TEMP_2         (2)			/* MT6335 use 3, old chip use 4 */
-#define R_VAL_TEMP_3         (3)			/* MT6335 use 3, old chip use 4 */
-#define UNIT_TIME          (50)
-#define UNIT_FGCAR_ZCV     (157166)     /* unit 2^0 LSB */
-#define UNIT_FG_IAVG		(157166)
-#define CAR_TO_REG_FACTOR  (0x5979)		/* 3600 * 1000 * 1000 / 157166 */
-#define CAR_TO_REG_SHIFT (5)	/*coulomb interrupt lsb might be different with coulomb lsb */
-
 #define SHUTDOWN_CONDITION_LOW_BAT_VOLT
+#define LOW_TEMP_DISABLE_LOW_BAT_SHUTDOWN 1
+#define LOW_TEMP_THRESHOLD 5
+
 #define BATTERY_TMP_TO_DISABLE_GM30 -50
 #define BATTERY_TMP_TO_DISABLE_NAFG -35
 #define DEFAULT_BATTERY_TMP_WHEN_DISABLE_NAFG 25
 #define BATTERY_TMP_TO_ENABLE_NAFG -20
 /* #define GM30_DISABLE_NAFG */
 
+#define POWER_ON_CAR_CHR	5
+#define POWER_ON_CAR_NOCHR	-35
 
-#define MULTI_TEMP_GAUGE0 0	/* different temp using different gauge 0% */
+#define SHUTDOWN_CAR_RATIO	1
+
+
+#define MULTI_TEMP_GAUGE0 1	/* different temp using different gauge 0% */
 
 #define OVER_DISCHARGE_LEVEL -1500
 
-#define UISOC_UPDATE_TYPE 2
+#define UISOC_UPDATE_TYPE 0
 /*
-*	uisoc_update_type:
-*	0: only ui_soc interrupt update ui_soc
-*	1: coulomb/nafg will update ui_soc if delta car > ht/lt_gap /2
-*	2: coulomb/nafg will update ui_soc
-*/
+ *	uisoc_update_type:
+ *	0: only ui_soc interrupt update ui_soc
+ *	1: coulomb/nafg will update ui_soc if delta car > ht/lt_gap /2
+ *	2: coulomb/nafg will update ui_soc
+ */
 
 /* using current to limit uisoc in 100% case*/
 /* UI_FULL_LIMIT_ITH0 3000 means 300ma */
 #define UI_FULL_LIMIT_EN 0
+#define UI_FULL_LIMIT_SOC0 9900
+#define UI_FULL_LIMIT_ITH0 2200
 
-#define UI_FULL_LIMIT_SOC0 9100
-#define UI_FULL_LIMIT_ITH0 7500
+#define UI_FULL_LIMIT_SOC1 9900
+#define UI_FULL_LIMIT_ITH1 2200
 
-#define UI_FULL_LIMIT_SOC1 9300
-#define UI_FULL_LIMIT_ITH1 5500
+#define UI_FULL_LIMIT_SOC2 9900
+#define UI_FULL_LIMIT_ITH2 2200
 
-#define UI_FULL_LIMIT_SOC2 9500
-#define UI_FULL_LIMIT_ITH2 3500
-
-#define UI_FULL_LIMIT_SOC3 9700
-#define UI_FULL_LIMIT_ITH3 3000
+#define UI_FULL_LIMIT_SOC3 9900
+#define UI_FULL_LIMIT_ITH3 2200
 
 #define UI_FULL_LIMIT_SOC4 9900
 #define UI_FULL_LIMIT_ITH4 2200
@@ -203,30 +228,24 @@
 
 /* using voltage to limit uisoc in 1% case */
 /* UI_LOW_LIMIT_VTH0=36000 means 3.6v */
-#define UI_LOW_LIMIT_EN 0
+#define UI_LOW_LIMIT_EN 1
 
-#define UI_LOW_LIMIT_SOC0 500
-#define UI_LOW_LIMIT_VTH0 35000
+#define UI_LOW_LIMIT_SOC0 200
+#define UI_LOW_LIMIT_VTH0 34500
 
-#define UI_LOW_LIMIT_SOC1 400
-#define UI_LOW_LIMIT_VTH1 34600
+#define UI_LOW_LIMIT_SOC1 200
+#define UI_LOW_LIMIT_VTH1 34500
 
-#define UI_LOW_LIMIT_SOC2 300
+#define UI_LOW_LIMIT_SOC2 200
 #define UI_LOW_LIMIT_VTH2 34500
 
 #define UI_LOW_LIMIT_SOC3 200
-#define UI_LOW_LIMIT_VTH3 34200
+#define UI_LOW_LIMIT_VTH3 34500
 
-#define UI_LOW_LIMIT_SOC4 100
-#define UI_LOW_LIMIT_VTH4 34000
+#define UI_LOW_LIMIT_SOC4 200
+#define UI_LOW_LIMIT_VTH4 34500
 
 #define UI_LOW_LIMIT_TIME 99999
-
-/* extern function */
-extern int get_rac(void);
-extern int get_imix(void);
-extern void get_ptim(unsigned int*, signed int*);
-extern int do_ptim(bool);
 
 
 #endif

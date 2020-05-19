@@ -21,6 +21,7 @@
 #include <linux/printk.h>
 #include <linux/memblock.h>
 #include <linux/page-isolation.h>
+#include <linux/kernel.h>
 
 #include "mt-plat/mtk_meminfo.h"
 #include "single_cma.h"
@@ -38,7 +39,7 @@ enum ZMC_ZONE_ORDER {
 	ZMC_LOCATE_NORMAL,
 	NR_ZMC_LOCATIONS,
 };
-static struct single_cma_registration *single_cma_list[NR_ZMC_LOCATIONS][4] = {
+static struct single_cma_registration __initdata *single_cma_list[NR_ZMC_LOCATIONS][4] = {
 	/* CMA region need to locate at NORMAL zone */
 	[ZMC_LOCATE_NORMAL] = {
 #ifdef CONFIG_MTK_MEMORY_LOWPOWER
@@ -104,6 +105,7 @@ static void __init check_and_fix_base(struct reserved_mem *rmem, phys_addr_t tot
 }
 #endif
 
+#ifdef CONFIG_MTK_MEMORY_LOWPOWER
 static bool __init zmc_is_the_last(struct reserved_mem *rmem)
 {
 	phys_addr_t phys_end = memblock_end_of_DRAM();
@@ -116,14 +118,29 @@ static bool __init zmc_is_the_last(struct reserved_mem *rmem)
 
 	return false;
 }
+#endif
 
 static int __init zmc_memory_init(struct reserved_mem *rmem)
 {
 	int ret;
 	int order, i;
 	int cma_area_count = 0;
-	phys_addr_t zmc_size = rmem->size;
+	phys_addr_t zmc_size;
 	phys_addr_t total_phys_size = memblock_phys_mem_size();
+
+#ifdef CONFIG_KASAN
+#define ZMC_SEG_SIZE (512 * 1024 * 1024)
+	phys_addr_t kasan_shadow_size = total_phys_size / 8;
+
+	kasan_shadow_size = roundup(kasan_shadow_size, ZMC_SEG_SIZE);
+	memblock_free(rmem->base, kasan_shadow_size);
+	memblock_add(rmem->base, kasan_shadow_size);
+	rmem->base += kasan_shadow_size;
+	rmem->size -= kasan_shadow_size;
+	pr_info("zmc: Modify zmc size because KASAN enabled\n");
+#undef ZMC_SEG_SIZE
+#endif
+	zmc_size = rmem->size;
 
 	pr_alert("%s, name: %s, base: %pa, size: %pa\n", __func__,
 			rmem->name, &rmem->base, &rmem->size);
@@ -137,12 +154,14 @@ static int __init zmc_memory_init(struct reserved_mem *rmem)
 		return -1;
 	}
 
+#ifdef CONFIG_MTK_MEMORY_LOWPOWER
 	if (!zmc_is_the_last(rmem)) {
 		pr_info("[Fail] ZMC is not the last\n");
 		memblock_free(rmem->base, rmem->size);
 		memblock_add(rmem->base, rmem->size);
 		return -1;
 	}
+#endif
 
 	check_and_fix_base(rmem, total_phys_size);
 

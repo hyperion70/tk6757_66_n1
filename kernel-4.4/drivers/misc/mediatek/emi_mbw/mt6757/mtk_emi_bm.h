@@ -12,7 +12,7 @@
  */
 
 #ifndef __MT_EMI_BM_H__
-#define __MT_EMI_BW_H__
+#define __MT_EMI_BM_H__
 
 #define EMI_CONM    (EMI_BASE_ADDR + 0x060)
 #define EMI_ARBA    (EMI_BASE_ADDR + 0x100)

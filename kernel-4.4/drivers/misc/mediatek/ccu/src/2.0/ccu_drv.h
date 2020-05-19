@@ -287,6 +287,11 @@ struct ccu_cmd_s {
 	enum ccu_eng_status_e status;
 };
 
+#define CCU_IMPORT_BUF_NUM 200
+#define CCU_IMPORT_BUF_UNDEF 0xFFFFFFFF
+struct import_mem_s {
+	uint32_t memID[CCU_IMPORT_BUF_NUM];
+};
 /*---------------------------------------------------------------------------*/
 /*  IOCTL Command                                                            */
 /*---------------------------------------------------------------------------*/
@@ -295,7 +300,7 @@ struct ccu_cmd_s {
 #define CCU_IOCTL_ENQUE_COMMAND             _IOW(CCU_MAGICNO,   1, int)
 #define CCU_IOCTL_DEQUE_COMMAND             _IOWR(CCU_MAGICNO,  2, int)
 #define CCU_IOCTL_FLUSH_COMMAND             _IOW(CCU_MAGICNO,   3, int)
-#define CCU_IOCTL_WAIT_AFB_IRQ               _IOW(CCU_MAGICNO,   7, int)
+
 #define CCU_IOCTL_WAIT_AF_IRQ               _IOW(CCU_MAGICNO,   8, int)
 #define CCU_IOCTL_WAIT_IRQ                  _IOW(CCU_MAGICNO,   9, int)
 #define CCU_IOCTL_SEND_CMD                  _IOWR(CCU_MAGICNO, 10, int)
@@ -315,5 +320,6 @@ struct ccu_cmd_s {
 #define CCU_IOCTL_GET_SENSOR_I2C_SLAVE_ADDR _IOR(CCU_MAGICNO,  24, int)
 #define CCU_IOCTL_GET_SENSOR_NAME           _IOR(CCU_MAGICNO,  25, int)
 #define CCU_IOCTL_GET_PLATFORM_INFO         _IOR(CCU_MAGICNO,  26, int)
+#define CCU_IOCTL_IMPORT_MEM		        _IOW(CCU_MAGICNO,  27, int)
 
 #endif

@@ -2055,6 +2055,12 @@ static void mtk_uart_set_termios(struct uart_port *port, struct ktermios *termio
 
 	/* update per port timeout */
 	baud = uart_get_baud_rate(port, termios, old, 0, uart->sysclk);	/*when dividor is 1, baudrate = clock */
+	if (baud == 0) {
+		spin_unlock_irqrestore(&port->lock, flags);
+		pr_info("UART error baud\n");
+		return;
+	}
+
 	uart_update_timeout(port, termios->c_cflag, baud);
 	mtk_uart_config(uart, datalen, stopbit, parity);
 	mtk_uart_set_baud(uart, baud);
@@ -2610,6 +2616,15 @@ static int mtk_uart_init_ports(void)
 					vfifo->base = (apdma_uart0_base + 0x0080 * idx);
 					vfifo->irq_id = get_uart_vfifo_irq_id(idx);
 				}
+#ifdef CONFIG_MACH_MT8167
+				if (i == 2) {
+					for (idx = i * 2; idx < i * 2 + 2; idx++) {
+						vfifo = &mtk_uart_vfifo_port[idx];
+						vfifo->base = (apdma_uart0_base + 0x0080 * idx + 0x300);
+						vfifo->irq_id = get_uart_vfifo_irq_id(idx);
+					}
+				}
+#endif
 			}
 		}
 #endif

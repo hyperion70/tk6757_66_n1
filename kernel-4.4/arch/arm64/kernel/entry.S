@@ -39,6 +39,20 @@
 
 #define RESERVE_SIZE 256
 
+#ifdef CONFIG_MTK_DYNAMIC_LOAD_STORE_BYPASS_WA
+#define ARM_SMCCC_ARCH_WORKAROUND_2	0x80007FFF
+#define CA73_PART_NUM		(0xd09 << 4)
+	.macro	apply_ssbd, state, targ, tmp1, tmp2
+	mrs	\tmp1, midr_el1
+	and	\tmp1, \tmp1, MIDR_PARTNUM_MASK
+	ldr	\tmp2, =CA73_PART_NUM
+	eor	\tmp1, \tmp1, \tmp2
+	cbnz	\tmp1, \targ
+	mov	w0, #ARM_SMCCC_ARCH_WORKAROUND_2
+	mov	w1, #\state
+	smc	#0x0
+	.endm
+#endif
 /*
  * Context tracking subsystem.  Used to instrument transitions
  * between user and kernel mode.
@@ -134,6 +148,13 @@ alternative_else_nop_endif
 #endif
 	disable_step_tsk x19, x20		// exceptions when scheduling.
 
+#ifdef CONFIG_MTK_DYNAMIC_LOAD_STORE_BYPASS_WA
+	apply_ssbd 1, 7f, x0, x1
+	ldp	x2, x3, [sp, #16 * 1]
+7:
+	ldp	x0, x1, [sp, #16 * 0]
+#endif
+
 	mov	x29, xzr			// fp pointed to user-space
 	.else
 	add	x21, sp, #S_FRAME_SIZE
@@ -174,7 +195,7 @@ alternative_if ARM64_HAS_PAN
 alternative_else_nop_endif
 
 	.if	\el != 0
-	mrs	x21, ttbr1_el1
+	mrs	x21, ttbr0_el1
 	tst	x21, #TTBR_ASID_MASK		// Check for the reserved ASID
 	orr	x23, x23, #PSR_PAN_BIT		// Set the emulated PAN in the saved SPSR
 	b.eq	1f				// TTBR0 access already disabled
@@ -277,6 +298,10 @@ alternative_if ARM64_WORKAROUND_845719
 alternative_else_nop_endif
 #endif
 3:
+#ifdef CONFIG_MTK_DYNAMIC_LOAD_STORE_BYPASS_WA
+	apply_ssbd 0, 7f, x0, x1
+7:
+#endif
 	.endif
 
 	msr	elr_el1, x21			// set up the return data

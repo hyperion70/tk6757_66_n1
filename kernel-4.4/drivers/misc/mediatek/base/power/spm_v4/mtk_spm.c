@@ -18,6 +18,7 @@
 #include <linux/smp.h>
 #include <linux/delay.h>
 #include <linux/atomic.h>
+#include <mtk_sleep.h>
 #include <mtk_spm_idle.h>
 #if defined(CONFIG_MTK_PMIC) || defined(CONFIG_MTK_PMIC_NEW_ARCH)
 #include <mt-plat/upmu_common.h>
@@ -534,6 +535,8 @@ static void __spm_check_dram_type(void)
 		__spmfw_idx = SPMFW_LP4X_1CH;
 	else if (ddr_type == TYPE_LPDDR3 && emi_ch_num == 1)
 		__spmfw_idx = SPMFW_LP3_1CH;
+	else if (ddr_type == TYPE_LPDDR4 && emi_ch_num == 2)
+		__spmfw_idx = SPMFW_LP4_2CH_2400;
 	pr_info("#@# %s(%d) __spmfw_idx 0x%x\n", __func__, __LINE__, __spmfw_idx);
 };
 #elif defined(CONFIG_MACH_MT6771)
@@ -545,6 +548,10 @@ static void __spm_check_dram_type(void)
 	if (ddr_type == TYPE_LPDDR4X && ddr_hz == 3600)
 		__spmfw_idx = SPMFW_LP4X_2CH_3733;
 	else if (ddr_type == TYPE_LPDDR4X && ddr_hz == 3200)
+		__spmfw_idx = SPMFW_LP4X_2CH_3200;
+	else if (ddr_type == TYPE_LPDDR4 && ddr_hz == 3600)
+		__spmfw_idx = SPMFW_LP4X_2CH_3733;
+	else if (ddr_type == TYPE_LPDDR4 && ddr_hz == 3200)
 		__spmfw_idx = SPMFW_LP4X_2CH_3200;
 	else if (ddr_type == TYPE_LPDDR3 && ddr_hz == 1866)
 		__spmfw_idx = SPMFW_LP3_1CH_1866;
@@ -638,6 +645,7 @@ int __init spm_module_init(void)
 	spm_file = debugfs_create_file("spm_sleep_count", S_IRUGO, spm_dir, NULL, &spm_sleep_count_fops);
 	spm_file = debugfs_create_file("spm_last_wakeup_src", S_IRUGO, spm_dir, NULL, &spm_last_wakeup_src_fops);
 	spm_resource_req_debugfs_init(spm_dir);
+	spm_suspend_debugfs_init(spm_dir);
 
 #if !defined(CONFIG_FPGA_EARLY_PORTING)
 #ifdef CONFIG_PM
@@ -1007,6 +1015,7 @@ int spm_golden_setting_cmp(bool en)
 #if defined(CONFIG_MACH_MT6763)
 	switch (__spm_get_dram_type()) {
 	case SPMFW_LP4X_2CH:
+	case SPMFW_LP4_2CH_2400:
 		ddrphy_setting = ddrphy_setting_lp4_2ch;
 		ddrphy_num = ARRAY_SIZE(ddrphy_setting_lp4_2ch);
 		break;

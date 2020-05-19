@@ -33,6 +33,7 @@ enum AEE_FIQ_STEP_NUM {
 	AEE_FIQ_STEP_WDT_IRQ_IDLE,
 	AEE_FIQ_STEP_WDT_IRQ_SCHED,
 	AEE_FIQ_STEP_WDT_IRQ_DONE,
+	AEE_FIQ_STEP_HANG_DETECT,
 	AEE_FIQ_STEP_KE_WDT_INFO = 20,
 	AEE_FIQ_STEP_KE_WDT_PERCPU,
 	AEE_FIQ_STEP_KE_WDT_LOG,
@@ -50,6 +51,14 @@ enum AEE_FIQ_STEP_NUM {
 	AEE_FIQ_STEP_KE_IPANIC_HEADER,
 	AEE_FIQ_STEP_KE_IPANIC_DONE,
 	AEE_FIQ_STEP_KE_NESTED_PANIC = 64,
+};
+
+enum AEE_EXP_TYPE_NUM {
+	AEE_EXP_TYPE_HWT = 1,
+	AEE_EXP_TYPE_KE = 2,
+	AEE_EXP_TYPE_NESTED_PANIC = 3,
+	AEE_EXP_TYPE_SMART_RESET = 4,
+	AEE_EXP_TYPE_HANG_DETECT = 5,
 };
 
 #ifdef CONFIG_MTK_RAM_CONSOLE
@@ -74,6 +83,8 @@ extern void aee_rr_rec_hps_cb_footprint(unsigned int val);
 extern void aee_rr_rec_hps_cb_fp_times(unsigned long long val);
 extern void aee_rr_rec_drcc_dbg_info(uint32_t ret, uint32_t off, uint64_t ts);
 extern void aee_rr_rec_last_init_func(unsigned long val);
+extern void aee_rr_rec_last_sync_func(unsigned long val);
+extern void aee_rr_rec_last_async_func(unsigned long val);
 #ifdef CONFIG_MTK_EMMC_SUPPORT
 extern void last_kmsg_store_to_emmc(void);
 #endif
@@ -158,6 +169,14 @@ static inline void ram_console_write(struct console *console, const char *s, uns
 }
 
 static inline void aee_sram_fiq_save_bin(unsigned char *buffer, size_t len)
+{
+}
+
+static inline void aee_rr_rec_last_sync_func(unsigned long val)
+{
+}
+
+static inline void aee_rr_rec_last_async_func(unsigned long val)
 {
 }
 

@@ -54,23 +54,23 @@
 *                             D A T A   T Y P E S
 ********************************************************************************
 */
-typedef enum {
+enum CMB_STUB_AIF_X {
 	CMB_STUB_AIF_0 = 0,	/* 0000: BT_PCM_OFF & FM analog (line in/out) */
 	CMB_STUB_AIF_1 = 1,	/* 0001: BT_PCM_ON & FM analog (in/out) */
 	CMB_STUB_AIF_2 = 2,	/* 0010: BT_PCM_OFF & FM digital (I2S) */
 	CMB_STUB_AIF_3 = 3,	/* 0011: BT_PCM_ON & FM digital (I2S) (invalid in 73evb & 1.2 phone configuration) */
 	CMB_STUB_AIF_4 = 4, /* 0100: BT_I2S & FM disable in special projects, e.g. protea*/
 	CMB_STUB_AIF_MAX = 5,
-} CMB_STUB_AIF_X;
+};
 
 /*COMBO_CHIP_AUDIO_PIN_CTRL*/
-typedef enum {
+enum CMB_STUB_AIF_CTRL {
 	CMB_STUB_AIF_CTRL_DIS = 0,
 	CMB_STUB_AIF_CTRL_EN = 1,
 	CMB_STUB_AIF_CTRL_MAX = 2,
-} CMB_STUB_AIF_CTRL;
+};
 
-typedef enum {
+enum COMBO_FUNC_TYPE {
 	COMBO_FUNC_TYPE_BT = 0,
 	COMBO_FUNC_TYPE_FM = 1,
 	COMBO_FUNC_TYPE_GPS = 2,
@@ -78,21 +78,23 @@ typedef enum {
 	COMBO_FUNC_TYPE_WMT = 4,
 	COMBO_FUNC_TYPE_STP = 5,
 	COMBO_FUNC_TYPE_NUM = 6
-} COMBO_FUNC_TYPE;
+};
 
-typedef enum {
+enum COMBO_IF {
 	COMBO_IF_UART = 0,
 	COMBO_IF_MSDC = 1,
 	COMBO_IF_BTIF = 2,
 	COMBO_IF_MAX,
-} COMBO_IF;
+};
 
 typedef void (*wmt_bgf_eirq_cb) (void);
-typedef int (*wmt_aif_ctrl_cb) (CMB_STUB_AIF_X, CMB_STUB_AIF_CTRL);
+typedef int (*wmt_aif_ctrl_cb) (enum CMB_STUB_AIF_X, enum CMB_STUB_AIF_CTRL);
 typedef void (*wmt_func_ctrl_cb) (unsigned int, unsigned int);
 typedef signed long (*wmt_thermal_query_cb) (void);
 typedef int (*wmt_deep_idle_ctrl_cb) (unsigned int);
 typedef int (*wmt_func_do_reset) (unsigned int);
+
+typedef void (*wmt_clock_fail_dump_cb) (void);
 
 typedef void (*msdc_sdio_irq_handler_t) (void *);	/* external irq handler */
 typedef void (*pm_callback_t) (pm_message_t state, void *data);
@@ -112,6 +114,7 @@ typedef struct _CMB_STUB_CB_ {
 	wmt_thermal_query_cb thermal_query_cb;
 	wmt_deep_idle_ctrl_cb deep_idle_ctrl_cb;
 	wmt_func_do_reset wmt_do_reset_cb;
+	wmt_clock_fail_dump_cb clock_fail_dump_cb;
 } CMB_STUB_CB, *P_CMB_STUB_CB;
 
 /*******************************************************************************
@@ -134,22 +137,23 @@ extern struct sdio_ops mt_sdio_ops[4];
 extern int mtk_wcn_cmb_stub_reg(P_CMB_STUB_CB p_stub_cb);
 extern int mtk_wcn_cmb_stub_unreg(void);
 
-extern int mtk_wcn_cmb_stub_aif_ctrl(CMB_STUB_AIF_X state, CMB_STUB_AIF_CTRL ctrl);
+extern int mtk_wcn_cmb_stub_aif_ctrl(enum CMB_STUB_AIF_X state, enum CMB_STUB_AIF_CTRL ctrl);
 
-static inline int mtk_wcn_cmb_stub_audio_ctrl(CMB_STUB_AIF_X state)
+static inline int mtk_wcn_cmb_stub_audio_ctrl(enum CMB_STUB_AIF_X state)
 {
 /* return mtk_wcn_cmb_stub_aif_ctrl(state, 1); */
 	return 0;
 }
 
-extern int mt_combo_plt_enter_deep_idle(COMBO_IF src);
-extern int mt_combo_plt_exit_deep_idle(COMBO_IF src);
+extern int mt_combo_plt_enter_deep_idle(enum COMBO_IF src);
+extern int mt_combo_plt_exit_deep_idle(enum COMBO_IF src);
 
 /* Use new mtk_wcn_stub APIs instead of old mt_combo ones for kernel to control
  * function on/off.
  */
 extern void mtk_wcn_cmb_stub_func_ctrl(unsigned int type, unsigned int on);
 extern int mtk_wcn_cmb_stub_query_ctrl(void);
+extern void mtk_wcn_cmb_stub_clock_fail_dump(void);
 extern int board_sdio_ctrl(unsigned int sdio_port_num, unsigned int on);
 extern int mtk_wcn_sdio_irq_flag_set(int falg);
 

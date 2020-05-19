@@ -146,7 +146,10 @@ enum {
 #define REQ_CRC_STATUS_ERR (0x1 << 7)
 
 typedef void (*sdio_irq_handler_t)(void *);  /* external irq handler */
+#ifndef CONFIG_MTK_COMBO_COMM
+/* prevent type redefinition in mtk_wcn_cmb_stub.h */
 typedef void (*pm_callback_t)(pm_message_t state, void *data);
+#endif
 
 #define MSDC_CD_PIN_EN      (1 << 0)  /* card detection pin is wired   */
 #define MSDC_WP_PIN_EN      (1 << 1)  /* write protection pin is wired */
@@ -276,6 +279,7 @@ struct msdc_saved_para {
 	u32 pb1;
 	u32 pb2;
 	u32 sdc_fifo_cfg;
+	u32 sdc_adv_cfg0;
 
 	/* msdc top reg  */
 	u32 emmc_top_control;
@@ -298,11 +302,14 @@ struct msdc_host {
 
 	int                     error;
 	spinlock_t              lock;           /* mutex */
+	spinlock_t              reg_lock;
 	spinlock_t              clk_gate_lock;
 	/* to solve removing bad card
 	 * race condition with hot-plug enable
 	 */
 	spinlock_t              remove_bad_card;
+
+	spinlock_t              cmd_dump_lock;
 
 	 /* avoid race condition at DAT1 interrupt case*/
 	spinlock_t              sdio_irq_lock;
@@ -345,6 +352,13 @@ struct msdc_host {
 	u8                      autocmd;
 	u8                      app_cmd;        /* for app command */
 	u32                     app_cmd_arg;
+
+	u32                     intsts;         /* raw insts */
+	bool                    use_cmd_intr;   /* cmd intr mode */
+	struct completion       cmd_done;
+	u32                     busy_timeout_ms;/* check device busy */
+	u32                     max_busy_timeout_ms;
+
 	int                     pin_state;      /* for hw trapping */
 	struct timer_list       timer;
 	u32                     sw_timeout;
@@ -581,6 +595,7 @@ static inline unsigned int uffs(unsigned int x)
 #define is_card_sdio(h)         (((struct msdc_host *)(h))->hw->register_pm)
 
 #define CMD_TIMEOUT             (HZ/10 * 5)     /* 100ms x5 */
+#define CMD_CQ_TIMEOUT          (HZ    * 3)
 #define DAT_TIMEOUT             (HZ    * 5)     /* 1000ms x5 */
 /* Please modify msdc_sd.h to override the setting here */
 #ifndef CLK_TIMEOUT

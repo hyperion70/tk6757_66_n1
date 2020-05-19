@@ -58,9 +58,11 @@ enum fusion_handle {
 	rv,
 	la,
 	grav,
+	unacc,
 	ungyro,
 	unmag,
 	pdr,
+	ungyro_temperature,
 	max_fusion_support,
 };
 
@@ -147,7 +149,10 @@ extern int orientation_data_report(int x, int y, int z, int status, int64_t nt);
 extern int orientation_flush_report(void);
 extern int orientation_data_report(int x, int y, int z, int status, int64_t nt);
 extern int orientation_flush_report(void);
+extern int uncali_acc_data_report(int *data, int status, int64_t nt);
+extern int uncali_acc_flush_report(void);
 extern int uncali_gyro_data_report(int *data, int status, int64_t nt);
+extern int uncali_gyro_temperature_data_report(int *data, int status, int64_t nt);
 extern int uncali_gyro_flush_report(void);
 extern int uncali_mag_data_report(int *data, int status, int64_t nt);
 extern int uncali_mag_flush_report(void);

@@ -757,6 +757,7 @@ int pr_detect_count;
 #define _ion_keep_max_   (64)/*32*/
 #include "ion_drv.h" /*g_ion_device*/
 static struct ion_client *pIon_client;
+static struct mutex ion_client_mutex;
 static signed int G_WRDMA_IonCt[CAM_MAX][_dma_max_wr_][_ion_keep_max_] = { { {0} } };
 static signed int G_WRDMA_IonFd[CAM_MAX][_dma_max_wr_][_ion_keep_max_] = { { {0} } };
 static struct ion_handle *G_WRDMA_IonHnd[CAM_MAX][_dma_max_wr_][_ion_keep_max_] = { { {NULL} } };
@@ -4962,7 +4963,8 @@ static signed int ISP_ReadReg(struct ISP_REG_IO_STRUCT *pRegIo)
 		}
 		/* pData++; */
 		/*  */
-		if (((regBase + reg.Addr) < (regBase + PAGE_SIZE))) {
+		if (((regBase + reg.Addr) < (regBase + PAGE_SIZE))
+			&& ((reg.Addr & 0x3) == 0)) {
 			reg.Val = ISP_RD32(regBase + reg.Addr);
 		} else {
 			LOG_ERR("Wrong address(0x%lx)\n", (unsigned long)(regBase + reg.Addr));
@@ -5056,7 +5058,8 @@ static signed int ISP_WriteRegToHw(
 			LOG_DBG("module(%d), base(0x%lx),Addr(0x%lx), Val(0x%x)\n", module, (unsigned long)regBase,
 			(unsigned long)(pReg[i].Addr), (unsigned int)(pReg[i].Val));
 
-		if (((regBase + pReg[i].Addr) < (regBase + PAGE_SIZE)))
+		if (((regBase + pReg[i].Addr) < (regBase + PAGE_SIZE))
+			&& ((pReg[i].Addr & 0x3) == 0))
 			ISP_WR32(regBase + pReg[i].Addr, pReg[i].Val);
 		else
 			LOG_ERR("wrong address(0x%lx)\n", (unsigned long)(regBase + pReg[i].Addr));
@@ -8047,6 +8050,8 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 		break;
 	case ISP_VF_LOG:
 		if (copy_from_user(DebugFlag, (void *)Param, sizeof(unsigned int) * 2) == 0) {
+			unsigned int vf;
+
 			switch (DebugFlag[0]) {
 			case 1: {
 				unsigned int module = ISP_IRQ_TYPE_INT_CAM_A_ST;
@@ -8120,9 +8125,19 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 				switch (DebugFlag[1]) {
 				case 0:
 					LOG_INF("CAM_A viewFinder is OFF\n");
+					vf = ISP_RD32(CAM_REG_TG_VF_CON(ISP_CAM_A_IDX));
+					if (vf & 0x1)
+						ISP_WR32(CAM_REG_TG_VF_CON(ISP_CAM_A_IDX), (vf-0x1));
+					else
+						LOG_ERR("module_%d: vf already disabled\n", ISP_CAM_A_IDX);
 					break;
 				case 1:
 					LOG_INF("CAM_B viewFinder is OFF\n");
+					vf = ISP_RD32(CAM_REG_TG_VF_CON(ISP_CAM_B_IDX));
+					if (vf & 0x1)
+						ISP_WR32(CAM_REG_TG_VF_CON(ISP_CAM_B_IDX), (vf-0x1));
+					else
+						LOG_ERR("module_%d: vf already disabled\n", ISP_CAM_B_IDX);
 					break;
 				default:
 					LOG_ERR("unsupported module:0x%x\n", DebugFlag[1]);
@@ -9049,7 +9064,7 @@ static signed int ISP_open(
 
 	LOG_DBG("- E. UserCount: %d.\n", IspInfo.UserCount);
 
-
+	mutex_lock(&gIspMutex);
 	/*  */
 	spin_lock(&(IspInfo.SpinLockIspRef));
 
@@ -9136,7 +9151,6 @@ static signed int ISP_open(
 		goto EXIT;
 	}
 
-	mutex_lock(&gIspMutex);
 	g_bIonBufferAllocated = MFALSE;
 #ifdef AEE_DUMP_BY_USING_ION_MEMORY
 	g_isp_p2_imem_buf.handle = NULL;
@@ -9176,7 +9190,7 @@ static signed int ISP_open(
 		g_pKWCmdqBuffer = NULL;
 		g_pKWVirISPBuffer = NULL;
 	}
-	mutex_unlock(&gIspMutex);
+
 	g_bUserBufIsReady = MFALSE;
 	g_bDumpPhyISPBuf = MFALSE;
 	g_dumpInfo.tdri_baseaddr = 0xFFFFFFFF;/* 0x15022204 */
@@ -9219,7 +9233,9 @@ static signed int ISP_open(
 
 #ifdef ENABLE_KEEP_ION_HANDLE
 	/* create ion client*/
+	mutex_lock(&ion_client_mutex);
 	ISP_ion_init();
+	mutex_unlock(&ion_client_mutex);
 #endif
 
 #ifdef KERNEL_LOG
@@ -9238,7 +9254,7 @@ EXIT:
 		LOG_DBG("isp open G_u4EnableClockCount: %d\n", G_u4EnableClockCount);
 	}
 
-
+	mutex_unlock(&gIspMutex);  /* Protect the Multi Process */
 	LOG_INF("- X. Ret: %d. UserCount: %d.\n", Ret, IspInfo.UserCount);
 	return Ret;
 
@@ -9360,6 +9376,9 @@ static signed int ISP_release(
 		kfree(pFile->private_data);
 		pFile->private_data = NULL;
 	}
+
+	/* Protect the Multi Process */
+	mutex_lock(&gIspMutex);
 	/*      */
 	spin_lock(&(IspInfo.SpinLockIspRef));
 	IspInfo.UserCount--;
@@ -9441,8 +9460,6 @@ static signed int ISP_release(
 		IspInfo.BufInfo.Read.Status = ISP_BUF_STATUS_EMPTY;
 	}
 
-	/* Protect the Multi Process */
-	mutex_lock(&gIspMutex);
 	if (g_bIonBufferAllocated == MFALSE) {
 		/* Native Exception */
 		if (g_pPhyISPBuffer != NULL) {
@@ -9480,11 +9497,13 @@ static signed int ISP_release(
 		}
 	} else {
 #ifdef AEE_DUMP_BY_USING_ION_MEMORY
-		isp_freebuf(&g_isp_p2_imem_buf);
-		g_isp_p2_imem_buf.handle = NULL;
-		g_isp_p2_imem_buf.ion_fd = 0;
-		g_isp_p2_imem_buf.va = 0;
-		g_isp_p2_imem_buf.pa = 0;
+		if (g_isp_p2_imem_buf.handle != NULL) {
+			isp_freebuf(&g_isp_p2_imem_buf);
+			g_isp_p2_imem_buf.handle = NULL;
+			g_isp_p2_imem_buf.ion_fd = 0;
+			g_isp_p2_imem_buf.va = 0;
+			g_isp_p2_imem_buf.pa = 0;
+		}
 		g_bIonBufferAllocated = MFALSE;
 		/* Navtive Exception */
 		g_pPhyISPBuffer = NULL;
@@ -9498,7 +9517,6 @@ static signed int ISP_release(
 		g_pKWVirISPBuffer = NULL;
 #endif
 	}
-	mutex_unlock(&gIspMutex);
 
 #ifdef AEE_DUMP_BY_USING_ION_MEMORY
 	if (isp_p2_ion_client != NULL) {
@@ -9521,7 +9539,9 @@ static signed int ISP_release(
 	for (i = 0; i < CAM_MAX; i++)
 		ISP_ion_free_handle_by_module(i);
 
+	mutex_lock(&ion_client_mutex);
 	ISP_ion_uninit();
+	mutex_unlock(&ion_client_mutex);
 #endif
 
 	/*  */
@@ -9541,7 +9561,7 @@ static signed int ISP_release(
 	LOG_DBG("ISP_MCLK_EN Release");
 
 EXIT:
-
+	mutex_unlock(&gIspMutex);
 	/* Disable clock.
 	*  1. clkmgr: G_u4EnableClockCount=0, call clk_enable/disable
 	*  2. CCF: call clk_enable/disable every time
@@ -11368,7 +11388,7 @@ static int isp_p2_ke_dump_read(struct seq_file *m, void *v)
 	LOG_INF("isp p2 ke dump end\n");
 #else
 	int i;
-
+	mutex_lock(&gIspMutex);
 	seq_puts(m, "============ isp p2 ke dump register============\n");
 	seq_puts(m, "isp p2 hw physical register\n");
 	for (i = 0; i < (ISP_DIP_REG_SIZE >> 2); i = i + 4) {
@@ -11402,6 +11422,7 @@ static int isp_p2_ke_dump_read(struct seq_file *m, void *v)
 				DIP_A_BASE_HW+4*(i+2), (unsigned int)g_KWVirISPBuffer[i+2],
 				DIP_A_BASE_HW+4*(i+3), (unsigned int)g_KWVirISPBuffer[i+3]);
 	}
+	mutex_unlock(&gIspMutex);
 	seq_puts(m, "============ isp p2 ke dump debug ============\n");
 #endif
 	return 0;
@@ -11498,7 +11519,7 @@ static int isp_p2_dump_read(struct seq_file *m, void *v)
 
 #else
 	int i;
-
+	mutex_lock(&gIspMutex);
 	seq_puts(m, "============ isp p2 ne dump register============\n");
 	seq_puts(m, "isp p2 hw physical register\n");
 	for (i = 0; i < (ISP_DIP_REG_SIZE >> 2); i = i + 4) {
@@ -11565,6 +11586,7 @@ static int isp_p2_dump_read(struct seq_file *m, void *v)
 				DIP_A_BASE_HW+4*(i+2), (unsigned int)g_KWVirISPBuffer[i+2],
 				DIP_A_BASE_HW+4*(i+3), (unsigned int)g_KWVirISPBuffer[i+3]);
 	}
+	mutex_unlock(&gIspMutex);
 	seq_puts(m, "============ isp p2 ne dump debug ============\n");
 #endif
 	return 0;
@@ -11610,6 +11632,8 @@ static signed int __init ISP_Init(void)
 	int i;
 	/*  */
 	LOG_DBG("- E.");
+	/*  */
+	mutex_init(&ion_client_mutex);
 	/*  */
 	Ret = platform_driver_register(&IspDriver);
 	if ((Ret) < 0) {

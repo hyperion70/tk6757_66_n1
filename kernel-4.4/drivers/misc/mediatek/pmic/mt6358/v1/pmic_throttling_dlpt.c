@@ -53,6 +53,7 @@
  ******************************************************************************/
 #define PMIC_THROTTLING_DLPT_UT	0
 #define PMIC_ISENSE_SUPPORT	0
+#define UNIT_FGCURRENT     (381470)
 
 /*****************************************************************************
  * PMIC PT and DLPT UT
@@ -512,7 +513,7 @@ int do_ptim_internal(bool isSuspend, unsigned int *bat, signed int *cur, bool *i
 	pmic_set_hk_reg_value(PMIC_AUXADC_IMP_CK_SW_EN, 1);
 
 	/* start setting */
-	pmic_set_hk_reg_value(PMIC_AUXADC_IMP_AUTORPT_EN, 1); /*Peter-SW:55,56*/
+	pmic_set_hk_reg_value(PMIC_AUXADC_IMP_AUTORPT_EN, 1);
 	/*set issue interrupt */
 	/*pmic_set_hk_reg_value(PMIC_RG_INT_EN_AUXADC_IMP,1); */
 
@@ -900,11 +901,13 @@ int get_dlpt_imix(void)
 	volt_avg = volt_avg / 3;
 	curr_avg = curr_avg / 3;
 #endif /* end of DLPT_SORT_IMIX_VOLT_CURR*/
+	volt_avg = wk_vbat_cali(volt_avg, pmic_get_auxadc_value(AUXADC_LIST_CHIP_TEMP));
+
 	imix = (curr_avg + (volt_avg - g_lbatInt1) * 1000 / ptim_rac_val_avg) / 10;
 
 #if defined(CONFIG_MTK_SMART_BATTERY)
 	pr_info("[get_dlpt_imix] %d,%d,%d,%d,%d,%d,%d\n", volt_avg, curr_avg, g_lbatInt1,
-		ptim_rac_val_avg, imix, BMT_status.SOC, bat_get_ui_percentage());
+		ptim_rac_val_avg, imix, battery_get_soc(), bat_get_ui_percentage());
 #endif
 
 	if (imix < 0) {

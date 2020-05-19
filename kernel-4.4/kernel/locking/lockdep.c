@@ -54,7 +54,7 @@
 
 #include "lockdep_internals.h"
 
-#ifdef CONFIG_MTK_LOCK_DEBUG
+#ifdef MTK_LOCK_DEBUG
 #include "sched.h"
 #endif
 
@@ -81,18 +81,21 @@ module_param(lock_stat, int, 0644);
 
 static void lockdep_aee(void)
 {
-#ifdef CONFIG_MTK_LOCK_DEBUG
+#ifdef MTK_LOCK_DEBUG
 	char aee_str[40];
 	int cpu;
 	struct rq *rq;
 
-	cpu = smp_processor_id();
+	cpu = raw_smp_processor_id();
 	rq = cpu_rq(cpu);
 
 	if (!raw_spin_is_locked(&rq->lock)) {
 		snprintf(aee_str, 40, "[%s]LockProve Warning", current->comm);
-		aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DUMMY_DUMP | DB_OPT_FTRACE,
+		#if defined(CONFIG_MTK_AEE_FEATURE)
+		aee_kernel_warning_api(__FILE__, __LINE__,
+			DB_OPT_DUMMY_DUMP | DB_OPT_FTRACE,
 			aee_str, "LockProve Debug\n");
+		#endif
 	}
 #else
 	return;
@@ -1201,8 +1204,7 @@ print_circular_bug_header(struct lock_list *entry, unsigned int depth,
 		return 0;
 
 	/* Add by Mtk */
-	if (depth < 5)
-		lockdep_aee();
+	lockdep_aee();
 
 	printk("\n");
 	printk("======================================================\n");
@@ -4358,6 +4360,8 @@ void lockdep_rcu_suspicious(const char *file, const int line, const char *s)
 				? "RCU used illegally from idle CPU!\n"
 				: "",
 	       rcu_scheduler_active, debug_locks);
+	pr_info("cpu_id = %d, cpu_is_offline = %ld\n",
+		raw_smp_processor_id(), cpu_is_offline(raw_smp_processor_id()));
 
 	/*
 	 * If a CPU is in the RCU-free window in idle (ie: in the section

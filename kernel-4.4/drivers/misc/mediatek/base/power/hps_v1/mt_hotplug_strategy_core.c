@@ -12,19 +12,25 @@
  */
 
 /**
-* @file    mt_hotplug_strategy_core.c
-* @brief   hotplug strategy(hps) - core
-*/
+ * @file    mt_hotplug_strategy_core.c
+ * @brief   hotplug strategy(hps) - core
+ */
 
-#include <linux/kernel.h>	/* printk */
+#include <linux/kernel.h>
 #include <linux/module.h>	/* MODULE_DESCRIPTION, MODULE_LICENSE */
 #include <linux/init.h>		/* module_init, module_exit */
 #include <linux/cpu.h>		/* cpu_up */
 #include <linux/kthread.h>	/* kthread_create */
-#include <linux/wakelock.h>	/* wake_lock_init */
 #include <asm-generic/bug.h>	/* BUG_ON */
 
 #include "mt_hotplug_strategy_internal.h"
+
+#ifndef HPS_TASK_RT
+#define HPS_TASK_RT			0
+#endif
+#ifndef HPS_TASK_NICE
+#define HPS_TASK_NICE			MIN_NICE
+#endif
 
 #if HPS_PERIODICAL_BY_WAIT_QUEUE
 
@@ -113,7 +119,8 @@ static int _hps_task_main(void *data)
 			break;
 	}
 
-	log_info("leave _hps_task_main\n");
+	log_info("leave %s\n", __func__);
+
 	return 0;
 }
 
@@ -122,7 +129,9 @@ static int _hps_task_main(void *data)
  */
 int hps_task_start(void)
 {
+#if HPS_TASK_RT
 	struct sched_param param = { .sched_priority = HPS_TASK_PRIORITY };
+#endif
 
 	if (hps_ctxt.tsk_struct_ptr == NULL) {
 		hps_ctxt.tsk_struct_ptr =
@@ -130,11 +139,16 @@ int hps_task_start(void)
 		if (IS_ERR(hps_ctxt.tsk_struct_ptr))
 			return PTR_ERR(hps_ctxt.tsk_struct_ptr);
 
+#if HPS_TASK_RT
 		sched_setscheduler_nocheck(
 			hps_ctxt.tsk_struct_ptr, SCHED_FIFO, &param);
+#else
+		set_user_nice(hps_ctxt.tsk_struct_ptr, HPS_TASK_NICE);
+#endif
+
 		get_task_struct(hps_ctxt.tsk_struct_ptr);
 		wake_up_process(hps_ctxt.tsk_struct_ptr);
-		log_info("hps_task_start success, ptr: %p, pid: %d\n",
+		log_info("%s success, ptr: %p, pid: %d\n", __func__,
 			hps_ctxt.tsk_struct_ptr, hps_ctxt.tsk_struct_ptr->pid);
 	} else
 		log_info("hps task already exist, ptr: %p, pid: %d\n",
@@ -182,7 +196,7 @@ int hps_core_init(void)
 {
 	int r = 0;
 
-	log_info("hps_core_init\n");
+	log_info("%s\n", __func__);
 
 #if HPS_PERIODICAL_BY_TIMER
 	init_timer_deferrable(&hps_ctxt.hps_tmr_dfr);
@@ -214,7 +228,7 @@ int hps_core_deinit(void)
 {
 	int r = 0;
 
-	log_info("hps_core_deinit\n");
+	log_info("%s\n", __func__);
 
 	hps_task_stop();
 

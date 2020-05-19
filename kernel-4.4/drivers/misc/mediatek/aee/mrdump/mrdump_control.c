@@ -17,11 +17,13 @@
 #include <linux/memblock.h>
 #include <linux/module.h>
 #include <linux/io.h>
+#include <asm/memory.h>
 #include <asm/sections.h>
 #include <mt-plat/mrdump.h>
 #include "mrdump_private.h"
 
 struct mrdump_control_block *mrdump_cblock;
+struct mrdump_rsvmem_block mrdump_sram_cb;
 
 int mrdump_rsv_conflict;
 struct mrdump_rsvmem_block __initdata rsvmem_block[4];
@@ -92,7 +94,6 @@ __init void mrdump_rsvmem(void)
 early_param("mrdump_rsvmem", early_mrdump_rsvmem);
 
 /* mrdump_cb info from lk */
-struct mrdump_rsvmem_block __initdata mrdump_cb;
 static int __init mrdump_get_cb(char *p)
 {
 	unsigned long cbaddr, cbsize;
@@ -100,12 +101,12 @@ static int __init mrdump_get_cb(char *p)
 
 	ret = sscanf(p, "0x%lx,0x%lx", &cbaddr, &cbsize);
 	if (ret != 2) {
-		pr_notice("%s: no mrdump_cb. (ret=%d, p=%s)\n", __func__, ret, p);
+		pr_notice("%s: no mrdump_sram_cb. (ret=%d, p=%s)\n", __func__, ret, p);
 	} else {
-		mrdump_cb.start_addr = cbaddr;
-		mrdump_cb.size = cbsize;
+		mrdump_sram_cb.start_addr = cbaddr;
+		mrdump_sram_cb.size = cbsize;
 		pr_notice("%s: mrdump_cbaddr=%pa, mrdump_cbsize=%pa\n",
-			 __func__, &mrdump_cb.start_addr, &mrdump_cb.size);
+			 __func__, &mrdump_sram_cb.start_addr, &mrdump_sram_cb.size);
 	}
 
 	return 0;
@@ -131,7 +132,11 @@ static void mrdump_cblock_kallsyms_init(struct mrdump_ksyms_param *kparam)
 	default:
 		BUILD_BUG();
 	}
-	kparam->start_addr = start_addr;
+#if defined(KIMAGE_VADDR)
+	kparam->start_addr = start_addr - KIMAGE_VADDR + PHYS_OFFSET;
+#else
+	kparam->start_addr = __pa(start_addr);
+#endif
 	kparam->size = (unsigned long)&kallsyms_token_index - start_addr + 512;
 	kparam->crc = crc32(0, (unsigned char *)start_addr, kparam->size);
 	kparam->addresses_off = (unsigned long)&kallsyms_addresses - start_addr;
@@ -146,17 +151,17 @@ __init void mrdump_cblock_init(void)
 {
 	struct mrdump_machdesc *machdesc_p;
 
-	if ((mrdump_cb.start_addr == 0) || (mrdump_cb.size == 0)) {
+	if ((mrdump_sram_cb.start_addr == 0) || (mrdump_sram_cb.size == 0)) {
 		pr_notice("%s: no mrdump_cb\n", __func__);
 		goto end;
 	}
 
-	if (mrdump_cb.size < sizeof(struct mrdump_control_block)) {
+	if (mrdump_sram_cb.size < sizeof(struct mrdump_control_block)) {
 		pr_notice("%s: not enough space for mrdump control block\n", __func__);
 		goto end;
 	}
 
-	mrdump_cblock = ioremap_wc(mrdump_cb.start_addr, mrdump_cb.size);
+	mrdump_cblock = ioremap_wc(mrdump_sram_cb.start_addr, mrdump_sram_cb.size);
 	if (mrdump_cblock == NULL) {
 		pr_notice("%s: mrdump_cb not mapped\n", __func__);
 		goto end;
@@ -172,12 +177,17 @@ __init void mrdump_cblock_init(void)
 #if defined(KIMAGE_VADDR)
 	machdesc_p->kimage_vaddr = KIMAGE_VADDR;
 #endif
-	machdesc_p->kimage_init_begin = (uintptr_t)__init_begin;
-	machdesc_p->kimage_init_end = (uintptr_t)__init_end;
+#if defined(TEXT_OFFSET)
+	machdesc_p->kimage_vaddr += TEXT_OFFSET;
+#endif
+	machdesc_p->dram_start = (uintptr_t)memblock_start_of_DRAM();
+	machdesc_p->dram_end = (uintptr_t)memblock_end_of_DRAM();
 	machdesc_p->kimage_stext = (uintptr_t)_text;
 	machdesc_p->kimage_etext = (uintptr_t)_etext;
-	machdesc_p->kimage_srodata = (uintptr_t)__start_rodata;
-	machdesc_p->kimage_erodata = (uintptr_t)__init_begin;
+	machdesc_p->kimage_stext_real = (uintptr_t)_stext;
+#if defined(CONFIG_ARM64)
+	machdesc_p->kimage_voffset = kimage_voffset;
+#endif
 	machdesc_p->kimage_sdata = (uintptr_t)_sdata;
 	machdesc_p->kimage_edata = (uintptr_t)_edata;
 

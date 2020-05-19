@@ -29,7 +29,11 @@ ccflags-y += -DGED_ENABLE_FB_DVFS
 endif
 endif
 
-ifneq (,$(filter $(CONFIG_MTK_PLATFORM), "mt6759" "mt6799" "mt6763"))
+ifneq (,$(filter $(CONFIG_MTK_PLATFORM), "mt6775" "mt6771"))
+ccflags-y += -DGED_KPI_CPU_INFO
+endif
+
+ifneq (,$(filter $(CONFIG_MTK_PLATFORM), "mt6759" "mt6799" "mt6763" "mt6775" "mt6771"))
 ccflags-y += -DGED_KPI_DFRC
 endif
 
@@ -45,7 +49,6 @@ ifneq ($(strip $(TARGET_BUILD_VARIANT)),)
 ifneq ($(strip $(TARGET_BUILD_VARIANT)),eng)
 VER:=user
 ifeq ($(CONFIG_EXTREME_LOW_RAM), y)
-ccflags-y += -DGED_LOG_SIZE_LIMITED
 ccflags-y += -DGED_BUFFER_LOG_DISABLE
 endif
 endif
@@ -129,5 +132,6 @@ ged-y += \
 	src/ged_ge.o \
 	src/ged_dvfs.o \
 	src/ged_kpi.o \
-	src/ged_fdvfs.o
+	src/ged_fdvfs.o \
+	src/ged_gpu_tuner.o
 

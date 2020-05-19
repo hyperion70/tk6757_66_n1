@@ -27,10 +27,10 @@
 #include "trustzone/kree/mem.h"
 #endif
 
-#if defined(CONFIG_TRUSTONIC_TEE_SUPPORT) && defined(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)
-#include "secmem.h"
+#if defined(CONFIG_MTK_SECURE_MEM_SUPPORT) && \
+		defined(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)
+#include "secmem_api.h"
 #endif
-
 
 /* global variables */
 int gM4U_log_to_uart = 2;
@@ -368,11 +368,18 @@ void m4u_test_ion(void)
 #define m4u_test_ion(...)
 #endif
 
+int debug_set_enable;
 static int m4u_debug_set(void *data, u64 val)
 {
 	struct m4u_domain *domain = data;
 
 	M4UMSG("m4u_debug_set:val=%llu\n", val);
+
+	if ((val == 0xff) || (val == 0))
+		debug_set_enable = val;
+
+	if (debug_set_enable != 0xff)
+		return 0;
 
 	switch (val) {
 	case 1:

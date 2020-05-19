@@ -287,28 +287,37 @@ EXPORT_SYMBOL(nr_online_nodes);
 int page_group_by_mobility_disabled __read_mostly;
 
 #ifdef CONFIG_DEFERRED_STRUCT_PAGE_INIT
+
+/*
+ * Determine how many pages need to be initialized durig early boot
+ * (non-deferred initialization).
+ * The value of first_deferred_pfn will be set later, once non-deferred pages
+ * are initialized, but for now set it ULONG_MAX.
+ */
 static inline void reset_deferred_meminit(pg_data_t *pgdat)
 {
-	unsigned long max_initialise;
-	unsigned long reserved_lowmem;
+	phys_addr_t start_addr, end_addr;
+	unsigned long max_pgcnt;
+	unsigned long reserved;
 
 	/*
 	 * Initialise at least 2G of a node but also take into account that
 	 * two large system hashes that can take up 1GB for 0.25TB/node.
 	 */
-	max_initialise = max(2UL << (30 - PAGE_SHIFT),
-		(pgdat->node_spanned_pages >> 8));
+	max_pgcnt = max(2UL << (30 - PAGE_SHIFT),
+			(pgdat->node_spanned_pages >> 8));
 
 	/*
 	 * Compensate the all the memblock reservations (e.g. crash kernel)
 	 * from the initial estimation to make sure we will initialize enough
 	 * memory to boot.
 	 */
-	reserved_lowmem = memblock_reserved_memory_within(pgdat->node_start_pfn,
-			pgdat->node_start_pfn + max_initialise);
-	max_initialise += reserved_lowmem;
+	start_addr = PFN_PHYS(pgdat->node_start_pfn);
+	end_addr = PFN_PHYS(pgdat->node_start_pfn + max_pgcnt);
+	reserved = memblock_reserved_memory_within(start_addr, end_addr);
+	max_pgcnt += PHYS_PFN(reserved);
 
-	pgdat->static_init_size = min(max_initialise, pgdat->node_spanned_pages);
+	pgdat->static_init_pgcnt = min(max_pgcnt, pgdat->node_spanned_pages);
 	pgdat->first_deferred_pfn = ULONG_MAX;
 }
 
@@ -344,7 +353,7 @@ static inline bool update_defer_init(pg_data_t *pgdat,
 		return true;
 	/* Initialise at least 2G of the highest zone */
 	(*nr_initialised)++;
-	if ((*nr_initialised > pgdat->static_init_size) &&
+	if ((*nr_initialised > pgdat->static_init_pgcnt) &&
 	    (pfn & (PAGES_PER_SECTION - 1)) == 0) {
 		pgdat->first_deferred_pfn = pfn;
 		return false;
@@ -580,6 +589,9 @@ static inline void set_page_guard(struct zone *zone, struct page *page,
 		return;
 
 	page_ext = lookup_page_ext(page);
+	if (unlikely(!page_ext))
+		return;
+
 	__set_bit(PAGE_EXT_DEBUG_GUARD, &page_ext->flags);
 
 	INIT_LIST_HEAD(&page->lru);
@@ -597,6 +609,9 @@ static inline void clear_page_guard(struct zone *zone, struct page *page,
 		return;
 
 	page_ext = lookup_page_ext(page);
+	if (unlikely(!page_ext))
+		return;
+
 	__clear_bit(PAGE_EXT_DEBUG_GUARD, &page_ext->flags);
 
 	set_page_private(page, 0);
@@ -2506,9 +2521,6 @@ static bool __zone_watermark_ok(struct zone *z, unsigned int order,
 		if (!area->nr_free)
 			continue;
 
-		if (alloc_harder)
-			return true;
-
 		for (mt = 0; mt < MIGRATE_PCPTYPES; mt++) {
 			if (!list_empty(&area->free_list[mt]))
 				return true;
@@ -2520,6 +2532,9 @@ static bool __zone_watermark_ok(struct zone *z, unsigned int order,
 			return true;
 		}
 #endif
+		if (alloc_harder &&
+			!list_empty(&area->free_list[MIGRATE_HIGHATOMIC]))
+			return true;
 	}
 	return false;
 }
@@ -2741,7 +2756,7 @@ static inline bool should_suppress_show_mem(void)
 
 static DEFINE_RATELIMIT_STATE(nopage_rs,
 		DEFAULT_RATELIMIT_INTERVAL,
-		DEFAULT_RATELIMIT_BURST);
+		(DEFAULT_RATELIMIT_BURST / 2));
 
 void warn_alloc_failed(gfp_t gfp_mask, unsigned int order, const char *fmt, ...)
 {
@@ -3147,8 +3162,6 @@ retry:
 		 * the allocation is high priority and these type of
 		 * allocations are system rather than user orientated
 		 */
-		ac->zonelist = node_zonelist(numa_node_id(), gfp_mask);
-
 		page = __alloc_pages_high_priority(gfp_mask, order, ac);
 
 		if (page) {
@@ -4056,8 +4069,7 @@ static int __parse_numa_zonelist_order(char *s)
 		user_zonelist_order = ZONELIST_ORDER_ZONE;
 	} else {
 		printk(KERN_WARNING
-			"Ignoring invalid numa_zonelist_order value:  "
-			"%s\n", s);
+		       "Ignoring invalid numa_zonelist_order value:  %s\n", s);
 		return -EINVAL;
 	}
 	return 0;
@@ -4522,12 +4534,11 @@ void __ref build_all_zonelists(pg_data_t *pgdat, struct zone *zone)
 	else
 		page_group_by_mobility_disabled = 0;
 
-	pr_info("Built %i zonelists in %s order, mobility grouping %s.  "
-		"Total pages: %ld\n",
-			nr_online_nodes,
-			zonelist_order_name[current_zonelist_order],
-			page_group_by_mobility_disabled ? "off" : "on",
-			vm_total_pages);
+	pr_info("Built %i zonelists in %s order, mobility grouping %s.  Total pages: %ld\n",
+		nr_online_nodes,
+		zonelist_order_name[current_zonelist_order],
+		page_group_by_mobility_disabled ? "off" : "on",
+		vm_total_pages);
 #ifdef CONFIG_NUMA
 	pr_info("Policy zone: %s\n", zone_names[policy_zone]);
 #endif
@@ -6004,22 +6015,21 @@ void __init mem_init_print_info(const char *str)
 
 #undef	adj_init_size
 
-	pr_info("Memory: %luK/%luK available "
-	       "(%luK kernel code, %luK rwdata, %luK rodata, "
-	       "%luK init, %luK bss, %luK reserved, %luK cma-reserved"
+	pr_info("Memory: %luK/%luK available (%luK kernel code, %luK rwdata, %luK rodata, %luK init, %luK bss, %luK reserved, %luK cma-reserved"
 #ifdef	CONFIG_HIGHMEM
-	       ", %luK highmem"
+		", %luK highmem"
 #endif
-	       "%s%s)\n",
-	       nr_free_pages() << (PAGE_SHIFT-10), physpages << (PAGE_SHIFT-10),
-	       codesize >> 10, datasize >> 10, rosize >> 10,
-	       (init_data_size + init_code_size) >> 10, bss_size >> 10,
-	       (physpages - totalram_pages - totalcma_pages) << (PAGE_SHIFT-10),
-	       totalcma_pages << (PAGE_SHIFT-10),
+		"%s%s)\n",
+		nr_free_pages() << (PAGE_SHIFT - 10),
+		physpages << (PAGE_SHIFT - 10),
+		codesize >> 10, datasize >> 10, rosize >> 10,
+		(init_data_size + init_code_size) >> 10, bss_size >> 10,
+		(physpages - totalram_pages - totalcma_pages) << (PAGE_SHIFT - 10),
+		totalcma_pages << (PAGE_SHIFT - 10),
 #ifdef	CONFIG_HIGHMEM
-	       totalhigh_pages << (PAGE_SHIFT-10),
+		totalhigh_pages << (PAGE_SHIFT - 10),
 #endif
-	       str ? ", " : "", str ? str : "");
+		str ? ", " : "", str ? str : "");
 
 		kernel_reserve_meminfo.available = nr_free_pages() << PAGE_SHIFT;
 		kernel_reserve_meminfo.total = physpages << PAGE_SHIFT;
@@ -6939,8 +6949,44 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 
 	/* Make sure the range is really isolated. */
 	if (test_pages_isolated(outer_start, end, false)) {
+#if defined(CONFIG_CMA_DEBUG) && defined(CONFIG_PAGE_OWNER)
+		struct page *page;
+		unsigned long pfn;
+		int bt_per_fail = 32;
+#endif
 		pr_info_ratelimited("%s: [%lx, %lx) PFNs busy\n",
 			__func__, outer_start, end);
+#if defined(CONFIG_CMA_DEBUG) && defined(CONFIG_PAGE_OWNER)
+		pr_info("========\n");
+		pfn = start;
+		while (pfn < end && bt_per_fail) {
+			int dump_ret;
+
+			if (!pfn_valid_within(pfn)) {
+				pfn++;
+				continue;
+			}
+			page = pfn_to_page(pfn);
+			if (PageBuddy(page))
+				/*
+				 * If the page is on a free list, it has to be on
+				 * the correct MIGRATE_ISOLATE freelist. There is no
+				 * simple way to verify that as VM_BUG_ON(), though.
+				 */
+				pfn += 1 << page_order(page);
+			else if (PageHWPoison(page))
+				/* A HWPoisoned page cannot be also PageBuddy */
+				pfn++;
+			else {
+				dump_ret = dump_pfn_backtrace(pfn);
+				if (dump_ret < 0)
+					pr_info("[page_owner]: dump PFN %lu fail, err: %d\n", pfn, dump_ret);
+				else
+					bt_per_fail--;
+				pfn++;
+			}
+		}
+#endif
 		ret = -EBUSY;
 		goto done;
 	}
@@ -7107,6 +7153,9 @@ int free_reserved_memory(phys_addr_t start_phys,
 			, __func__, &start_phys, &end_phys);
 		return -1;
 	}
+
+	memblock_free(start_phys, (end_phys - start_phys));
+
 	for (pos = start_phys; pos < end_phys; pos += PAGE_SIZE, pages++)
 		free_reserved_page(phys_to_page(pos));
 

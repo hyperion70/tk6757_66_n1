@@ -255,7 +255,7 @@ static int mtk_i2s0_awb_pcm_open(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int ret = 0;
 
-	pr_warn("mtk_i2s0_awb_pcm_open\n");
+	pr_aud("mtk_i2s0_awb_pcm_open\n");
 	I2S0_AWB_Control_context = Get_Mem_ControlT(Soc_Aud_Digital_Block_MEM_AWB);
 	runtime->hw = mtk_I2S0_awb_hardware;
 	memcpy((void *)(&(runtime->hw)), (void *)&mtk_I2S0_awb_hardware,

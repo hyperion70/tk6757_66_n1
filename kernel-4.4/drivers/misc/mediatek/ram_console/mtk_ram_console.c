@@ -34,6 +34,7 @@
 #include <linux/io.h>
 #include <mt-plat/aee.h>
 #include "ram_console.h"
+#include <mach/memory_layout.h>
 
 #define RAM_CONSOLE_HEADER_STR_LEN 1024
 
@@ -45,6 +46,7 @@ static int mtk_cpu_num;
 static int ram_console_init_done;
 static unsigned int old_wdt_status;
 static int ram_console_clear;
+static bool reserve_mem_fail;
 
 /*
  *  This group of API call by sub-driver module to report reboot reasons
@@ -199,6 +201,8 @@ struct last_reboot_reason {
 	unsigned long last_init_func;
 	uint8_t pmic_ext_buck;
 	uint32_t hang_detect_timeout_count;
+	unsigned long last_async_func;
+	unsigned long last_sync_func;
 	uint32_t gz_irq;
 
 	void *kparams;
@@ -267,6 +271,9 @@ static void *_memcpy(void *dest, const void *src, size_t count)
 	return dest;
 }
 
+#ifdef memcpy
+#undef memcpy
+#endif
 #define memcpy _memcpy
 #endif
 
@@ -636,7 +643,7 @@ static int __init ram_console_early_init(void)
 			sram.start = CONFIG_MTK_RAM_CONSOLE_ADDR;
 			sram.size = CONFIG_MTK_RAM_CONSOLE_SIZE;
 		}
-		bufp = ioremap(sram.start, sram.size);
+		bufp = ioremap_wc(sram.start, sram.size);
 		ram_console_buffer_pa = (struct ram_console_buffer *)sram.start;
 		if (bufp)
 			buffer_size = sram.size;
@@ -649,7 +656,7 @@ static int __init ram_console_early_init(void)
 		return 0;
 	}
 #else
-	bufp = ioremap(CONFIG_MTK_RAM_CONSOLE_ADDR, CONFIG_MTK_RAM_CONSOLE_SIZE);
+	bufp = ioremap_wc(CONFIG_MTK_RAM_CONSOLE_ADDR, CONFIG_MTK_RAM_CONSOLE_SIZE);
 	if (bufp)
 		buffer_size = CONFIG_MTK_RAM_CONSOLE_SIZE;
 		ram_console_buffer_pa = CONFIG_MTK_RAM_CONSOLE_ADDR;
@@ -698,6 +705,10 @@ static int __init ram_console_late_init(void)
 {
 	struct proc_dir_entry *entry;
 
+	if (reserve_mem_fail) {
+		pr_err("ram_console/pstore wrong reserved memory\n");
+		BUG();
+	}
 	entry = proc_create("last_kmsg", 0444, NULL, &ram_console_file_ops);
 	if (!entry) {
 		pr_err("ram_console: failed to create proc entry\n");
@@ -713,7 +724,13 @@ late_initcall(ram_console_late_init);
 
 int ram_console_pstore_reserve_memory(struct reserved_mem *rmem)
 {
-	pr_alert("[memblock]%s: 0x%llx - 0x%llx (0x%llx)\n", "pstore-reserve-memory",
+#ifndef DUMMY_MEMORY_LAYOUT
+	if (rmem->base != KERN_PSTORE_BASE || rmem->size > KERN_PSTORE_MAX_SIZE) {
+		reserve_mem_fail = true;
+		pr_info("pstore: Check the reserved address and size\n");
+	}
+#endif
+	pr_info("[memblock]%s: 0x%llx - 0x%llx (0x%llx)\n", "mediatek,pstore",
 		 (unsigned long long)rmem->base,
 		 (unsigned long long)rmem->base + (unsigned long long)rmem->size,
 		 (unsigned long long)rmem->size);
@@ -722,14 +739,20 @@ int ram_console_pstore_reserve_memory(struct reserved_mem *rmem)
 
 int ram_console_binary_reserve_memory(struct reserved_mem *rmem)
 {
-	pr_alert("[memblock]%s: 0x%llx - 0x%llx (0x%llx)\n", "ram_console-reserve-memory",
+#ifndef DUMMY_MEMORY_LAYOUT
+	if (rmem->base != KERN_RAMCONSOLE_BASE || rmem->size > KERN_RAMCONSOLE_MAX_SIZE) {
+		reserve_mem_fail = true;
+		pr_info("ram_console: Check the reserved address and size\n");
+	}
+#endif
+	pr_info("[memblock]%s: 0x%llx - 0x%llx (0x%llx)\n", "mediatek,ram_console",
 		 (unsigned long long)rmem->base,
 		 (unsigned long long)rmem->base + (unsigned long long)rmem->size,
 		 (unsigned long long)rmem->size);
 	return 0;
 }
 
-RESERVEDMEM_OF_DECLARE(reserve_memory_pstore, "pstore-reserve-memory",
+RESERVEDMEM_OF_DECLARE(reserve_memory_pstore, "mediatek,pstore",
 		       ram_console_pstore_reserve_memory);
 RESERVEDMEM_OF_DECLARE(reserve_memory_ram_console, "mediatek,ram_console",
 		       ram_console_binary_reserve_memory);
@@ -796,14 +819,14 @@ void aee_rr_rec_exp_type(unsigned int type)
 	if (!ram_console_init_done || !ram_console_buffer)
 		return;
 	if (LAST_RR_VAL(exp_type) == 0 && type < 16)
-		LAST_RR_SET(exp_type, 0xaeedead0 | type);
+		LAST_RR_SET(exp_type, RAM_CONSOLE_EXP_TYPE_MAGIC | type);
 }
 
 unsigned int aee_rr_curr_exp_type(void)
 {
 	unsigned int exp_type = LAST_RR_VAL(exp_type);
 
-	return (exp_type ^ 0xaeedead0) < 16 ? exp_type ^ 0xaeedead0 : exp_type;
+	return RAM_CONSOLE_EXP_TYPE_DEC(exp_type);
 }
 
 void aee_rr_rec_kaslr_offset(uint64_t offset)
@@ -2155,6 +2178,25 @@ void aee_rr_rec_last_init_func(unsigned long val)
 	LAST_RR_SET(last_init_func, val);
 }
 
+void aee_rr_rec_last_async_func(unsigned long val)
+{
+	if (!ram_console_init_done || !ram_console_buffer)
+		return;
+	if (LAST_RR_VAL(last_async_func) == ~(unsigned long)(0))
+		return;
+	LAST_RR_SET(last_async_func, val);
+}
+
+void aee_rr_rec_last_sync_func(unsigned long val)
+{
+	if (!ram_console_init_done || !ram_console_buffer)
+		return;
+	if (LAST_RR_VAL(last_sync_func) == ~(unsigned long)(0))
+		return;
+	LAST_RR_SET(last_sync_func, val);
+}
+
+
 void aee_rr_rec_set_bit_pmic_ext_buck(int bit, int loc)
 {
 	int8_t rr_pmic_ext_buck;
@@ -2235,7 +2277,7 @@ void aee_rr_show_exp_type(struct seq_file *m)
 	unsigned int exp_type = LAST_RRR_VAL(exp_type);
 
 	seq_printf(m, " exception type: %u\n",
-		   (exp_type ^ 0xaeedead0) < 16 ? exp_type ^ 0xaeedead0 : exp_type);
+		   RAM_CONSOLE_EXP_TYPE_DEC(exp_type));
 }
 
 void aee_rr_show_kaslr_offset(struct seq_file *m)
@@ -2969,6 +3011,18 @@ void aee_rr_show_last_init_func(struct seq_file *m)
 	seq_printf(m, "last init function: 0x%lx\n", LAST_RRR_VAL(last_init_func));
 }
 
+void aee_rr_show_last_sync_func(struct seq_file *m)
+{
+	seq_printf(m, "last sync function: 0x%lx\n",
+			LAST_RRR_VAL(last_sync_func));
+}
+
+void aee_rr_show_last_async_func(struct seq_file *m)
+{
+	seq_printf(m, "last async function: 0x%lx\n",
+			LAST_RRR_VAL(last_async_func));
+}
+
 void aee_rr_show_pmic_ext_buck(struct seq_file *m)
 {
 	seq_printf(m, "pmic & external buck: 0x%x\n", LAST_RRR_VAL(pmic_ext_buck));
@@ -3081,8 +3135,8 @@ void aee_rr_show_last_bus(struct seq_file *m)
 
 	if (reg_buf) {
 		if (mt_lastbus_dump) {
-			mt_lastbus_dump(reg_buf);
-			seq_printf(m, "%s\n", reg_buf);
+			if (mt_lastbus_dump(reg_buf) == 0)
+				seq_printf(m, "%s\n", reg_buf);
 		}
 		kfree(reg_buf);
 	}
@@ -3198,6 +3252,8 @@ last_rr_show_t aee_rr_show[] = {
 	aee_rr_show_scp_pc,
 	aee_rr_show_scp_lr,
 	aee_rr_show_hang_detect_timeout_count,
+	aee_rr_show_last_async_func,
+	aee_rr_show_last_sync_func,
 	aee_rr_show_gz_irq,
 	aee_rr_show_last_init_func,
 	aee_rr_show_pmic_ext_buck,

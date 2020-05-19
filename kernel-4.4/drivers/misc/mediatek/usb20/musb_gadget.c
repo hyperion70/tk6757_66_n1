@@ -217,10 +217,15 @@ void musb_g_giveback(struct musb_ep *ep,
 	ep->busy = 1;
 	spin_unlock(&musb->lock);
 
+	if (!request) {
+		DBG(0, "%s request already free\n", ep->end_point.name);
+		goto lock;
+	}
+
 	if (!dma_mapping_error(musb->controller, request->dma))
 		unmap_dma_buffer(req, musb);
 	else if (req->epnum != 0)
-		DBG(0, "%s dma_mapping_error\n", ep->end_point.name);
+		DBG_LIMIT(5, "%s dma_mapping_error", ep->end_point.name);
 
 	if (request->status == 0)
 		DBG(1, "%s done request %p,  %d/%d\n",
@@ -230,6 +235,7 @@ void musb_g_giveback(struct musb_ep *ep,
 		    ep->end_point.name, request,
 		    req->request.actual, req->request.length, request->status);
 	usb_gadget_giveback_request(&req->ep->end_point, &req->request);
+lock:
 	spin_lock(&musb->lock);
 	ep->busy = busy;
 }
@@ -1781,6 +1787,7 @@ static int musb_gadget_dequeue(struct usb_ep *ep, struct usb_request *request)
 
 done:
 	spin_unlock_irqrestore(&musb->lock, flags);
+
 	return status;
 }
 
@@ -2208,13 +2215,7 @@ bool is_usb_rdy(void)
 	else
 		return false;
 }
-static void do_connect_rescue_work(struct work_struct *work)
-{
-	DBG(0, "do_connect_rescue_work, issue connection work\n");
-	mt_usb_connect();
-}
 
-ktime_t ktime_ready;
 static int musb_gadget_pullup(struct usb_gadget *gadget, int is_on)
 {
 	struct musb *musb = gadget_to_musb(gadget);
@@ -2235,30 +2236,22 @@ static int musb_gadget_pullup(struct usb_gadget *gadget, int is_on)
 
 	/* MTK additional */
 	DBG(0, "is_on=%d, softconnect=%d ++\n", is_on, musb->softconnect);
-	if (!musb->is_ready && is_on) {
-		int delay_time;
-		static struct delayed_work connect_rescue_work;
-
-		ktime_ready = ktime_get();
-		musb->is_ready = true;
-		set_usb_rdy();
-
-		/* direct issue connection work if usb is forced on */
-		if (musb_force_on)
-			delay_time = 0;
-		else
-			delay_time = 8000;
-
-		INIT_DELAYED_WORK(&connect_rescue_work, do_connect_rescue_work);
-		DBG(0, "issue connect_rescue_work on is_ready begin, delay_time:%d ms\n", delay_time);
-		schedule_delayed_work(&connect_rescue_work, msecs_to_jiffies(delay_time));
-		DBG(0, "issue connect_rescue_work on is_ready end, delay_time:%d ms\n", delay_time);
-	}
 
 	if (is_on != musb->softconnect) {
 		musb->softconnect = is_on;
 		musb_pullup(musb, is_on, usb_in);
 	}
+
+	if (!musb->is_ready && is_on) {
+		musb->is_ready = true;
+		set_usb_rdy();
+		/* direct issue connection work if usb is forced on */
+		if (musb_force_on) {
+			DBG(0, "mt_usb_connect() on is_ready begin\n");
+			mt_usb_connect();
+		}
+	}
+
 	spin_unlock_irqrestore(&musb->lock, flags);
 
 	pm_runtime_put(musb->controller);

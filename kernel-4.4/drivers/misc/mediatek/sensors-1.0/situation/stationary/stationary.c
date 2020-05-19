@@ -23,6 +23,7 @@
 #include <linux/kobject.h>
 #include <linux/platform_device.h>
 #include <linux/atomic.h>
+#include <linux/pm_wakeup.h>
 
 #include <hwmsensor.h>
 #include <sensors_io.h>
@@ -40,14 +41,14 @@
 #define STATHUB_PR_ERR(fmt, args...)    pr_err(STATHUB_TAG"%s %d : "fmt, __func__, __LINE__, ##args)
 #define STATHUB_LOG(fmt, args...)    pr_debug(STATHUB_TAG fmt, ##args)
 
-
 static struct situation_init_info stat_init_info;
+static struct wakeup_source stationary_wake_lock;
+
 static int stat_get_data(int *probability, int *status)
 {
 	int err = 0;
 	struct data_unit_t data;
 	uint64_t time_stamp = 0;
-	uint64_t time_stamp_gpt = 0;
 
 	err = sensor_get_data_from_hub(ID_STATIONARY_DETECT, &data);
 	if (err < 0) {
@@ -55,9 +56,8 @@ static int stat_get_data(int *probability, int *status)
 		return -1;
 	}
 	time_stamp		= data.time_stamp;
-	time_stamp_gpt	= data.time_stamp_gpt;
 	*probability	= data.gesture_data_t.probability;
-	STATHUB_LOG("recv ipi: timestamp: %lld, timestamp_gpt: %lld, probability: %d!\n", time_stamp, time_stamp_gpt,
+	STATHUB_LOG("recv ipi: timestamp: %lld, probability: %d!\n", time_stamp,
 		*probability);
 	return 0;
 }
@@ -85,8 +85,10 @@ static int stat_recv_data(struct data_unit_t *event, void *reserved)
 {
 	if (event->flush_action == FLUSH_ACTION)
 		STATHUB_LOG("stat do not support flush\n");
-	else if (event->flush_action == DATA_ACTION)
+	else if (event->flush_action == DATA_ACTION) {
+		__pm_wakeup_event(&stationary_wake_lock, msecs_to_jiffies(100));
 		situation_notify(ID_STATIONARY_DETECT);
+	}
 	return 0;
 }
 
@@ -116,6 +118,7 @@ static int stat_local_init(void)
 		STATHUB_PR_ERR("SCP_sensorHub_data_registration fail!!\n");
 		goto exit_create_attr_failed;
 	}
+	wakeup_source_init(&stationary_wake_lock, "stationary_wake_lock");
 	return 0;
 exit:
 exit_create_attr_failed:

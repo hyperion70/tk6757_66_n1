@@ -82,61 +82,28 @@ struct SensorState {
 #define    SCP_BATCH_TIMEOUT		3
 #define	   SCP_DIRECT_PUSH          4
 
-
-struct SCP_sensorData {
-	uint8_t dataLength;
-	uint8_t sensorType;
-	uint8_t reserve[2];
-	uint32_t timeStampH;
-	uint32_t timeStampL;
-	int16_t data[8];
-};
 typedef struct {
 	union {
-		int32_t v[3];
 		struct {
 			int32_t x;
 			int32_t y;
 			int32_t z;
+			int32_t x_bias;
+			int32_t y_bias;
+			int32_t z_bias;
+			int32_t reserved : 14;
+			int32_t temp_result : 2;
+			int32_t temperature : 16;
 		};
 		struct {
 			int32_t azimuth;
 			int32_t pitch;
 			int32_t roll;
+			int32_t scalar;
 		};
 	};
-	union {
-		int32_t scalar;
-		union {
-			int16_t bias[3];
-			struct {
-				int16_t x_bias;
-				int16_t y_bias;
-				int16_t z_bias;
-			};
-		};
-	};
-	uint16_t status;
+	uint32_t status;
 } sensor_vec_t;
-
-typedef struct {
-	union {
-		int32_t uncali[3];
-		struct {
-			int32_t x_uncali;
-			int32_t y_uncali;
-			int32_t z_uncali;
-		};
-	};
-	union {
-		int32_t bias[3];
-		struct {
-			int32_t x_bias;
-			int32_t y_bias;
-			int32_t z_bias;
-		};
-	};
-} uncalibrated_event_t;
 
 typedef struct {
 	int32_t bpm;
@@ -251,8 +218,7 @@ struct data_unit_t {
 	uint8_t sensor_type;
 	uint8_t flush_action;
 	uint8_t reserve[2];
-	uint64_t time_stamp;	/* ms on CM4 time kick */
-	int64_t time_stamp_gpt;	/* ms for sensor GPT AP SCP sync time */
+	uint64_t time_stamp;
 	union {
 		sensor_vec_t accelerometer_t;
 		sensor_vec_t gyroscope_t;
@@ -283,13 +249,11 @@ struct data_unit_t {
 		tilt_event_t tilt_event;
 		in_pocket_event_t inpocket_event;
 		geofence_event_t geofence_data_t;
-		int32_t data[7];
+		int32_t data[8];
 	};
 } __packed;
 
 struct sensorFIFO {
-/* volatile struct SCP_sensorData * volatile rp; */
-/* volatile struct SCP_sensorData * volatile wp; */
 	uint32_t rp;			/* use int for store DRAM FIFO LSB 32bit read pointer */
 	uint32_t wp;
 	uint32_t FIFOSize;
@@ -390,6 +354,7 @@ typedef enum {
 	CUST_ACTION_SHOW_ALSLV,
 	CUST_ACTION_SHOW_ALSVAL,
 	CUST_ACTION_SET_FACTORY,
+	CUST_ACTION_GET_SENSOR_INFO,
 } CUST_ACTION;
 
 typedef struct {
@@ -450,6 +415,23 @@ typedef struct {
 	};
 } SCP_SENSOR_HUB_GET_RAW_DATA;
 
+struct mag_dev_info_t {
+	char libname[16];
+	int32_t layout;
+	int32_t deviceid;
+};
+
+struct sensorInfo_t {
+	union {
+		char name[16];
+		struct mag_dev_info_t mag_dev_info;
+	};
+};
+
+struct scp_sensor_hub_get_sensor_info {
+	CUST_ACTION action;
+	struct sensorInfo_t sensorInfo;
+};
 enum {
 	USE_OUT_FACTORY_MODE = 0,
 	USE_IN_FACTORY_MODE
@@ -473,6 +455,7 @@ typedef struct {
 		SCP_SENSOR_HUB_SHOW_ALSLV showAlslv;
 		SCP_SENSOR_HUB_SHOW_ALSVAL showAlsval;
 		SCP_SENSOR_HUB_SET_FACTORY	setFactory;
+		struct scp_sensor_hub_get_sensor_info getInfo;
 	};
 } SCP_SENSOR_HUB_SET_CUST_REQ;
 
@@ -484,6 +467,7 @@ typedef struct {
 	union {
 		uint32_t custData[9];
 		SCP_SENSOR_HUB_GET_RAW_DATA getRawData;
+		struct scp_sensor_hub_get_sensor_info getInfo;
 	};
 } SCP_SENSOR_HUB_SET_CUST_RSP;
 

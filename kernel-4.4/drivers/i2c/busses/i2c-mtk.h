@@ -37,9 +37,19 @@
 
 #define I2C_DEBUG_FS
 
+#define I2C_MAS_ERR			(1 << 8)
+#define I2C_IBI				(1 << 7)
+#define I2C_DMAERR			(1 << 6)
+#define I2C_TIMEOUT			(1 << 5)
+#define I2C_RS_MULTI			(1 << 4)
+#define I2C_ARB_LOST			(1 << 3)
 #define I2C_HS_NACKERR			(1 << 2)
 #define I2C_ACKERR			(1 << 1)
 #define I2C_TRANSAC_COMP		(1 << 0)
+#define I2C_INTR_ALL			(I2C_MAS_ERR | I2C_IBI | I2C_DMAERR | \
+					 I2C_TIMEOUT | I2C_RS_MULTI | \
+					 I2C_ARB_LOST | I2C_HS_NACKERR | \
+					 I2C_ACKERR | I2C_TRANSAC_COMP)
 #define I2C_TRANSAC_START		(1 << 0)
 #define I2C_RESUME_ARBIT                (1 << 1)
 #define I2C_TIMING_STEP_DIV_MASK	(0x3f << 0)
@@ -55,11 +65,15 @@
 #define I2C_IO_CONFIG_AED_MASK	(0xfff << 4)
 #define I2C_SOFT_RST			0x0001
 #define I2C_FIFO_ADDR_CLR		0x0001
+#define I2C_FIFO_ADDR_CLR_MCH		0x0004
 #define I2C_DELAY_LEN			0x0002
 #define I2C_ST_START_CON		0x8001
 #define I2C_FS_START_CON		0x1800
 #define I2C_TIME_CLR_VALUE		0x0000
 #define I2C_TIME_DEFAULT_VALUE		0x0003
+#define I2C_TIMEOUT_EN			0x0001
+#define I2C_ROLLBACK			0x0001
+#define I2C_SHADOW_REG_MODE		0x0002
 
 #define I2C_HS_NACK_DET_EN		(0x1 << 1)
 
@@ -69,6 +83,7 @@
 #define I2C_DMA_INT_FLAG_NONE		0x0000
 #define I2C_DMA_CLR_FLAG		0x0000
 #define I2C_DMA_WARM_RST		0x0001
+#define I2C_DMA_HARD_RST		0x0002
 #define I2C_DMA_4G_MODE			0x0001
 
 #define I2C_DEFAUT_SPEED		100000	/* hz */
@@ -99,6 +114,10 @@
 
 #define I2C_RECORD_LEN 10
 #define I2C_MAX_CHANNEL 10
+
+#define MAX_SCL_LOW_TIME		2 /*unit: milli-second*/
+#define LSAMPLE_MSK			0x1C0
+#define LSTEP_MSK			0x3F
 
 enum DMA_REGS_OFFSET {
 	OFFSET_INT_FLAG = 0x0,
@@ -186,6 +205,7 @@ enum I2C_REGS_OFFSET {
 	OFFSET_CLOCK_DIV = 0x70,
 
 	/*v2 add*/
+	OFFSET_HW_TIMEOUT = 0xfff,
 	OFFSET_MCU_INTR = 0xfff,
 	OFFSET_TRAFFIC = 0xfff,
 	OFFSET_COMMAND = 0xfff,
@@ -226,6 +246,7 @@ enum I2C_REGS_OFFSET_V2 {
 	V2_OFFSET_IO_CONFIG = 0x34,
 	V2_OFFSET_TRANSFER_LEN_AUX = 0x44,
 	V2_OFFSET_CLOCK_DIV = 0x48,
+	V2_OFFSET_HW_TIMEOUT = 0x4c,
 	V2_OFFSET_DEBUGSTAT = 0xe4,
 	V2_OFFSET_DEBUGCTRL = 0xe8,
 	V2_OFFSET_FIFO_STAT = 0xf4,
@@ -303,6 +324,14 @@ struct mtk_i2c_compatible {
 	char clk_compatible[128];
 	u16 clk_sta_offset[I2C_MAX_CHANNEL]; /* I2C clock status register */
 	u8 cg_bit[I2C_MAX_CHANNEL]; /* i2c clock bit */
+#define I2C_DUMP_INFRA_DBG	0
+#define I2C_DUMP_PERI_DBG	1
+	char pericfg_compatible[128];
+	char infracfg_compatible[128];
+	u16 infra_dbg_offset;
+	u16 infra_dbg_length;
+	u16 peri_dbg_offset;
+	u16 peri_dbg_length;
 };
 
 struct mt_i2c {
@@ -326,7 +355,6 @@ struct mt_i2c {
 	bool gpupm;			/* I2C for GPUPM */
 	bool buffermode;	/* I2C Buffer mode support */
 	bool hs_only;	/* I2C HS only */
-	bool dma_only;	/* I2C DMA only */
 	/* set when doing the transfer */
 	u16 irq_stat;			/* interrupt status */
 	unsigned int speed_hz;		/* The speed in transfer */
@@ -353,13 +381,13 @@ struct mt_i2c {
 	int rec_idx; /* next record idx */
 	struct i2c_info rec_info[I2C_RECORD_LEN];
 	u32 ch_offset_default;
-	int ch_offset;
+	u32 ch_offset;
 	u32 dma_ch_offset_default;
-	int dma_ch_offset;
-	bool have_scp;
-	int scp_ch;
+	u32 dma_ch_offset;
+	bool skip_scp_sema;
 	bool have_ccu;
 	u32 ccu_offset;
+	unsigned long main_clk;
 };
 
 #if defined(CONFIG_MTK_FPGA) || defined(CONFIG_FPGA_EARLY_PORTING)

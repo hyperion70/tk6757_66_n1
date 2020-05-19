@@ -28,9 +28,14 @@
 #ifdef CONFIG_USB_POWER_DELIVERY
 #include "pd_dpm_prv.h"
 #include "inc/tcpm.h"
+#include "mtk_battery.h"
 #endif /* CONFIG_USB_POWER_DELIVERY */
 
-#define TCPC_CORE_VERSION		"2.0.2_MTK"
+#define TCPC_CORE_VERSION		"2.0.8_MTK"
+
+#ifdef CONFIG_USB_POWER_DELIVERY
+static struct tcpc_device *tcpc_dev;
+#endif
 
 static ssize_t tcpc_show_property(struct device *dev,
 				  struct device_attribute *attr, char *buf);
@@ -57,6 +62,7 @@ static struct device_attribute tcpc_device_attributes[] = {
 	TCPC_DEVICE_ATTR(info, S_IRUGO),
 	TCPC_DEVICE_ATTR(timer, S_IRUGO | S_IWUSR | S_IWGRP),
 	TCPC_DEVICE_ATTR(caps_info, S_IRUGO),
+	TCPC_DEVICE_ATTR(pe_ready, 0444),
 };
 
 enum {
@@ -66,6 +72,7 @@ enum {
 	TCPC_DESC_INFO,
 	TCPC_DESC_TIMER,
 	TCPC_DESC_CAP_INFO,
+	TCPC_DESC_PE_READY,
 };
 
 static struct attribute *__tcpc_attrs[ARRAY_SIZE(tcpc_device_attributes) + 1];
@@ -177,6 +184,15 @@ static ssize_t tcpc_show_property(struct device *dev,
 		else if (tcpc->typec_local_rp_level == TYPEC_CC_RP_3_0)
 			i += snprintf(buf + i, 256, "rplvl = %s\n", "3.0");
 		break;
+#ifdef CONFIG_USB_POWER_DELIVERY
+	case TCPC_DESC_PE_READY:
+		pd_port = &tcpc->pd_port;
+		if (pd_port->pe_data.pe_ready)
+			snprintf(buf, 256, "%s\n", "yes");
+		else
+			snprintf(buf, 256, "%s\n", "no");
+		break;
+#endif
 	default:
 		break;
 	}
@@ -835,10 +851,33 @@ static void __exit tcpc_class_exit(void)
 subsys_initcall(tcpc_class_init);
 module_exit(tcpc_class_exit);
 
+#ifdef CONFIG_USB_POWER_DELIVERY
+static int bat_notifier_call(struct notifier_block *nb,
+				unsigned long event, void *data)
+{
+	int ret;
+
+	switch (event) {
+	case EVENT_BATTERY_PLUG_OUT:
+		ret = tcpm_shutdown(tcpc_dev);
+		if (ret < 0)
+			pr_notice("%s: tcpm shutdown fail\n", __func__);
+		break;
+	default:
+		break;
+	}
+	return NOTIFY_OK;
+}
+#endif
+
 #ifdef CONFIG_TCPC_NOTIFIER_LATE_SYNC
 static int __tcpc_class_complete_work(struct device *dev, void *data)
 {
 	struct tcpc_device *tcpc = dev_get_drvdata(dev);
+#ifdef CONFIG_USB_POWER_DELIVERY
+	struct notifier_block *bat_nb = &tcpc->pd_port.bat_nb;
+	int ret;
+#endif
 
 	if (tcpc != NULL) {
 		pr_info("%s = %s\n", __func__, dev_name(dev));
@@ -848,6 +887,22 @@ static int __tcpc_class_complete_work(struct device *dev, void *data)
 		schedule_delayed_work(&tcpc->init_work,
 			msecs_to_jiffies(1000));
 #endif
+
+#ifdef CONFIG_USB_POWER_DELIVERY
+		tcpc_dev = tcpc_dev_get_by_name("type_c_port0");
+		if (!tcpc_dev) {
+			pr_notice("%s get tcpc device type_c_port0 fail\n", __func__);
+			return -ENODEV;
+		}
+
+		bat_nb->notifier_call = bat_notifier_call;
+		ret = register_battery_notifier(bat_nb);
+		if (ret < 0) {
+			pr_notice("%s: register bat notifier fail\n", __func__);
+			return -EINVAL;
+		}
+#endif
+
 	}
 	return 0;
 }
@@ -869,6 +924,22 @@ MODULE_VERSION(TCPC_CORE_VERSION);
 MODULE_LICENSE("GPL");
 
 /* Release Version
+ * 2.0.8_MTK
+ * (1) fix timeout thread flow for wakeup pd event thread
+ *     after disable timer first.
+ *
+ * 2.0.7_MTK
+ * (1) add extract pd source capability pdo defined in
+ *     PD30 v1.1 ECN for pe40 get apdo profile.
+ *
+ * 2.0.6_MTK
+ * (1) register battery notifier for battery plug out
+ *     avoid TA hardreset 3 times will show charing icon.
+ *
+ * 2.0.5_MTK
+ * (1) fix A-to-C No-Rp cable by vbus detection
+ * (2) add eint handler need reference eint mask
+ *
  * 2.0.4_MTK
  * (1) add CONFIG_TCPC_NOTIFIER_LATE_SYNC to
  *      move irq_enable to late_initcall_sync stage

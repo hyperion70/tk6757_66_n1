@@ -40,6 +40,9 @@ struct IMGSENSOR {
 	struct IMGSENSOR_SENSOR_LIST *psensor_list[MAX_NUM_OF_SUPPORT_SENSOR];
 
 	atomic_t imgsensor_open_cnt;
+#if defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
+	unsigned long long imgsensor_sec_flag;
+#endif
 };
 
 MINT32
@@ -71,8 +74,6 @@ MUINT32
 imgsensor_sensor_control(
 		struct IMGSENSOR_SENSOR *psensor,
 		MSDK_SCENARIO_ID_ENUM ScenarioId);
-
-extern struct IMGSENSOR_HW_CFG imgsensor_custom_config[];
 
 #endif
 

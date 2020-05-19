@@ -31,6 +31,10 @@ else
 	obj-$(CONFIG_MTK_PUMP_EXPRESS_PLUS_20_SUPPORT) += mtk_pep20_intf.o
 endif
 
+ifneq ($(CONFIG_MTK_GAUGE_VERSION),10)
+obj-y += misc/
+endif
+
 ifeq ($(CONFIG_MTK_GAUGE_VERSION),30)
 	#nothing
 else

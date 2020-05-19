@@ -19,6 +19,9 @@
 #define VPU_MAX_NUM_PORTS 32
 #define VPU_MAX_NUM_PROPS 32
 #define VPU_MAX_NUM_CORES 3
+extern unsigned int efuse_data;
+extern struct ion_client *my_ion_client;
+
 typedef uint8_t vpu_id_t;
 
 /* the last byte of string must be '/0' */
@@ -266,7 +269,8 @@ enum vpu_power_opp {
 struct vpu_power {
 	uint8_t opp_step;
 	uint8_t freq_step;
-	uint32_t bw;
+	uint32_t bw; /* unit: MByte/s */
+	unsigned int core; /* align with core index defined in user space header file*/
 };
 
 
@@ -317,12 +321,15 @@ struct vpu_request {
 	/* the final occupied core index for request, especially for request in common pool */
 	unsigned int occupied_core;
 	vpu_id_t algo_id[VPU_MAX_NUM_CORES];
+	int frame_magic; /* mapping for user space/kernel space */
 	uint8_t status;
 	uint8_t buffer_count;
 	uint32_t sett_length;
 	uint64_t sett_ptr;       /* pointer to the request setting */
 	uint64_t priv;           /* reserved for user */
 	struct vpu_buffer buffers[VPU_MAX_NUM_PORTS];
+	/* driver usage only, fd in user space / ion handle in kernel */
+	uint64_t buf_ion_infos[VPU_MAX_NUM_PORTS * 3];
 	struct vpu_power power_param;
 };
 
@@ -330,6 +337,13 @@ struct vpu_status {
 	int vpu_core_index;
 	bool vpu_core_available;
 	int pool_list_size;
+};
+
+struct vpu_dev_debug_info {
+	int dev_fd;
+	vpu_name_t callername;
+	pid_t open_pid;
+	pid_t open_tgid;
 };
 
 /*---------------------------------------------------------------------------*/
@@ -347,6 +361,8 @@ struct vpu_status {
 #define VPU_IOCTL_REG_WRITE         _IOW(VPU_MAGICNO,   8, int)
 #define VPU_IOCTL_REG_READ          _IOWR(VPU_MAGICNO,  9, int)
 #define VPU_IOCTL_GET_CORE_STATUS   _IOWR(VPU_MAGICNO,  10, int)
+#define VPU_IOCTL_OPEN_DEV_NOTICE   _IOWR(VPU_MAGICNO,  11, int)
+#define VPU_IOCTL_CLOSE_DEV_NOTICE  _IOWR(VPU_MAGICNO,  12, int)
 
 
 #endif

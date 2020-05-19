@@ -49,7 +49,7 @@
 #include <mt-plat/charging.h>
 #endif
 #if defined(CONFIG_MTK_SMART_BATTERY)
-extern CHARGER_TYPE mt_get_charger_type(void);
+extern enum charger_type mt_get_charger_type(void);
 #endif
 #include <linux/clk.h>
 
@@ -81,6 +81,11 @@ extern int kernel_init_done;
 extern int musb_force_on;
 extern int musb_host_dynamic_fifo;
 extern int musb_host_dynamic_fifo_usage_msk;
+extern bool musb_host_db_enable;
+extern bool musb_host_db_workaround1;
+extern bool musb_host_db_workaround2;
+extern long musb_host_db_delay_ns;
+extern long musb_host_db_workaround_cnt;
 extern struct musb *mtk_musb;
 extern bool mtk_usb_power;
 extern ktime_t ktime_ready;
@@ -127,6 +132,10 @@ extern void musb_bug(void);
 #include "musb_gadget.h"
 #include <linux/usb/hcd.h>
 #include "musb_host.h"
+
+#ifdef CONFIG_DUAL_ROLE_USB_INTF
+#include <linux/usb/class-dual-role.h>
+#endif
 
 /* NOTE:  otg and peripheral-only state machines start at B_IDLE.
  * OTG or host-only go to A_IDLE when ID is sensed.
@@ -514,6 +523,10 @@ struct musb {
 	enum usb_otg_event otg_event;
 #endif
 	struct workqueue_struct *st_wq;
+
+#ifdef CONFIG_DUAL_ROLE_USB_INTF
+	struct dual_role_phy_instance *dr_usb;
+#endif /* CONFIG_DUAL_ROLE_USB_INTF */
 };
 
 static inline struct musb *gadget_to_musb(struct usb_gadget *g)
@@ -673,4 +686,9 @@ extern void usb_hal_dpidle_request(int mode);
 extern void register_usb_hal_dpidle_request(void (*function)(int));
 extern void register_usb_hal_disconnect_check(void (*function)(void));
 extern void wake_up_bat(void);
+extern void wait_tx_done(u8 epnum, unsigned int timeout_ns);
+extern int host_tx_refcnt_inc(int epnum);
+extern int host_tx_refcnt_dec(int epnum);
+extern void host_tx_refcnt_reset(int epnum);
+extern void dump_tx_ops(u8 ep_num);
 #endif				/* __MUSB_CORE_H__ */

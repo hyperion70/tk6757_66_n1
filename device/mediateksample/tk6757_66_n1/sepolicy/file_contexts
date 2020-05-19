@@ -1,0 +1,17 @@
+# Fingerprint HAL
+/vendor/bin/hw/android\.hardware\.biometrics\.fingerprint@2\.1-service-custom                     u:object_r:hal_fingerprint_custom_exec:s0
+
+# Goodix
+/dev/ttyACM[0-9]*                                                     u:object_r:gx_fpd_device:s0
+/dev/goodix_fp*                                                       u:object_r:gx_fpd_device:s0
+/(vendor|system|system/vendor)/bin/gx_fpd                             u:object_r:gx_fpd_exec:s0
+/data/system/fingerprint(/.*)?                                        u:object_r:gx_fpd_data_file:s0
+/persist/data/gxfp(/.*)?                                              u:object_r:gx_fpd_data_file:s0
+/data/goodix(/.*)?                                                    u:object_r:gx_fpd_data_file:s0
+
+# Goodix Fingerprint libs
+/(vendor|system|system/vendor)/lib(64)?/gxfingerprint\.default\.so    u:object_r:same_process_hal_file:s0
+/(vendor|system|system/vendor)/lib(64)?/libfp_client\.so              u:object_r:same_process_hal_file:s0
+/(vendor|system|system/vendor)/lib(64)?/libfpservice\.so              u:object_r:same_process_hal_file:s0
+
+/vendor/bin/init_goodix\.sh                                            u:object_r:init_goodix_exec:s0

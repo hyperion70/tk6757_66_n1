@@ -41,7 +41,6 @@
 #include "compat_ion.h"
 #include "ion_profile.h"
 #include "mtk/mtk_ion.h"
-#include "mtk/ion_sec_heap.h"
 #include "mtk/ion_drv_priv.h"
 
 #define DEBUG_HEAP_SHRINKER
@@ -198,7 +197,8 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	 * cached mapping that mapping has been invalidated
 	 */
 	for_each_sg(buffer->sg_table->sgl, sg, buffer->sg_table->nents, i) {
-		if ((heap->id == ION_HEAP_TYPE_MULTIMEDIA_MAP_MVA) && (align < PAGE_OFFSET)) {
+		if ((heap->id == ION_HEAP_TYPE_MULTIMEDIA_MAP_MVA) &&
+		    (align < PAGE_OFFSET) && (sg_dma_len(sg) != 0)) {
 			if (align < VMALLOC_START || align > VMALLOC_END) {
 				/*userspace va without vmalloc, has no page struct*/
 				sg->length = sg_dma_len(sg);
@@ -986,7 +986,6 @@ void ion_client_destroy(struct ion_client *client)
 	struct ion_device *dev = client->dev;
 	struct rb_node *n;
 
-	pr_debug("%s: %d\n", __func__, __LINE__);
 	while ((n = rb_first(&client->handles))) {
 		struct ion_handle *handle = rb_entry(n, struct ion_handle,
 						     node);
@@ -997,7 +996,7 @@ void ion_client_destroy(struct ion_client *client)
 				handle->buffer->size,  handle->buffer->kmap_cnt,
 				client->name ? client->name : NULL,
 				client->display_name ? client->display_name : NULL,
-				client->dbg_name ? client->dbg_name : NULL);
+				client->dbg_name);
 		ion_handle_destroy(&handle->ref);
 		mutex_unlock(&client->lock);
 	}
@@ -1086,9 +1085,6 @@ static void ion_buffer_sync_for_device(struct ion_buffer *buffer,
 	int pages = PAGE_ALIGN(buffer->size) / PAGE_SIZE;
 	int i;
 
-	pr_debug("%s: syncing for device %s\n", __func__,
-		 dev ? dev_name(dev) : "null");
-
 	if (!ion_buffer_fault_user_mappings(buffer))
 		return;
 
@@ -1147,7 +1143,6 @@ static void ion_vm_open(struct vm_area_struct *vma)
 	mutex_lock(&buffer->lock);
 	list_add(&vma_list->list, &buffer->vmas);
 	mutex_unlock(&buffer->lock);
-	pr_debug("%s: adding %p\n", __func__, vma);
 }
 
 static void ion_vm_close(struct vm_area_struct *vma)
@@ -1155,14 +1150,12 @@ static void ion_vm_close(struct vm_area_struct *vma)
 	struct ion_buffer *buffer = vma->vm_private_data;
 	struct ion_vma_list *vma_list, *tmp;
 
-	pr_debug("%s\n", __func__);
 	mutex_lock(&buffer->lock);
 	list_for_each_entry_safe(vma_list, tmp, &buffer->vmas, list) {
 		if (vma_list->vma != vma)
 			continue;
 		list_del(&vma_list->list);
 		kfree(vma_list);
-		pr_debug("%s: deleting %p\n", __func__, vma);
 		break;
 	}
 	mutex_unlock(&buffer->lock);
@@ -1567,6 +1560,8 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (copy_to_user((void __user *)arg, &data, _IOC_SIZE(cmd))) {
 			if (cleanup_handle) {
 				mutex_lock(&client->lock);
+				if (cleanup_handle != ion_handle_get_by_id_nolock(client, data.allocation.handle))
+					IONMSG("ion_ioctl copy_to_user fail, handle not same %p\n", cleanup_handle);
 				user_ion_free_nolock(client, cleanup_handle);
 				ion_handle_put_nolock(cleanup_handle);
 				mutex_unlock(&client->lock);
@@ -1582,7 +1577,6 @@ static int ion_release(struct inode *inode, struct file *file)
 {
 	struct ion_client *client = file->private_data;
 
-	pr_debug("%s: %d\n", __func__, __LINE__);
 	ion_client_destroy(client);
 	return 0;
 }
@@ -1595,7 +1589,6 @@ static int ion_open(struct inode *inode, struct file *file)
 	char debug_name[64];
 	unsigned long long start, end;
 
-	pr_debug("%s: %d\n", __func__, __LINE__);
 	snprintf(debug_name, 64, "%u", task_pid_nr(current->group_leader));
 	start = sched_clock();
 	client = ion_client_create(dev, debug_name);

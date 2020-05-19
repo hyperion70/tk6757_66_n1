@@ -332,6 +332,7 @@ static ssize_t gadget_dev_desc_UDC_store(struct config_item *item,
 		ret = unregister_gadget(gi);
 		if (ret)
 			goto err;
+		kfree(name);
 	} else {
 		if (gi->udc_name) {
 			ret = -EBUSY;
@@ -1486,17 +1487,11 @@ static void android_work(struct work_struct *data)
 	char *disconnected[2] = { "USB_STATE=DISCONNECTED", NULL };
 	char *connected[2]    = { "USB_STATE=CONNECTED", NULL };
 	char *configured[2]   = { "USB_STATE=CONFIGURED", NULL };
-	/* Add for HW/SW connect */
-	char *hwdisconnected[2] = { "USB_STATE=HWDISCONNECTED", NULL };
 
-	/* 0-connected 1-configured 2-disconnected 3-is_hwconnected*/
-	bool status[4] = { false, false, false, false };
+	/* 0-connected 1-configured 2-disconnected */
+	bool status[3] = { false, false, false};
 	unsigned long flags;
 	bool uevent_sent = false;
-
-	/* be aware this could not be used in non-sleep context */
-	if (!usb_cable_connected())
-		status[3] = true;
 
 	spin_lock_irqsave(&cdev->lock, flags);
 	if (cdev->config)
@@ -1529,13 +1524,6 @@ static void android_work(struct work_struct *data)
 		kobject_uevent_env(&android_device->kobj,
 					KOBJ_CHANGE, disconnected);
 		pr_info("%s: sent uevent %s\n", __func__, disconnected[0]);
-		uevent_sent = true;
-	}
-
-	if (status[3]) {
-		kobject_uevent_env(&android_device->kobj,
-					KOBJ_CHANGE, hwdisconnected);
-		pr_info("%s: sent uevent %s\n", __func__, hwdisconnected[0]);
 		uevent_sent = true;
 	}
 
@@ -1649,7 +1637,10 @@ static void android_disconnect(struct usb_gadget *gadget)
 	acc_disconnect();
 #endif
 	gi->connected = 0;
-	schedule_work(&gi->work);
+	if (strstr(current->comm, "init") && !in_interrupt())
+		pr_notice("%s, skip work\n", __func__);
+	else
+		schedule_work(&gi->work);
 	composite_disconnect(gadget);
 }
 #endif

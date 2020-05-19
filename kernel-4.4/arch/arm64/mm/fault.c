@@ -178,9 +178,6 @@ static void __do_user_fault(struct task_struct *tsk, unsigned long addr,
 {
 	struct siginfo si;
 
-	if (!mem_fault_debug_hook(regs))
-		return;
-
 	if (unhandled_signal(tsk, sig) && show_unhandled_signals_ratelimited()) {
 		pr_info("%s[%d]: unhandled %s (%d) at 0x%08lx, esr 0x%03x\n",
 			tsk->comm, task_pid_nr(tsk), fault_name(esr), sig,
@@ -476,6 +473,14 @@ static int do_bad(unsigned long addr, unsigned int esr, struct pt_regs *regs)
 	return 1;
 }
 
+#ifdef CONFIG_MACH_MT6771
+int     do_tlb_retry(unsigned long addr, unsigned int esr, struct pt_regs *regs)
+{
+	flush_tlb_all();
+	return 0;
+}
+#endif
+
 static struct fault_info {
 	int	(*fn)(unsigned long addr, unsigned int esr, struct pt_regs *regs);
 	int	sig;
@@ -530,7 +535,11 @@ static struct fault_info {
 	{ do_bad,		SIGBUS,  0,		"unknown 45"			},
 	{ do_bad,		SIGBUS,  0,		"unknown 46"			},
 	{ do_bad,		SIGBUS,  0,		"unknown 47"			},
+#ifdef CONFIG_MACH_MT6771
+	{ do_tlb_retry,		SIGBUS,  0,		">> TLB conflict abort ex"	},
+#else
 	{ do_bad,		SIGBUS,  0,		"TLB conflict abort"		},
+#endif
 	{ do_bad,		SIGBUS,  0,		"unknown 49"			},
 	{ do_bad,		SIGBUS,  0,		"unknown 50"			},
 	{ do_bad,		SIGBUS,  0,		"unknown 51"			},

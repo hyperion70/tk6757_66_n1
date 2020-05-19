@@ -46,6 +46,7 @@
 #include <linux/oom.h>
 #include <linux/prefetch.h>
 #include <linux/printk.h>
+#include <linux/debugfs.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -220,6 +221,41 @@ static unsigned long get_lru_size(struct lruvec *lruvec, enum lru_list lru)
 	return zone_page_state(lruvec_zone(lruvec), NR_LRU_BASE + lru);
 }
 
+struct dentry *debug_file;
+
+static int debug_shrinker_show(struct seq_file *s, void *unused)
+{
+	struct shrinker *shrinker;
+	struct shrink_control sc;
+
+	sc.gfp_mask = -1;
+	sc.nr_to_scan = 0;
+	sc.nid = 0;
+	sc.memcg = 0;
+
+	down_read(&shrinker_rwsem);
+	list_for_each_entry(shrinker, &shrinker_list, list) {
+		int num_objs;
+
+		num_objs = shrinker->count_objects(shrinker, &sc);
+		seq_printf(s, "%pf %d\n", shrinker->scan_objects, num_objs);
+	}
+	up_read(&shrinker_rwsem);
+	return 0;
+}
+
+static int debug_shrinker_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, debug_shrinker_show, inode->i_private);
+}
+
+static const struct file_operations debug_shrinker_fops = {
+	.open = debug_shrinker_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
 /*
  * Add a shrinker callback to be called from the vm.
  */
@@ -249,15 +285,27 @@ int register_shrinker(struct shrinker *shrinker)
 }
 EXPORT_SYMBOL(register_shrinker);
 
+static int __init add_shrinker_debug(void)
+{
+	debugfs_create_file("shrinker", 0644, NULL, NULL,
+			    &debug_shrinker_fops);
+	return 0;
+}
+
+late_initcall(add_shrinker_debug);
+
 /*
  * Remove one
  */
 void unregister_shrinker(struct shrinker *shrinker)
 {
+	if (!shrinker->nr_deferred)
+		return;
 	down_write(&shrinker_rwsem);
 	list_del(&shrinker->list);
 	up_write(&shrinker_rwsem);
 	kfree(shrinker->nr_deferred);
+	shrinker->nr_deferred = NULL;
 }
 EXPORT_SYMBOL(unregister_shrinker);
 
@@ -296,8 +344,14 @@ static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 	do_div(delta, nr_eligible + 1);
 	total_scan += delta;
 	if (total_scan < 0) {
+#if BITS_PER_LONG == 64
 		pr_err("shrink_slab: %pF negative objects to delete nr=%ld\n",
 		       shrinker->scan_objects, total_scan);
+#else
+		pr_info_ratelimited("shrink_slab: %pF negative objects to delete nr=%ld delta=%llu nr_scanned=%lu nr_eligible=%lu nr_deferred=%ld\n",
+				    shrinker->scan_objects, total_scan,
+				    delta, nr_scanned, nr_eligible, nr);
+#endif
 		total_scan = freeable;
 		next_deferred = nr;
 	} else
@@ -1309,6 +1363,7 @@ int __isolate_lru_page(struct page *page, isolate_mode_t mode)
 
 		if (PageDirty(page)) {
 			struct address_space *mapping;
+			bool migrate_dirty;
 
 			/* ISOLATE_CLEAN means only clean pages */
 			if (mode & ISOLATE_CLEAN)
@@ -1317,10 +1372,19 @@ int __isolate_lru_page(struct page *page, isolate_mode_t mode)
 			/*
 			 * Only pages without mappings or that have a
 			 * ->migratepage callback are possible to migrate
-			 * without blocking
+			 * without blocking. However, we can be racing with
+			 * truncation so it's necessary to lock the page
+			 * to stabilise the mapping as truncation holds
+			 * the page lock until after the page is removed
+			 * from the page cache.
 			 */
+			if (!trylock_page(page))
+				return ret;
+
 			mapping = page_mapping(page);
-			if (mapping && !mapping->a_ops->migratepage)
+			migrate_dirty = !mapping || mapping->a_ops->migratepage;
+			unlock_page(page);
+			if (!migrate_dirty)
 				return ret;
 		}
 	}
@@ -1966,6 +2030,53 @@ static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
 	return shrink_inactive_list(nr_to_scan, lruvec, sc, lru);
 }
 
+#ifdef CONFIG_MTK_GMO_RAM_OPTIMIZE
+/* threshold of swapin and out */
+static unsigned int swpinout_threshold = 12000;
+module_param_named(threshold, swpinout_threshold, uint, S_IRUGO | S_IWUSR);
+static bool swap_is_allowed(void)
+{
+	static unsigned long prev_time, last_thrashing_time;
+	static unsigned long prev_swpinout;
+	static bool no_thrashing = true;
+	int cpu;
+	unsigned long swpinout = 0;
+
+	if (prev_time == 0)
+		prev_time = jiffies;
+
+	/* take 1s break */
+	if (!no_thrashing && time_before(jiffies, last_thrashing_time + HZ))
+		return false;
+
+	/* detect at 8Hz */
+	if (time_after(jiffies, prev_time + (HZ >> 3))) {
+		for_each_online_cpu(cpu) {
+			struct vm_event_state *this = &per_cpu(vm_event_states, cpu);
+
+			swpinout += this->event[PSWPIN] + this->event[PSWPOUT];
+		}
+
+		if (((swpinout - prev_swpinout) * HZ /
+		    (jiffies - prev_time + 1)) > swpinout_threshold) {
+			last_thrashing_time = jiffies;
+			no_thrashing = false;
+		} else {
+			no_thrashing = true;
+		}
+
+		prev_swpinout = swpinout;
+		prev_time = jiffies;
+	}
+
+	/* Only kswapd is allowed to do more jobs */
+	if (!current_is_kswapd())
+		return false;
+
+	return no_thrashing;
+}
+#endif
+
 enum scan_balance {
 	SCAN_EQUAL,
 	SCAN_FRACT,
@@ -2070,10 +2181,16 @@ static void get_scan_count(struct lruvec *lruvec, int swappiness,
 	}
 
 	/*
-	 * There is enough inactive page cache, do not reclaim
-	 * anything from the anonymous working set right now.
+	 * If there is enough inactive page cache, i.e. if the size of the
+	 * inactive list is greater than that of the active list *and* the
+	 * inactive list actually has some pages to scan on this priority, we
+	 * do not reclaim anything from the anonymous working set right now.
+	 * Without the second condition we could end up never scanning an
+	 * lruvec even if it has plenty of old anonymous pages unless the
+	 * system is under heavy pressure.
 	 */
-	if (!inactive_file_is_low(lruvec)) {
+	if (!inactive_file_is_low(lruvec) &&
+	    get_lru_size(lruvec, LRU_INACTIVE_FILE) >> sc->priority) {
 		scan_balance = SCAN_FILE;
 		goto out;
 	}
@@ -2304,6 +2421,16 @@ static inline void init_tlb_ubc(void)
 }
 #endif /* CONFIG_ARCH_WANT_BATCHED_UNMAP_TLB_FLUSH */
 
+#ifdef CONFIG_MTK_GMO_RAM_OPTIMIZE
+/*
+ * When the length of inactive lru is smaller than 256(SWAP_CLUSTER_MAX << 3),
+ * there is high risk to suffer from congestion wait.
+ * For low-ram device, this value is suggested to be higher than 4 to keep away
+ * from above situation while we have smaller VM scanning priority(sc->priority).
+ */
+static int scan_anon_priority = 4;
+module_param_named(scan_anon_prio, scan_anon_priority, int, 0644);
+#endif
 /*
  * This is a basic per-zone page freer.  Used by both kswapd and direct reclaim.
  */
@@ -2324,9 +2451,32 @@ static void shrink_lruvec(struct lruvec *lruvec, int swappiness,
 	/* Record the original scan target for proportional adjustments later */
 	memcpy(targets, nr, sizeof(nr));
 
+#ifdef CONFIG_MTK_GMO_RAM_OPTIMIZE
+	/*
+	 * sc->priority: 12, 11, 10,  9
+	 * (4)    shift:  4,  3,  2,  1
+	 *           nr:  2,  4,  8, 16
+	 * (5)    shift:  5,  4,  3,  2
+	 *           nr:  1,  2,  4,  8
+	 * (3)    shift:  3,  2,  1,  0
+	 *           nr:  4,  8, 16, 32
+	 */
+	if (swap_is_allowed() && sc->priority > 8 &&
+			nr[LRU_INACTIVE_ANON] == 0) {
+		int shift = scan_anon_priority - DEF_PRIORITY + sc->priority;
+
+		if (shift >= 0)
+			nr[LRU_INACTIVE_ANON] = SWAP_CLUSTER_MAX >> shift;
+		else
+			nr[LRU_INACTIVE_ANON] = 1;
+
+		nr[LRU_ACTIVE_ANON] = nr[LRU_INACTIVE_ANON];
+	}
+#else
 	/* Give a chance to migrate anon pages */
 	if (IS_ENABLED(CONFIG_ZONE_MOVABLE_CMA) && nr[LRU_INACTIVE_ANON] == 0)
-		nr[LRU_INACTIVE_ANON] = SWAP_CLUSTER_MAX;
+		nr[LRU_INACTIVE_ANON] = 1UL;
+#endif
 
 	/*
 	 * Global reclaiming within direct reclaim at DEF_PRIORITY is a normal
@@ -4015,7 +4165,13 @@ int zone_reclaim(struct zone *zone, gfp_t gfp_mask, unsigned int order)
  */
 int page_evictable(struct page *page)
 {
-	return !mapping_unevictable(page_mapping(page)) && !PageMlocked(page);
+	int ret;
+
+	/* Prevent address_space of inode and swap cache from being freed */
+	rcu_read_lock();
+	ret = !mapping_unevictable(page_mapping(page)) && !PageMlocked(page);
+	rcu_read_unlock();
+	return ret;
 }
 
 #ifdef CONFIG_SHMEM

@@ -207,7 +207,7 @@ int mtk_idle_power(int idle_state, int cpu, void *argu, int sd_level)
 {
 	int energy_cost = 0;
 	struct sched_domain *sd;
-	const struct sched_group_energy *sge, *_sge, *sge_core, *sge_clus;
+	const struct sched_group_energy *_sge, *sge_core, *sge_clus;
 #ifdef CONFIG_ARM64
 	int cid = cpu_topology[cpu].cluster_id;
 #else
@@ -238,9 +238,7 @@ int mtk_idle_power(int idle_state, int cpu, void *argu, int sd_level)
 				co_buck_cid, eenv->opp_idx[co_buck_cid]);
 	}
 
-	sge = sd->groups->sge;
-
-	sge = _sge = sge_core = sge_clus = NULL;
+	_sge = sge_core = sge_clus = NULL;
 
 	/* To handle only 1 CPU in cluster by HPS */
 	if (unlikely(!sd->child && (rcu_dereference(per_cpu(sd_scs, cpu)) == NULL))) {
@@ -255,67 +253,28 @@ int mtk_idle_power(int idle_state, int cpu, void *argu, int sd_level)
 			_sge = cpu_cluster_energy(cpu); /* for cluster */
 	}
 
-	/* [DEBUG ] wfi always??? */
 	idle_state = 0;
 
-	switch (idle_state) {
-	case 0: /* active idle: WFI */
-		if (only_lv1) {
-			/* idle: core->leask_power + cluster->lkg_pwr */
-			energy_cost = sge_core->cap_states[cap_idx].lkg_pwr[sge_core->lkg_idx] +
-			sge_clus->cap_states[cap_idx].lkg_pwr[sge_clus->lkg_idx];
-
-			mt_sched_printf(sched_eas_energy_calc,
-				"%s: %s lv=%d tlb_cpu[%d].leak=%d tlb_clu[%d].leak=%d total=%d",
-				__func__, "WFI", sd_level,
-				cap_idx, sge_core->cap_states[cap_idx].lkg_pwr[sge_core->lkg_idx],
-				cap_idx, sge_clus->cap_states[cap_idx].lkg_pwr[sge_clus->lkg_idx],
-				energy_cost);
-		} else {
-			energy_cost = _sge->cap_states[cap_idx].lkg_pwr[_sge->lkg_idx];
-
-			mt_sched_printf(sched_eas_energy_calc,
-				"%s: %s lv=%d tlb[%d].leak=%d total=%d",
-				__func__, "WFI", sd_level,
-				cap_idx, _sge->cap_states[cap_idx].lkg_pwr[_sge->lkg_idx],
-				energy_cost);
-		}
-
-	break;
-	case 6: /* SPARK: */
-		if (only_lv1) {
-			/* idle: core->idle_power[spark] + cluster->idle_power[spark] */
-			energy_cost = sge_core->idle_states[idle_state].power +
-				sge_clus->idle_states[idle_state].power;
-
-			mt_sched_printf(sched_eas_energy_calc,
-				"%s: %s lv=%d idle_cpu[%d].power=%ld idle_clu[%d].power=(%ld) total=%d",
-				__func__, "SPARK", sd_level,
-				idle_state, sge_core->idle_states[idle_state].power,
-				idle_state, sge_clus->idle_states[idle_state].power,
-				energy_cost);
-		} else {
-			energy_cost = _sge->idle_states[idle_state].power;
-			mt_sched_printf(sched_eas_energy_calc,
-				"%s: %s lv=%d idle[%d].power=(%ld) total=%d",
-				__func__, "SPARK", sd_level,
-				idle_state, _sge->idle_states[idle_state].power,
-				energy_cost);
-		}
-
-	break;
-	case 4: /* MCDI: */
-		energy_cost = 0;
+	/* active idle: WFI */
+	if (only_lv1) {
+		/* idle: core->leask_power + cluster->lkg_pwr */
+		energy_cost = sge_core->cap_states[cap_idx].lkg_pwr[sge_core->lkg_idx] +
+		sge_clus->cap_states[cap_idx].lkg_pwr[sge_clus->lkg_idx];
 
 		mt_sched_printf(sched_eas_energy_calc,
-			"%s: %s idle:%d total=%d", __func__, "MCDI",
-			idle_state, energy_cost);
-	break;
-	default: /* SODI, deep_idle: */
-		energy_cost = 0;
+			"%s: %s lv=%d tlb_cpu[%d].leak=%d tlb_clu[%d].leak=%d total=%d",
+			__func__, "WFI", sd_level,
+			cap_idx, sge_core->cap_states[cap_idx].lkg_pwr[sge_core->lkg_idx],
+			cap_idx, sge_clus->cap_states[cap_idx].lkg_pwr[sge_clus->lkg_idx],
+			energy_cost);
+	} else {
+		energy_cost = _sge->cap_states[cap_idx].lkg_pwr[_sge->lkg_idx];
 
-		mt_sched_printf(sched_eas_energy_calc, "%s: unknown idle state=%d\n", __func__,  idle_state);
-	break;
+		mt_sched_printf(sched_eas_energy_calc,
+			"%s: %s lv=%d tlb[%d].leak=%d total=%d",
+			__func__, "WFI", sd_level,
+			cap_idx, _sge->cap_states[cap_idx].lkg_pwr[_sge->lkg_idx],
+			energy_cost);
 	}
 
 	return energy_cost;
@@ -326,7 +285,6 @@ int mtk_busy_power(int cpu, void *argu, int sd_level)
 {
 	struct energy_env *eenv = (struct energy_env *)argu;
 	struct sched_domain *sd = rcu_dereference_check_sched_domain(cpu_rq(cpu)->sd);
-	const struct sched_group_energy *sge;
 	int energy_cost = 0;
 #ifdef CONFIG_ARM64
 	int cid = cpu_topology[cpu].cluster_id;
@@ -345,8 +303,6 @@ int mtk_busy_power(int cpu, void *argu, int sd_level)
 	/* [FIXME] racing with hotplug */
 	if (cap_idx == -1)
 		return 0;
-
-	sge = sd->groups->sge;
 
 	if (is_share_buck(cid, &co_buck_cid)) {
 

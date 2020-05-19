@@ -56,12 +56,12 @@
 
 #ifdef  GF_DEBUG
 #define gf_print(fmt, args...) do { \
-					printk(KERN_ERR"gx556:" fmt, ##args);\
+					printk(KERN_ERR"Fingerprint gx556:" fmt, ##args);\
 		} while (0)
 
 //#define gf_print(args...) printk(KERN_ERR "gf_spi:" ##args)
-#define FUNC_ENTRY()  printk(KERN_ERR "gx556:%s, entry\n", __func__)
-#define FUNC_EXIT()  printk(KERN_ERR "gx556:%s, exit\n", __func__)
+#define FUNC_ENTRY()  printk(KERN_ERR "Fingerprint gx556:%s, entry\n", __func__)
+#define FUNC_EXIT()  printk(KERN_ERR "Fingerprint gx556:%s, exit\n", __func__)
 #else
 #define gf_print(fmt, args...)
 #define FUNC_ENTRY()

@@ -90,6 +90,7 @@ config MTK_GMO_RAM_OPTIMIZE
 	default n
 	select MTK_ENABLE_GMO
 	select MTK_ENABLE_AGO
+	select DM_ANDROID_VERITY_AT_MOST_ONCE_DEFAULT_ENABLED
 	help
 	  Provide for phone to use memory efficiently.
 
@@ -112,10 +113,26 @@ config MTK_ENABLE_AGO
 	select ZRAM_LZ4_COMPRESS
 	select MEMCG
 	select MEMCG_SWAP
+	select HZ_300
+	select UID_CPUTIME
+	select SDCARD_FS
+	select F2FS_FS
+	select F2FS_FS_SECURITY
+	select F2FS_FS_ENCRYPTION
+	select DM_ANDROID_VERITY_AT_MOST_ONCE_DEFAULT_ENABLED
 	---help---
 	Enable/Disable GMO related feautre
 	Do not use this options in Kernel directly
 	this is a group kernel setting of AGO
+
+config ANDROID_VSOC
+	tristate "Android Virtual SoC support"
+	default n
+	depends on PCI_MSI
+	---help---
+	  This option adds support for the Virtual SoC driver needed to boot
+	  a 'cuttlefish' Android image inside QEmu. The driver interacts with
+	  a QEmu ivshmem device. If built as a module, it will be called vsoc.
 
 source "drivers/staging/android/ion/Kconfig"
 

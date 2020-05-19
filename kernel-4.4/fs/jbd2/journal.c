@@ -50,6 +50,8 @@
 #include <asm/uaccess.h>
 #include <asm/page.h>
 
+#include <mt-plat/mtk_io_boost.h>
+
 #ifdef CONFIG_JBD2_DEBUG
 ushort jbd2_journal_enable_debug __read_mostly;
 EXPORT_SYMBOL(jbd2_journal_enable_debug);
@@ -185,7 +187,6 @@ static void commit_timeout(unsigned long __data)
  *    the disk.  Flushing these old buffers to reclaim space in the log is
  *    known as checkpointing, and this thread is responsible for that job.
  */
-
 static int kjournald2(void *arg)
 {
 	journal_t *journal = arg;
@@ -204,12 +205,15 @@ static int kjournald2(void *arg)
 	journal->j_task = current;
 	wake_up(&journal->j_wait_done_commit);
 
+	mtk_iobst_register_tid(current->pid);
+
 	/*
 	 * And now, wait forever for commit wakeup events.
 	 */
 	write_lock(&journal->j_state_lock);
 
 loop:
+
 	if (journal->j_flags & JBD2_UNMOUNT)
 		goto end_loop;
 
@@ -220,6 +224,7 @@ loop:
 		jbd_debug(1, "OK, requests differ\n");
 		write_unlock(&journal->j_state_lock);
 		del_timer_sync(&journal->j_commit_timer);
+
 		jbd2_journal_commit_transaction(journal);
 		write_lock(&journal->j_state_lock);
 		goto loop;
@@ -275,11 +280,11 @@ loop:
 	goto loop;
 
 end_loop:
-	write_unlock(&journal->j_state_lock);
 	del_timer_sync(&journal->j_commit_timer);
 	journal->j_task = NULL;
 	wake_up(&journal->j_wait_done_commit);
 	jbd_debug(1, "Journal thread exiting.\n");
+	write_unlock(&journal->j_state_lock);
 	return 0;
 }
 
@@ -334,7 +339,7 @@ static void journal_kill_thread(journal_t *journal)
  * IO is in progress. do_get_write_access() handles this.
  *
  * The function returns a pointer to the buffer_head to be used for IO.
- * 
+ *
  *
  * Return value:
  *  <0: Error
@@ -523,7 +528,7 @@ int __jbd2_log_start_commit(journal_t *journal, tid_t target)
 		WARN_ONCE(1, "JBD2: bad log_start_commit: %u %u %u %u\n",
 			  journal->j_commit_request,
 			  journal->j_commit_sequence,
-			  target, journal->j_running_transaction ? 
+			  target, journal->j_running_transaction ?
 			  journal->j_running_transaction->t_tid : 0);
 	return 0;
 }
@@ -914,7 +919,7 @@ out:
 }
 
 /*
- * This is a variaon of __jbd2_update_log_tail which checks for validity of
+ * This is a variation of __jbd2_update_log_tail which checks for validity of
  * provided log tail and locks j_checkpoint_mutex. So it is safe against races
  * with other threads updating log tail.
  */
@@ -1383,6 +1388,9 @@ int jbd2_journal_update_sb_log_tail(journal_t *journal, tid_t tail_tid,
 {
 	journal_superblock_t *sb = journal->j_superblock;
 	int ret;
+
+	if (is_journal_aborted(journal))
+		return -EIO;
 
 	BUG_ON(!mutex_is_locked(&journal->j_checkpoint_mutex));
 	jbd_debug(1, "JBD2: updating superblock (start %lu, seq %u)\n",

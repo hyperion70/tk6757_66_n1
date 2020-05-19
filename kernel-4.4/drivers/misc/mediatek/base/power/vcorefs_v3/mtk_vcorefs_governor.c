@@ -90,6 +90,8 @@ __weak unsigned int get_vcore_ptp_volt(unsigned int seg)
 
 	vcorefs_crit("VCORE TEMP SETTING\n");
 	return value;
+#elif defined(CONFIG_MACH_MT6775)
+	return 0;
 #else
 	vcorefs_crit("NOT SUPPORT VOLTAG BIN\n");
 	return 0;
@@ -358,9 +360,7 @@ EXPORT_SYMBOL(vcorefs_get_curr_ddr);
 
 int vcorefs_get_vcore_by_steps(u32 opp)
 {
-#if defined(CONFIG_MACH_MT6775)
-	return vcore_pmic_to_uv(get_vcore_opp_volt(opp));
-#elif defined(CONFIG_MACH_MT6771)
+#if defined(CONFIG_MACH_MT6775) || defined(CONFIG_MACH_MT6771)
 	return get_vcore_opp_volt(opp);
 #else
 	return vcore_pmic_to_uv(get_vcore_ptp_volt(opp));
@@ -498,6 +498,12 @@ int governor_debug_store(const char *buf)
 			gvrctrl->i_hwpath = !!val;
 #if defined(CONFIG_MACH_MT6771)
 			dvfsrc_hw_policy_mask(gvrctrl->i_hwpath);
+		} else if (!strcmp(cmd, "lt_opp_feature")) {
+			vcorefs_set_lt_opp_feature(!!val);
+		} else if (!strcmp(cmd, "lt_opp_enter_temp")) {
+			vcorefs_set_lt_opp_enter_temp(val);
+		} else if (!strcmp(cmd, "lt_opp_leave_temp")) {
+			vcorefs_set_lt_opp_leave_temp(val);
 #endif
 		} else {
 			r = -EPERM;
@@ -616,6 +622,7 @@ void dvfsrc_force_opp(int opp)
 		level = 1 << (VCORE_DVFS_OPP_NUM - opp - 1);
 		writel((readl(DVFSRC_FORCE) & 0xFFFF0000) | level, DVFSRC_FORCE);
 		writel(readl(DVFSRC_BASIC_CONTROL) | (1 << 15), DVFSRC_BASIC_CONTROL);
+		writel(readl(DVFSRC_FORCE) & 0xFFFF0000, DVFSRC_FORCE);
 	}
 }
 #endif
@@ -626,7 +633,7 @@ int qos_ipi_to_sspm_command(void *buffer, int slot)
 {
 	int ack_data;
 
-	return sspm_ipi_send_sync(IPI_ID_QOS, IPI_OPT_DEFAUT, buffer, slot, &ack_data, 1);
+	return sspm_ipi_send_sync(IPI_ID_QOS, IPI_OPT_POLLING, buffer, slot, &ack_data, 1);
 }
 
 void dvfsrc_update_sspm_vcore_opp_table(int opp, unsigned int vcore_uv)

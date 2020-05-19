@@ -59,7 +59,7 @@ static int memblock_can_resize __initdata_memblock;
 static int memblock_memory_in_slab __initdata_memblock = 0;
 static int memblock_reserved_in_slab __initdata_memblock = 0;
 
-#ifdef CONFIG_MTK_MEMCFG
+#if defined(CONFIG_MTK_MEMCFG) && defined(CONFIG_MTK_ENG_BUILD)
 struct memblock_record memblock_record[MAX_MEMBLOCK_RECORD];
 struct memblock_stack_trace memblock_stack_trace[MAX_MEMBLOCK_RECORD];
 int memblock_reserve_count;
@@ -259,8 +259,7 @@ phys_addr_t __init_memblock memblock_find_in_range_node(phys_addr_t size,
 		 * so we use WARN_ONCE() here to see the stack trace if
 		 * fail happens.
 		 */
-		WARN_ONCE(1, "memblock: bottom-up allocation failed, "
-			     "memory hotunplug may be affected\n");
+		WARN_ONCE(1, "memblock: bottom-up allocation failed, memory hotunplug may be affected\n");
 	}
 
 	return __memblock_find_range_top_down(start, end, size, align, nid,
@@ -769,7 +768,7 @@ static int __init_memblock memblock_reserve_region(phys_addr_t base,
 		     (unsigned long long)base + size - 1,
 		     flags, (void *)_RET_IP_);
 
-#ifdef CONFIG_MTK_MEMCFG
+#if defined(CONFIG_MTK_MEMCFG) && defined(CONFIG_MTK_ENG_BUILD)
 	if (memblock_reserve_count < MAX_MEMBLOCK_RECORD) {
 		struct stack_trace trace;
 

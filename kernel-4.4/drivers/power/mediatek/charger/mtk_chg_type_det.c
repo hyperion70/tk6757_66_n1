@@ -49,8 +49,13 @@
 
 #include "mtk_charger_intf.h"
 
+void __attribute__((weak)) fg_charger_in_handler(void)
+{
+	pr_notice("%s not defined\n", __func__);
+}
 
-static CHARGER_TYPE g_chr_type;
+static enum charger_type g_chr_type;
+static bool ignore_usb;
 
 #ifdef CONFIG_MTK_FPGA
 /*****************************************************************************
@@ -78,7 +83,7 @@ static const char * const mtk_chg_type_name[] = {
 	"Wireless Charger",
 };
 
-static void dump_charger_name(CHARGER_TYPE type)
+static void dump_charger_name(enum charger_type type)
 {
 	switch (type) {
 	case CHARGER_UNKNOWN:
@@ -115,7 +120,7 @@ struct mt_charger {
 	struct power_supply_config usb_cfg;
 	struct power_supply *usb_psy;
 	bool chg_online; /* Has charger in or not */
-	CHARGER_TYPE chg_type;
+	enum charger_type chg_type;
 };
 
 static int mt_charger_online(struct mt_charger *mtk_chg)
@@ -187,12 +192,15 @@ static int mt_charger_set_property(struct power_supply *psy,
 
 	dump_charger_name(mtk_chg->chg_type);
 
-	/* usb */
-	if ((mtk_chg->chg_type == STANDARD_HOST) ||
-		(mtk_chg->chg_type == CHARGING_HOST))
-		mt_usb_connect();
-	else
-		mt_usb_disconnect();
+	if (!ignore_usb) {
+		/* usb */
+		if ((mtk_chg->chg_type == STANDARD_HOST) ||
+			(mtk_chg->chg_type == CHARGING_HOST) ||
+			(mtk_chg->chg_type == NONSTANDARD_CHARGER))
+			mt_usb_connect();
+		else
+			mt_usb_disconnect();
+	}
 
 	mtk_charger_int_handler();
 	fg_charger_in_handler();
@@ -240,14 +248,10 @@ static int mt_usb_get_property(struct power_supply *psy,
 			val->intval = 0;
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		val->intval = 5000000;
-		break;
-	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		val->intval = 500000;
 		break;
-	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
-		val->intval = battery_get_bat_soc();
-		/* return bat soc */
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+		val->intval = 5000000;
 		break;
 	default:
 		return -EINVAL;
@@ -257,7 +261,7 @@ static int mt_usb_get_property(struct power_supply *psy,
 }
 
 static enum power_supply_property mt_charger_properties[] = {
-	POWER_SUPPLY_PROP_CHARGE_TYPE,
+	POWER_SUPPLY_PROP_ONLINE,
 };
 
 static enum power_supply_property mt_ac_properties[] = {
@@ -268,7 +272,6 @@ static enum power_supply_property mt_usb_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
-	POWER_SUPPLY_PROP_CHARGE_COUNTER
 };
 
 static int mt_charger_probe(struct platform_device *pdev)
@@ -414,9 +417,14 @@ bool pmic_chrdet_status(void)
 	return false;
 }
 
-CHARGER_TYPE mt_get_charger_type(void)
+enum charger_type mt_get_charger_type(void)
 {
 	return g_chr_type;
+}
+
+void charger_ignore_usb(bool ignore)
+{
+	ignore_usb = ignore;
 }
 
 static s32 __init mt_charger_det_init(void)

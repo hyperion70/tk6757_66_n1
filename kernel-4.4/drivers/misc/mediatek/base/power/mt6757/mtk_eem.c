@@ -666,7 +666,6 @@ static unsigned int ctrl_ITurb, ITurboRun;
 #endif
 
 
-static struct eem_devinfo eem_devinfo;
 /* static unsigned int eem_level;  debug info */
 
 #ifdef __KERNEL__
@@ -1189,6 +1188,7 @@ struct eem_devinfo {
 	unsigned int RESERVED:16;
 
 };
+static struct eem_devinfo eem_devinfo;
 
 /*=============================================================
  *Local variable definition

@@ -256,6 +256,8 @@ enum dvfs_time_profile {
 
 extern int _search_available_freq_idx(struct mt_cpu_dvfs *p, unsigned int target_khz,
 	unsigned int relation);
+extern int _search_available_freq_idx_under_v(struct mt_cpu_dvfs *p,
+	unsigned int volt);
 extern void _mt_cpufreq_dvfs_request_wrapper(struct mt_cpu_dvfs *p, int new_opp_idx,
 	enum mt_cpu_dvfs_action_id action, void *data);
 extern int set_cur_volt_wrapper(struct mt_cpu_dvfs *p, unsigned int volt);
@@ -282,6 +284,10 @@ extern int is_in_suspend(void);
 
 extern int cpufreq_procfs_init(void);
 extern char *_copy_from_user_for_proc(const char __user *buffer, size_t count);
+
+#ifdef CONFIG_MACH_MT6763
+extern void check_cm_mgr_status(unsigned int freq_idx, unsigned int cluster);
+#endif
 
 /* SRAM debugging*/
 extern void aee_rr_rec_cpu_dvfs_vproc_big(u8 val);

@@ -466,7 +466,10 @@ int mtk_wcn_btif_dbg_ctrl(unsigned long u_id, ENUM_BTIF_DBG_ID flag)
 		}
 		break;
 	case BTIF_DUMP_BTIF_REG:
-		 /*TBD*/ btif_dump_reg(p_btif);
+		btif_dump_reg(p_btif, REG_ALL);
+		break;
+	case BTIF_DUMP_BTIF_IRQ:
+		btif_dump_reg(p_btif, REG_IRQ);
 		break;
 	case BTIF_ENABLE_RT_LOG:
 		BTIF_INFO_FUNC
@@ -629,7 +632,10 @@ int btif_dbg_ctrl_no_id(ENUM_BTIF_DBG_ID flag)
 		}
 		break;
 	case BTIF_DUMP_BTIF_REG:
-		 /*TBD*/ btif_dump_reg(p_btif);
+		btif_dump_reg(p_btif, REG_ALL);
+		break;
+	case BTIF_DUMP_BTIF_IRQ:
+		btif_dump_reg(p_btif, REG_IRQ);
 		break;
 	case BTIF_ENABLE_RT_LOG:
 		BTIF_INFO_FUNC
@@ -783,5 +789,58 @@ void mtk_btif_read_cpu_sw_rst_debug_exp(void)
 {
 	mtk_btif_read_cpu_sw_rst_debug();
 }
+
+int mtk_btif_exp_rx_has_pending_data(unsigned long u_id)
+{
+	p_mtk_btif p_btif = NULL;
+	int has_pending_data = 0;
+
+	p_btif = btif_exp_srh_id(u_id);
+	if (p_btif == NULL) {
+		BTIF_ERR_FUNC("parameter invalid\n");
+		return E_BTIF_INVAL_PARAM;
+	}
+
+	/* Lock the data path to ensure that the current data path is
+	 * not processing data
+	 */
+	btif_rx_data_path_lock(p_btif);
+
+	has_pending_data = btif_rx_buf_has_pending_data(p_btif);
+	if (has_pending_data == 0)
+		has_pending_data = btif_rx_dma_has_pending_data(p_btif);
+
+	btif_rx_data_path_unlock(p_btif);
+	return has_pending_data;
+}
+EXPORT_SYMBOL(mtk_btif_exp_rx_has_pending_data);
+
+int mtk_btif_exp_tx_has_pending_data(unsigned long u_id)
+{
+	p_mtk_btif p_btif = NULL;
+
+	p_btif = btif_exp_srh_id(u_id);
+	if (p_btif == NULL) {
+		BTIF_ERR_FUNC("E_BTIF_INVAL_PARAM\n");
+		return E_BTIF_INVAL_PARAM;
+	}
+
+	return btif_tx_dma_has_pending_data(p_btif);
+}
+EXPORT_SYMBOL(mtk_btif_exp_tx_has_pending_data);
+
+struct task_struct *mtk_btif_exp_rx_thread_get(unsigned long u_id)
+{
+	p_mtk_btif p_btif = NULL;
+
+	p_btif = btif_exp_srh_id(u_id);
+	if (p_btif == NULL) {
+		BTIF_ERR_FUNC("E_BTIF_INVAL_PARAM\n");
+		return NULL;
+	}
+
+	return btif_rx_thread_get(p_btif);
+}
+EXPORT_SYMBOL(mtk_btif_exp_rx_thread_get);
 
 /************End of Function**********/

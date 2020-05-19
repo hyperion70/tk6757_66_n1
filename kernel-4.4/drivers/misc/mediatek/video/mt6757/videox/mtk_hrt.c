@@ -816,7 +816,7 @@ static void ext_layer_info_init(struct disp_layer_info *disp_info)
  * 1. consider SIM LARB layout
  * 2. affect the max ovl layer number returned to HWC
  */
-#ifndef LAYERING_SUPPORT_EXT_LAYER_ON_2ND_DISP
+ #ifndef LAYERING_SUPPORT_EXT_LAYER_ON_2ND_DISP
 static int dispatch_ext_layer(struct disp_layer_info *disp_info)
 {
 	int ext_layer_num_on_OVL, ext_layer_num_on_OVL_2L;
@@ -828,7 +828,6 @@ static int dispatch_ext_layer(struct disp_layer_info *disp_info)
 	int layout_layers, prim_layout_layers = 0;
 
 	ext_layer_info_init(disp_info);
-
 	ext_layer_num_on_OVL = ext_layer_num_on_OVL_2L = 0;
 	phy_layer_num_on_OVL = 1;
 	phy_layer_num_on_OVL_2L = 0;
@@ -961,6 +960,7 @@ static int dispatch_ext_layer(struct disp_layer_info *disp_info)
 		is_on_OVL = 1;
 		layout_layers = 0;
 
+
 		for (i = 1 ; i < disp_info->layer_num[disp_idx]; i++) {
 			dst_info = &disp_info->input_config[disp_idx][i];
 			src_info = &disp_info->input_config[disp_idx][i-1];
@@ -991,7 +991,10 @@ static int dispatch_ext_layer(struct disp_layer_info *disp_info)
 			 * 1. if OVL is full, put the current ext layer on OVL_2L and change it to phy layer
 			 * 2. if OVL is not full, put the current ext layer on OVL and change it to phy layer
 			 */
-			 hw_layer_num = (disp_idx == 0) ? PRIMARY_HW_OVL_LAYER_NUM : EXTERNAL_HW_OVL_LAYER_NUM;
+			if (disp_idx == 0)
+				hw_layer_num = PRIMARY_HW_OVL_LAYER_NUM;
+			else
+				hw_layer_num = EXTERNAL_HW_OVL_LAYER_NUM;
 			if (is_on_OVL && (ext_layer_num_on_OVL > DISP_HW_OVL0_EXT_LAYER_NUM)) {
 				if (phy_layer_num_on_OVL > hw_layer_num) {
 					is_on_OVL = 0;
@@ -1016,7 +1019,10 @@ static int dispatch_ext_layer(struct disp_layer_info *disp_info)
 			 * 1. if OVL_2L is full, need to rollback to GPU
 			 * 2. if OVL_2L is not full, put the current ext layer on OVL_2L and change it to phy layer
 			 */
-			 hw_layer_num = (disp_idx == 0) ? PRIMARY_HW_OVL_2L_LAYER_NUM : EXTERNAL_HW_OVL_2L_LAYER_NUM;
+			if (disp_idx == 0)
+				hw_layer_num = PRIMARY_HW_OVL_2L_LAYER_NUM;
+			else
+				hw_layer_num = EXTERNAL_HW_OVL_2L_LAYER_NUM;
 			if (!is_on_OVL && (ext_layer_num_on_OVL_2L > DISP_HW_OVL0_2L_EXT_LAYER_NUM)) {
 				is_ext_layer = 0;
 				++phy_layer_num_on_OVL_2L;
@@ -1030,9 +1036,10 @@ static int dispatch_ext_layer(struct disp_layer_info *disp_info)
 				hw_layer_num = PRIMARY_HW_OVL_2L_LAYER_NUM - 1;
 
 			if (phy_layer_num_on_OVL_2L > hw_layer_num) {
-				layout_layers += (disp_idx == 0) ?
-					PRIMARY_HW_OVL_LAYER_NUM + PRIMARY_HW_OVL_2L_LAYER_NUM :
-					EXTERNAL_HW_OVL_LAYER_NUM + EXTERNAL_HW_OVL_2L_LAYER_NUM;
+				if (disp_idx == 0)
+					layout_layers += PRIMARY_HW_OVL_LAYER_NUM + PRIMARY_HW_OVL_2L_LAYER_NUM;
+				else
+					layout_layers += EXTERNAL_HW_OVL_LAYER_NUM + EXTERNAL_HW_OVL_2L_LAYER_NUM;
 				if (dal_enable && (disp_idx == 0))
 					layout_layers = layout_layers - 1;
 				layout_layers += (ext_layer_num_on_OVL < DISP_HW_OVL0_EXT_LAYER_NUM) ?

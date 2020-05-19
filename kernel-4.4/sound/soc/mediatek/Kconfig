@@ -64,7 +64,7 @@ config SND_SOC_MT8173
 
 config SND_SOC_MT8173_MAX98090
 	tristate "ASoC Audio driver for MT8173 with MAX98090 codec"
-	depends on SND_SOC_MT8173 && I2C
+	depends on SND_SOC_MEDIATEK && I2C
 	select SND_SOC_MAX98090
 	help
 	  This adds ASoC driver for Mediatek MT8173 boards
@@ -96,7 +96,7 @@ config SND_SOC_MT8173_RT5650_RT5514
 
 config SND_SOC_MT8173_RT5650_RT5676
 	tristate "ASoC Audio driver for MT8173 with RT5650 RT5676 codecs"
-	depends on SND_SOC_MT8173 && I2C
+	depends on SND_SOC_MEDIATEK && I2C
 	select SND_SOC_RT5645
 	select SND_SOC_RT5677
 	select SND_SOC_HDMI_CODEC
@@ -229,6 +229,14 @@ config MTK_AUDIO_SCP_SPKPROTECT_SUPPORT
 	  This makes speaker protection processing from dsp side.
 	  The process is done in DSP.
 	  Select Y to enable CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT for DSP playback.
+
+config MTK_VOW_BARGE_IN_SUPPORT
+	bool "Support VOW barge-in"
+	help
+	  Only enable this when we support VOW and barge-in.
+	  This improves the hot word recognition accuracy by
+	  applying echo cancellation to remove speaker output signal.
+	  Select Y to enable CONFIG_MTK_VOW_BARGE_IN_SUPPORT for barge-in feature.
 
 config MT8183_QUERY_PCB_ID_METHOD
 	bool "Queary PCB ID to check ACC mode or DCC mode"

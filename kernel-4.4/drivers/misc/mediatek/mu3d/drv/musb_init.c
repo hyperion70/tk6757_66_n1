@@ -80,9 +80,9 @@ static struct musb_hdrc_config mtu3d_config = {
 	.multipoint = false,
 	/* FIXME:Seems no need */
 	/* .soft_con       = true, */
-	.dma = true,
+	/*.dma = true,*/
 	.num_eps = 9,		/*EP0 ~ EP8 */
-	.dma_channels = 8,
+	/*.dma_channels = 8,*/
 	.ram_bits = 12,
 	.fifo_cfg = mtu3d_cfg,
 	.fifo_cfg_size = ARRAY_SIZE(mtu3d_cfg),
@@ -363,6 +363,7 @@ static inline void mtu3d_u2_common_intr_handler(u32 dwIntrUsbValue)
 		os_writel(U3D_LTSSM_INFO, CLR_DISABLE_CNT);
 		os_printk(K_NOTICE, "w1c, U3D_LTSSM_INFO, CLR_DISABLE_CNT\n");
 #endif
+		trigger_disconnect_check_work();
 	}
 
 	if (dwIntrUsbValue & RESUME_INTR) {

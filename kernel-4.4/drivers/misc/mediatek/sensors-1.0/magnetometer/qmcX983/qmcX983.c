@@ -1311,18 +1311,6 @@ static long qmcX983_compat_ioctl(struct file *file, unsigned int cmd, unsigned l
 
 	switch (cmd) {
 	/* ================================================================ */
-	case COMPAT_QMC_IOCTL_WRITE:
-		err = file->f_op->unlocked_ioctl(file, QMC_IOCTL_WRITE, (unsigned long)arg64);
-		if (err < 0)
-			MSE_ERR("QMC_IOCTL_WRITE execute failed! err = %ld\n", err);
-		break;
-
-	/* ================================================================ */
-	case COMPAT_QMC_IOCTL_READ:
-		err = file->f_op->unlocked_ioctl(file, QMC_IOCTL_READ, (unsigned long)arg64);
-		if (err < 0)
-			MSE_ERR("QMC_IOCTL_READ execute failed! err = %ld\n", err);
-		break;
 
 	case COMPAT_QMCX983_SET_RANGE:
 		err = file->f_op->unlocked_ioctl(file, QMCX983_SET_RANGE, (unsigned long)arg64);
@@ -1348,49 +1336,6 @@ static long qmcX983_compat_ioctl(struct file *file, unsigned int cmd, unsigned l
 		break;
 
 	/* ================================================================ */
-	case COMPAT_QMC_IOCTL_SET_YPR:
-		err = file->f_op->unlocked_ioctl(file, QMC_IOCTL_SET_YPR, (unsigned long)arg64);
-		if (err < 0)
-			MSE_ERR("QMC_IOCTL_SET_YPR execute failed! err = %ld\n", err);
-
-		break;
-
-	/* ================================================================ */
-	case COMPAT_QMC_IOCTL_GET_OPEN_STATUS:
-		err = file->f_op->unlocked_ioctl(file, QMC_IOCTL_GET_OPEN_STATUS, (unsigned long)arg64);
-		if (err < 0)
-			MSE_ERR("QMC_IOCTL_GET_OPEN_STATUS execute failed! err = %ld\n", err);
-
-		break;
-
-	/* ================================================================ */
-	case COMPAT_QMC_IOCTL_GET_CLOSE_STATUS:
-		err = file->f_op->unlocked_ioctl(file, QMC_IOCTL_GET_CLOSE_STATUS, (unsigned long)arg64);
-		if (err < 0)
-			MSE_ERR("QMC_IOCTL_GET_CLOSE_STATUS execute failed! err = %ld\n", err);
-
-		break;
-
-	case COMPAT_QMC_IOC_GET_MFLAG:
-		err = file->f_op->unlocked_ioctl(file, QMC_IOC_GET_MFLAG, (unsigned long)arg64);
-		if (err < 0)
-			MSE_ERR("QMC_IOC_GET_MFLAG execute failed! err = %ld\n", err);
-
-		break;
-
-	case COMPAT_QMC_IOC_GET_OFLAG:
-		err = file->f_op->unlocked_ioctl(file, QMC_IOC_GET_OFLAG, (unsigned long)arg64);
-		if (err < 0)
-			MSE_ERR("QMC_IOC_GET_OFLAG execute failed! err = %ld\n", err);
-
-		break;
-
-	case COMPAT_QMC_IOCTL_GET_DELAY:
-		err = file->f_op->unlocked_ioctl(file, QMC_IOCTL_GET_DELAY, (unsigned long)arg64);
-		if (err < 0)
-			MSE_ERR("QMC_IOCTL_GET_DELAY execute failed! err = %ld\n", err);
-		break;
-
 	case COMPAT_MSENSOR_IOCTL_READ_CHIPINFO:
 		err = file->f_op->unlocked_ioctl(file, MSENSOR_IOCTL_READ_CHIPINFO, (unsigned long)arg64);
 		if (err < 0)

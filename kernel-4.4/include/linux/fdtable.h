@@ -9,6 +9,7 @@
 #include <linux/compiler.h>
 #include <linux/spinlock.h>
 #include <linux/rcupdate.h>
+#include <linux/nospec.h>
 #include <linux/types.h>
 #include <linux/init.h>
 #include <linux/fs.h>
@@ -81,8 +82,10 @@ static inline struct file *__fcheck_files(struct files_struct *files, unsigned i
 {
 	struct fdtable *fdt = rcu_dereference_raw(files->fdt);
 
-	if (fd < fdt->max_fds)
+	if (fd < fdt->max_fds) {
+		fd = array_index_nospec(fd, fdt->max_fds);
 		return rcu_dereference_raw(fdt->fd[fd]);
+	}
 	return NULL;
 }
 
@@ -121,9 +124,7 @@ extern int __close_fd(struct files_struct *files,
 extern struct kmem_cache *files_cachep;
 
 /*N: add fdleak debug log*/
-#define FD_OVER_CHECK
-
-#ifdef FD_OVER_CHECK
+#ifdef CONFIG_MTK_FD_LEAK_DETECT
 extern void fd_show_open_files(pid_t pid, struct files_struct *files, struct fdtable *fdt);
 #endif
 

@@ -495,7 +495,6 @@ config CMA
 config ZONE_MOVABLE_CMA
 	bool "Contiguous Memory Allocator by ZONE_MOVABLE"
 	select CMA
-	select CMA_DEBUG
 	depends on HAVE_MEMBLOCK && MMU && MTK_MEM
 	default y
 	help
@@ -595,6 +594,7 @@ config ZSMALLOC
 	tristate "Memory allocator for compressed pages"
 	depends on MMU
 	default n
+	select PGTABLE_MAPPING if (ARM || ARM64)
 	help
 	  zsmalloc is a slab-based memory allocator designed to store
 	  compressed RAM pages.  zsmalloc uses virtual memory mapping
@@ -653,6 +653,7 @@ config DEFERRED_STRUCT_PAGE_INIT
 	default n
 	depends on ARCH_SUPPORTS_DEFERRED_STRUCT_PAGE_INIT
 	depends on MEMORY_HOTPLUG
+	depends on !NEED_PER_CPU_KM
 	help
 	  Ordinarily all struct pages are initialised during early boot in a
 	  single thread. On very large machines this can take a considerable
@@ -691,5 +692,7 @@ config ZONE_DEVICE
 
 	  If FS_DAX is enabled, then say Y.
 
+config ARCH_HAS_PTE_SPECIAL
+	bool
 config FRAME_VECTOR
 	bool

@@ -151,6 +151,10 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe, __u8 request,
 
 	ret = usb_internal_control_msg(dev, pipe, dr, data, size, timeout);
 
+	/* Linger a bit, prior to the next control message. */
+	if (dev->quirks & USB_QUIRK_DELAY_CTRL_MSG)
+		msleep(200);
+
 	kfree(dr);
 
 	return ret;
@@ -639,6 +643,8 @@ int usb_get_descriptor(struct usb_device *dev, unsigned char type,
 {
 	int i;
 	int result;
+
+	dev_info(&dev->dev, "%s type=%d sz=%d\n", __func__, type, size);
 
 	memset(buf, 0, size);	/* Make sure we parse really received data */
 

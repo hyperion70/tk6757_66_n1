@@ -15,18 +15,20 @@
 #define __CCU_I2C_H__
 
 enum CCU_I2C_CHANNEL {
-	CCU_I2C_CHANNEL_UNDEF = 0x0,
-	CCU_I2C_CHANNEL_MIN = 0x1,
-	CCU_I2C_CHANNEL_MAINCAM = 0x1,
-	CCU_I2C_CHANNEL_SUBCAM = 0x2,
-	CCU_I2C_CHANNEL_MAX = 0x3
+	CCU_I2C_CHANNEL_UNDEF    = 0x0,
+	CCU_I2C_CHANNEL_MIN      = 0x1,
+	CCU_I2C_CHANNEL_MAINCAM  = 0x1,
+	CCU_I2C_CHANNEL_MAINCAM2 = 0x2,
+	CCU_I2C_CHANNEL_MAINCAM3 = 0x3,
+	CCU_I2C_CHANNEL_SUBCAM   = 0x4,
+	CCU_I2C_CHANNEL_MAX      = 0x5
 };
 
 struct ccu_i2c_buf_mva_ioarg {
 	enum CCU_I2C_CHANNEL i2c_controller_id;
 	uint32_t mva;
-	uint32_t pa_h;
-	uint32_t pa_l;
+	uint32_t va_h;
+	uint32_t va_l;
 	uint32_t i2c_id;
 };
 

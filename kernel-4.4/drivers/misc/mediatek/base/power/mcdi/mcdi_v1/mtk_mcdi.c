@@ -191,6 +191,16 @@ static unsigned int cpu_cluster_pwr_stat_map[NF_PWR_STAT_MAP_TYPE][NF_CPU] = {
 		0x0000F,
 		0x0000F,
 		0x0000F
+	},
+	[OTHER_CLUSTER_IDX] = {
+		1,
+		1,
+		1,
+		1,
+		0,
+		0,
+		0,
+		0
 	}
 };
 
@@ -209,10 +219,19 @@ void wakeup_all_cpu(void)
 {
 	int cpu = 0;
 
+	/*
+	 * smp_proccessor_id() will be called in the flow of
+	 * smp_send_reschedule(), hence disable preemtion to
+	 * avoid being scheduled out.
+	 */
+	preempt_disable();
+
 	for (cpu = 0; cpu < NF_CPU; cpu++) {
 		if (cpu_online(cpu))
 			smp_send_reschedule(cpu);
 	}
+
+	preempt_enable();
 }
 
 void wait_until_all_cpu_powered_on(void)
@@ -332,8 +351,11 @@ static ssize_t mcdi_state_write(struct file *filp,
 	} else if (!strncmp(cmd_str, "s_state", sizeof("s_state"))) {
 		set_mcdi_s_state(param);
 		return count;
-	} else if (!strncmp(cmd_str, "buck_off", sizeof("buck_off"))) {
+	} else if (!strncmp(cmd_str, "set_buck_off", sizeof("set_buck_off"))) {
 		set_mcdi_buck_off_mask(param);
+		return count;
+	} else if (!strncmp(cmd_str, "en_buck_off", sizeof("en_buck_off"))) {
+		mcdi_enable_buck_off(param);
 		return count;
 	} else if (!strncmp(cmd_str, "hint", sizeof("hint"))) {
 		system_idle_hint_request(SYSTEM_IDLE_HINT_USER_MCDI_TEST, param != 0);

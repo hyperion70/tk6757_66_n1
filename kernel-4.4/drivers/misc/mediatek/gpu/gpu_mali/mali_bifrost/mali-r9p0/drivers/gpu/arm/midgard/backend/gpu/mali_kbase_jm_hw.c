@@ -1187,9 +1187,10 @@ static void kbasep_reset_timeout_worker(struct work_struct *data)
 	 * assume that anything that is still left on the GPU is stuck there and
 	 * we'll kill it when we reset the GPU */
 
-	if (!silent)
+	if (!silent) {
 		dev_err(kbdev->dev, "Resetting GPU (allowing up to %d ms)",
 								RESET_TIMEOUT);
+	}
 
 	/* Output the state of some interesting registers to help in the
 	 * debugging of GPU resets */
@@ -1224,8 +1225,9 @@ static void kbasep_reset_timeout_worker(struct work_struct *data)
 	kbase_disjoint_state_down(kbdev);
 
 	wake_up(&kbdev->hwaccess.backend.reset_wait);
-	if (!silent)
+	if (!silent) {
 		dev_err(kbdev->dev, "Reset complete");
+	}
 
 	if (js_devdata->nr_contexts_pullable > 0 && !kbdev->poweroff_pending)
 		try_schedule = true;
