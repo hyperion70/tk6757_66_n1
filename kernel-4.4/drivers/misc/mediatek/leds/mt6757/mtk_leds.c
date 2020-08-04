@@ -42,6 +42,8 @@
 #include <mt-plat/met_drv.h>
 #endif
 
+#include "../../pmic/rt5081/inc/rt5081_pmu_rgbled.h"
+
 /* #ifndef CONFIG_BACKLIGHT_SUPPORT_LM3697 */
 #if 0
 static int mtkfb_set_backlight_level(unsigned int level)
@@ -591,7 +593,7 @@ int mt_led_blink_pmic(enum mt65xx_led_pmic pmic_type, struct nled_setting *led)
 	switch (pmic_type) {
 	case MT65XX_LED_PMIC_NLED_ISINK0:
 #if defined(CONFIG_MTK_PMIC_CHIP_MT6355)
-		/* using external chip */
+		rt5081_pmu_set_redled_blink(255, (unsigned long)led->blink_on_time, (unsigned long)led->blink_off_time);
 #else
 		pmic_set_register_value(PMIC_RG_DRV_ISINK0_CK_PDN, 0);
 		pmic_set_register_value(PMIC_RG_DRV_ISINK0_CK_CKSEL, 0);
@@ -605,7 +607,7 @@ int mt_led_blink_pmic(enum mt65xx_led_pmic pmic_type, struct nled_setting *led)
 		break;
 	case MT65XX_LED_PMIC_NLED_ISINK1:
 #if defined(CONFIG_MTK_PMIC_CHIP_MT6355)
-		/* using external chip */
+		rt5081_pmu_set_greenled_blink(255, (unsigned long)led->blink_on_time, (unsigned long)led->blink_off_time);
 #else
 		pmic_set_register_value(PMIC_RG_DRV_ISINK1_CK_PDN, 0);
 		pmic_set_register_value(PMIC_RG_DRV_ISINK1_CK_CKSEL, 0);
@@ -818,7 +820,7 @@ int mt_brightness_set_pmic(enum mt65xx_led_pmic pmic_type, u32 level, u32 div)
 			first_time = false;
 		}
 #if defined(CONFIG_MTK_PMIC_CHIP_MT6355)
-		/* using external chip */
+		rt5081_pmu_set_redled_blink(level, 0, 0);
 #else
 		pmic_set_register_value(PMIC_RG_DRV_32K_CK_PDN, 0x0);	/* Disable power down */
 		pmic_set_register_value(PMIC_RG_DRV_ISINK0_CK_PDN, 0);
@@ -851,7 +853,7 @@ int mt_brightness_set_pmic(enum mt65xx_led_pmic pmic_type, u32 level, u32 div)
 			first_time = false;
 		}
 #if defined(CONFIG_MTK_PMIC_CHIP_MT6355)
-		/* using external chip */
+		rt5081_pmu_set_greenled_blink(level, 0, 0);
 #else
 		pmic_set_register_value(PMIC_RG_DRV_32K_CK_PDN, 0x0);	/* Disable power down */
 		pmic_set_register_value(PMIC_RG_DRV_ISINK1_CK_PDN, 0);

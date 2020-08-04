@@ -32,7 +32,7 @@
  ******************************************************************************/
 #define PFX "[kd_camera_hw]"
 
-/* #define DEBUG_CAMERA_HW_K */
+#define DEBUG_CAMERA_HW_K
 #ifdef DEBUG_CAMERA_HW_K
 #define PK_DBG(fmt, arg...)			pr_debug(PFX fmt, ##arg)
 #define PK_ERR(fmt, arg...)         pr_err(fmt, ##arg)
@@ -113,7 +113,7 @@ PowerCust PowerCustList = {
 		{GPIO_UNSUPPORTED, GPIO_MODE_GPIO, Vol_Low},	/* for SUB_DVDD; */
 		{GPIO_UNSUPPORTED, GPIO_MODE_GPIO, Vol_High},	/* for SUB_DOVDD; */
 		{GPIO_UNSUPPORTED, GPIO_MODE_GPIO, Vol_High},	/* for MAIN2_AVDD; */
-		{GPIO_SUPPORTED, GPIO_MODE_GPIO, Vol_High},	/* for MAIN2_DVDD; */
+		{GPIO_UNSUPPORTED, GPIO_MODE_GPIO, Vol_High},	/* for MAIN2_DVDD; */
 		{GPIO_UNSUPPORTED, GPIO_MODE_GPIO, Vol_High},	/* for MAIN2_DOVDD; */
 		/* {GPIO_SUPPORTED, GPIO_MODE_GPIO, Vol_Low}, */
 	}
@@ -206,9 +206,9 @@ PowerUp PowerOnList = {
 				{AVDD, Vol_2800, 0},
 				{DVDD, Vol_1200, 0},
 				{AFVDD, Vol_2800, 5},
-				{PDN, Vol_Low, 4},
+				{PDN, Vol_Low, 0},
 				{PDN, Vol_High, 0},
-				{RST, Vol_Low, 1},
+				{RST, Vol_Low, 0},
 				{RST, Vol_High, 0},
 			},
 		},
@@ -881,10 +881,11 @@ BOOL hwpoweron(PowerInformation pwInfo, char *mode_name)
 			    GPIO_UNSUPPORTED) {
 				PK_DBG("[CAMERA SENSOR] MAIN2 camera VCAM_D power on");
 				/*vcamd: unsupportable voltage range: 1500000-1210000uV */
-				if (pwInfo.Voltage == Vol_1200) {
-					pwInfo.Voltage = Vol_1220;
-					/* PK_INFO("[CAMERA SENSOR] Main2 camera VCAM_D power 1.2V to 1.21V\n"); */
-				}
+				/*if (pwInfo.Voltage == Vol_1200) {
+				*	pwInfo.Voltage = Vol_1220;
+				*	PK_INFO("[CAMERA SENSOR] Main2 camera VCAM_D power 1.2V to 1.21V\n");
+				* }
+				*/
 				if (_hwPowerOn(MAIN2_DVDD, pwInfo.Voltage) != TRUE) {
 					PK_ERR("[CAMERA SENSOR] Fail to enable digital power2\n");
 					return FALSE;

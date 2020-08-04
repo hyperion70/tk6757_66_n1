@@ -1192,6 +1192,42 @@ static void rt5081_led_enable_dwork_func(struct work_struct *work)
 		dev_err(rgbled_data->dev, "timer update enable bit fail\n");
 }
 
+void rt5081_pmu_set_redled_blink(int level, unsigned long delay_on, unsigned long delay_off)
+{
+	unsigned char led_id = RT5081_PMU_LED1;
+	unsigned char brightness = LED_OFF;
+
+	if (level)
+	{
+		brightness = LED_HALF;
+		rt5081_pmu_set_greenled_blink(0, 0, 0);
+	}
+	if (delay_off == 0)
+		delay_on = 500;
+	rt5081_pmu_led_blink_set(&rt5081_led_classdev[led_id].led_dev, &delay_on, &delay_off);
+	rt5081_led_classdev[led_id].led_dev.brightness = brightness;
+	rt5081_pmu_led_bright_set(&rt5081_led_classdev[led_id].led_dev, brightness);
+}
+EXPORT_SYMBOL(rt5081_pmu_set_redled_blink);
+
+void rt5081_pmu_set_greenled_blink(int level, unsigned long delay_on, unsigned long delay_off)
+{
+	unsigned char led_id = RT5081_PMU_LED2;
+	unsigned char brightness = LED_OFF;
+
+	if (level)
+	{
+		brightness = LED_HALF;
+		rt5081_pmu_set_redled_blink(0, 0, 0);
+	}
+	if (delay_off == 0)
+		delay_on = 500;
+	rt5081_pmu_led_blink_set(&rt5081_led_classdev[led_id].led_dev, &delay_on, &delay_off);
+	rt5081_led_classdev[led_id].led_dev.brightness = brightness;
+	rt5081_pmu_led_bright_set(&rt5081_led_classdev[led_id].led_dev, brightness);
+}
+EXPORT_SYMBOL(rt5081_pmu_set_greenled_blink);
+
 static inline int rt5081_pmu_rgbled_init_register(
 	struct rt5081_pmu_rgbled_data *rgbled_data)
 {

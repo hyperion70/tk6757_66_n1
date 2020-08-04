@@ -29,16 +29,15 @@
 		};
 		charger {
 			compatible = "richtek,rt5081_pmu_charger";
-			interrupt-names = "chg_mivr", "chg_aiclmeasi", "attachi",
-				"ovpctrl_uvp_d_evt", "chg_wdtmri", "chg_vbusov",
-				"chg_tmri", "chg_treg";
+			interrupt-names = "adc_donei", "chg_mivr", "chg_aiclmeasi", "pumpx_donei", "attachi", 
+							  "ovpctrl_uvp_d_evt", "chg_wdtmri", "chg_vbusov", "chg_tmri", "chg_treg";
 			charger_name = "primary_chg";
 			load_switch_name = "primary_load_switch";
 			ichg = <2000000>;	/* uA */
 			aicr = <500000>;	/* uA */
 			mivr = <4400000>;	/* uV */
 			cv = <4350000>;		/* uA */
-			ieoc = <150000>;	/* uA */
+			ieoc = <400000>;	/* uA */
 			safety_timer = <12>;	/* hour */
 			dc_wdt = <4000000>;	/* us */
 			ircmp_resistor = <25000>;	/* uohm */
@@ -88,7 +87,7 @@
 					  "isink4_open", "isink3_open",
 					  "isink2_open", "isink1_open";
 			/* name cnt must be 4 */
-			rt,led_name = "red", "green",
+			rt,led_name = "rt5081_pmu_led1", "rt5081_pmu_led2",
 				      "rt5081_pmu_led3", "rt5081_pmu_led4";
 			/* trigger cnt must be 4, mode can be selected as */
 			/* cc_mode -> const current mode */
@@ -114,7 +113,7 @@
 			rt,bled_ramptime = <3>; /* 0, 500us, 750us, 1ms, 2ms, 5ms, 10ms, 20ms */
 						/* 50ms, 100ms, 250ms, 800ms, 1s, 2s, 4s, 8s */
 			rt,bled_flash_ramp = <1>; /* 0, 500us, 750us, 1ms, 2ms, 5ms */
-			rt,max_bled_brightness = <512>; /* we have 11 bit resolution, quantize in driver */
+			rt,max_bled_brightness = <682>; /* we have 11 bit resolution, quantize in driver */
 							 /* maximum 2047 */
 		};
 		dsv {

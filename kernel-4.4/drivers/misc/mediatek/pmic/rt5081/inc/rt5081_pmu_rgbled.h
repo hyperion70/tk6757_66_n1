@@ -51,3 +51,6 @@ struct rt5081_pmu_rgbled_platdata {
 #define RT5081_LEDBREATH_MAX (15)
 
 #endif
+
+extern void rt5081_pmu_set_redled_blink(int level, unsigned long delay_on, unsigned long delay_off);
+extern void rt5081_pmu_set_greenled_blink(int level, unsigned long delay_on, unsigned long delay_off); 
